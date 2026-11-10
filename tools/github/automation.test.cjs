@@ -5,7 +5,7 @@ const { detectCommand, handleIssueComment, validatePullRequest } = require('./au
 function fixture({ body = '/claim', assignees = [], state = 'open', pages = [] } = {}) {
   const calls = [];
   const issue = { state, assignees: assignees.map(login => ({ login })) };
-  const policy = { author: 'alice', references: null, pages: [] };
+  const policy = { author: 'alice', authorType: 'User', references: null, pages: [] };
   const context = {
     repo: { owner: 'owner', repo: 'vivapad' },
     payload: {
@@ -36,7 +36,7 @@ function fixture({ body = '/claim', assignees = [], state = 'open', pages = [] }
           assignees: { nodes: issue.assignees },
         }];
         return { repository: { pullRequest: {
-          author: { login: policy.author },
+          author: { __typename: policy.authorType, login: policy.author },
           closingIssuesReferences: policy.pages.shift() || {
             nodes: references, pageInfo: { hasNextPage: false, endCursor: null },
           },
@@ -182,10 +182,14 @@ test('PR policy rejects absent, foreign, unassigned or closed resolved Issue ref
 
 test('only the actual Dependabot account is exempt from Issue policy', async () => {
   const fixtureData = fixture();
-  fixtureData.policy.author = 'dependabot[bot]';
+  fixtureData.policy.author = 'dependabot';
+  fixtureData.policy.authorType = 'Bot';
   fixtureData.policy.references = [];
   assert.equal(await validatePullRequest(fixtureData), 'dependency-update');
-  fixtureData.policy.author = 'other[bot]';
+  fixtureData.policy.authorType = 'User';
+  await assert.rejects(validatePullRequest(fixtureData), /issue/i);
+  fixtureData.policy.authorType = 'Bot';
+  fixtureData.policy.author = 'other';
   await assert.rejects(validatePullRequest(fixtureData), /issue/i);
 });
 

@@ -59,13 +59,15 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
-      - name: Run unit and integration tests
-        run: go test ./... -count=1 -timeout=15m
       - name: Build native executable
+        id: build
         env:
           OUTPUT: build/vivapad${{ runner.os == 'Windows' && '.exe' || '' }}
         run: go build -o "$OUTPUT" ./cmd/vivapad
+      - name: Run unit and integration tests
+        run: go test ./... -count=1 -timeout=15m
       - name: Upload unsigned executable
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: vivapad-${{ runner.os }}-${{ runner.arch }}

@@ -111,7 +111,7 @@ async function validatePullRequest({ github, context, pullNumber }) {
   const query = `query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $number) {
-        author { login }
+        author { __typename login }
         closingIssuesReferences(first: 100, after: $cursor) {
           pageInfo { hasNextPage endCursor }
           nodes { number state repository { nameWithOwner } assignees(first: 100) { nodes { login } } }
@@ -127,7 +127,7 @@ async function validatePullRequest({ github, context, pullNumber }) {
     const { repository } = await github.graphql(query, { ...context.repo, number, cursor });
     const pull = repository?.pullRequest;
     if (!pull?.author?.login || !pull.closingIssuesReferences) throw new Error('Cannot verify pull request references');
-    if (pull.author.login === 'dependabot[bot]') return 'dependency-update';
+    if (pull.author.__typename === 'Bot' && pull.author.login === 'dependabot') return 'dependency-update';
     const references = pull.closingIssuesReferences;
     for (const issue of references.nodes) {
       if (!sameLogin(issue.repository?.nameWithOwner, repositoryName) || issue.state !== 'OPEN') {
