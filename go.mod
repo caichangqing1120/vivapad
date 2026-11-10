@@ -13,12 +13,10 @@ require (
 	github.com/rivo/uniseg v0.4.7
 	github.com/vivaui/viva v0.3.1-0.20261106090526-95ea45924f8e
 	golang.org/x/image v0.12.0
-	golang.org/x/sys v0.27.0
+	golang.org/x/sys v0.50.0
 	golang.org/x/text v0.43.0
 )
 
 replace github.com/vivaui/viva => github.com/caichangqing1120/viva v0.2.2-0.20261109173254-ac36aac4a2cc
 
-require (
-	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
-)
+require github.com/dlclark/regexp2/v2 v2.2.1 // indirect
