@@ -27,7 +27,9 @@ and can be opened with `open build/VivaPad.app`. Only this current package is
 retained after validation; older milestone builds are removed. It is unsigned;
 distribution to other Macs needs
 signing and notarization. Build for Apple Silicon with
-`go run github.com/vivaui/viva/cmd/viva package --target darwin --arch arm64 --format app --no-sign -o build/VivaPad.app`;
+`go run github.com/vivaui/viva/cmd/viva package --target darwin --arch arm64 --format app --no-sign -o build/VivaPad.app`,
+then run `go run ./tools/icon -app build/VivaPad.app` to preserve the approved
+32/64/128/1024 PNG renditions inside the macOS icon container;
 the package command otherwise defaults to amd64.
 
 The source requires official Viva commit `95ea459` and temporarily replaces it
@@ -581,12 +583,14 @@ VIVA_HEADLESS=1 /tmp/vivapad-head
   reordering still needs original Scintilla comparison. Save refuses to
   overwrite a file modified externally after opening;
   Reload from Disk is available when the on-disk version should replace it.
-- Compact menu, a unified 24-unit Viva vector toolbar using graphite icons,
-  a red New accent and brand red for a dirty Save, tabs, a monospaced code editor, Chroma
+- Compact menu, Figma-exported Lucide icons compiled to Viva's vector API,
+  16px graphite toolbar glyphs centered in 26px controls with 4px gaps,
+  a restrained teal Find selection, tabs, a monospaced code editor, Chroma
   language highlighting with per-tab Language selection, search bar, and
-  status line. The light application icon combines Viva's mark with an editor
-  caret and code lines inside a transparent-corner tile. Regenerate its PNG with
-  `go run ./tools/icon` before packaging after changing the composition.
+  status line. The application icon uses the approved mint V on a dark tile,
+  retaining the original transparent 1024/128/64/32 PNG assets. Run
+  `go run ./tools/icon` after changing exported SVG sources; this regenerates
+  only the compiled controls and never overwrites the application PNGs.
 - View > Show Symbol toggles space/tab marks, LF/CRLF/CR markers, 49 source
   non-printing abbreviations and 64 control/Unicode EOL abbreviations across
   both panes. Show All Characters switches the four independent flags together.

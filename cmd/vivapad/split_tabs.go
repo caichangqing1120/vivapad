@@ -96,9 +96,9 @@ func (state *model) paintPaneTabs(canvas *ui.Canvas, pane int, bounds ui.Rect) {
 		}
 		pinColor, pinLabel := palette.muted, "Pin "+doc.Name
 		if state.isPinned(doc) {
-			pinColor, pinLabel = palette.blue, "Unpin "+doc.Name
+			pinColor, pinLabel = ui.RGB(8, 105, 87), "Unpin "+doc.Name
 		}
-		canvas.DrawIcon(pinIcon, pinRect.Inset(ui.All(3)), pinColor)
+		canvas.DrawIcon(pinIcon, controlIconBounds(pinRect), pinColor)
 		if hitButton(canvas, pinScope.At(global), pinRect, pinLabel) {
 			pinning = doc
 		}
@@ -106,7 +106,7 @@ func (state *model) paintPaneTabs(canvas *ui.Canvas, pane int, bounds ui.Rect) {
 		if canvas.Hovered() == closeScope.At(global) {
 			canvas.Fill(closeRect, palette.hover)
 		}
-		canvas.DrawIcon(closeIcon, closeRect.Inset(ui.All(3)), palette.muted)
+		canvas.DrawIcon(closeIcon, controlIconBounds(closeRect), palette.muted)
 		if hitButton(canvas, closeScope.At(global), closeRect, "Close "+doc.Name) {
 			closing = global
 		}
@@ -127,8 +127,8 @@ func (state *model) paintPaneTabs(canvas *ui.Canvas, pane int, bounds ui.Rect) {
 		right := ui.Rect{X: bounds.X + bounds.Width - 25, Y: bounds.Y + 3, Width: 22, Height: 22}
 		canvas.Border(left, 1, palette.border, palette.toolbar)
 		canvas.Border(right, 1, palette.border, palette.toolbar)
-		canvas.DrawIcon(leftIcon, left.Inset(ui.All(4)), palette.text)
-		canvas.DrawIcon(rightIcon, right.Inset(ui.All(4)), palette.text)
+		canvas.DrawIcon(leftIcon, controlIconBounds(left), palette.text)
+		canvas.DrawIcon(rightIcon, controlIconBounds(right), palette.text)
 		if hitButton(canvas, backID, left, "Previous view tabs") {
 			state.paneTabOffset[pane] = max(0, state.paneTabOffset[pane]-1)
 		}

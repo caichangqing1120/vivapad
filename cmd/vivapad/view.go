@@ -51,7 +51,7 @@ func fileMenuCount() int {
 const (
 	menuHeight        float32 = 26
 	fileMenuRowHeight float32 = 24
-	toolbarHeight     float32 = 32
+	toolbarHeight     float32 = 34
 	tabHeight         float32 = 28
 	statusHeight      float32 = 24
 	searchHeight      float32 = 94
@@ -319,39 +319,50 @@ func (state *model) paintMenuBar(canvas *ui.Canvas, width float32) {
 	}
 }
 
-func toolbarButton(canvas *ui.Canvas, id ui.ID, bounds ui.Rect, icon ui.Icon, name string, tint ui.Color) bool {
-	if canvas.Hovered() == id {
-		canvas.RoundedBorder(bounds, 4, 1, ui.RGB(217, 219, 223), ui.RGB(244, 245, 246))
+func toolbarButton(canvas *ui.Canvas, id ui.ID, bounds ui.Rect, icon ui.Icon, name string, tint ui.Color, enabled, selected bool) bool {
+	if selected {
+		canvas.Rounded(bounds, 5.5, ui.RGB(221, 243, 237))
 	}
-	iconBounds := ui.Rect{X: bounds.X + 3.5, Y: bounds.Y + 3, Width: 19, Height: 19}
+	if enabled && canvas.Hovered() == id {
+		canvas.Rounded(bounds, 5.5, ui.RGB(232, 236, 238))
+	}
+	if enabled && canvas.Pressed() == id {
+		canvas.Rounded(bounds, 5.5, ui.RGB(220, 226, 229))
+	}
+	if enabled && canvas.FocusVisible() == id {
+		canvas.RoundedBorder(bounds, 5.5, 1.5, ui.RGB(9, 131, 110), ui.RGBA(0, 0, 0, 0))
+	}
+	iconBounds := controlIconBounds(bounds)
 	canvas.DrawIcon(icon, iconBounds, tint)
-	if id == newID {
-		canvas.DrawIcon(newAccentIcon, iconBounds, palette.blue)
-	}
-	return hitButton(canvas, id, bounds, name)
+	canvas.HitWithOptions(id, bounds, name, ui.HitOptions{Role: ui.RoleButton, Disabled: !enabled, Selected: selected, Hint: name})
+	return enabled && canvas.Clicked(id)
 }
 
-func toolbarTint(id ui.ID, canUndo, canRedo, dirty bool) ui.Color {
+func toolbarTint(id ui.ID, canUndo, canRedo bool) ui.Color {
 	switch {
-	case id == saveID && dirty:
-		return palette.blue
 	case id == undoID && !canUndo || id == redoID && !canRedo:
-		return ui.RGB(151, 154, 160)
+		return ui.RGB(166, 175, 182)
 	default:
-		return ui.RGB(24, 24, 27)
+		return ui.RGB(52, 61, 67)
 	}
 }
 
 func (state *model) paintToolbar(canvas *ui.Canvas, width float32) {
 	y := menuHeight
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: toolbarHeight}, palette.toolbar)
+	canvas.Fill(ui.Rect{Y: y, Width: width, Height: toolbarHeight}, ui.RGB(251, 252, 252))
 	canvas.Fill(ui.Rect{Y: y + toolbarHeight - 1, Width: width, Height: 1}, palette.border)
 	x := float32(8)
 	button := func(id ui.ID, icon ui.Icon, label string) bool {
 		doc := state.space.Current()
-		tint := toolbarTint(id, doc.Editor.CanUndo(), doc.Editor.CanRedo(), doc.Dirty())
-		clicked := toolbarButton(canvas, id, ui.Rect{X: x, Y: y + 3, Width: 26, Height: 25}, icon, label, tint)
-		x += 29
+		canUndo, canRedo := doc.Editor.CanUndo(), doc.Editor.CanRedo()
+		tint := toolbarTint(id, canUndo, canRedo)
+		enabled := !(id == undoID && !canUndo || id == redoID && !canRedo)
+		selected := id == searchID && state.searchOpen
+		if selected {
+			tint = ui.RGB(8, 105, 87)
+		}
+		clicked := toolbarButton(canvas, id, ui.Rect{X: x, Y: y + 4, Width: 26, Height: 26}, icon, label, tint, enabled, selected)
+		x += 30
 		return clicked
 	}
 	if button(newID, newIcon, "New") {
@@ -367,7 +378,7 @@ func (state *model) paintToolbar(canvas *ui.Canvas, width float32) {
 		state.save(state.space.Active, false)
 	}
 	separator := func() {
-		canvas.Fill(ui.Rect{X: x + 4, Y: y + 6, Width: 1, Height: 19}, palette.border)
+		canvas.Fill(ui.Rect{X: x + 4, Y: y + 10, Width: 1, Height: 14}, ui.RGB(125, 138, 145))
 		x += 13
 	}
 	separator()
@@ -454,9 +465,9 @@ func (state *model) paintTabs(canvas *ui.Canvas, width float32) {
 		}
 		pinColor, pinLabel := palette.muted, "Pin "+doc.Name
 		if state.isPinned(doc) {
-			pinColor, pinLabel = palette.blue, "Unpin "+doc.Name
+			pinColor, pinLabel = ui.RGB(8, 105, 87), "Unpin "+doc.Name
 		}
-		canvas.DrawIcon(pinIcon, pinRect.Inset(ui.All(3)), pinColor)
+		canvas.DrawIcon(pinIcon, controlIconBounds(pinRect), pinColor)
 		if hitButton(canvas, tabPinScope.At(index), pinRect, pinLabel) {
 			pinning = index
 		}
@@ -464,7 +475,7 @@ func (state *model) paintTabs(canvas *ui.Canvas, width float32) {
 		if canvas.Hovered() == tabCloseScope.At(index) {
 			canvas.Fill(closeRect, palette.hover)
 		}
-		canvas.DrawIcon(closeIcon, closeRect.Inset(ui.All(3)), palette.muted)
+		canvas.DrawIcon(closeIcon, controlIconBounds(closeRect), palette.muted)
 		if hitButton(canvas, tabCloseScope.At(index), closeRect, "Close "+doc.Name) {
 			closed = index
 		}
@@ -484,8 +495,8 @@ func (state *model) paintTabs(canvas *ui.Canvas, width float32) {
 		right := ui.Rect{X: contentWidth - 25, Y: y + 3, Width: 22, Height: 22}
 		canvas.Border(left, 1, palette.border, palette.toolbar)
 		canvas.Border(right, 1, palette.border, palette.toolbar)
-		canvas.DrawIcon(leftIcon, left.Inset(ui.All(4)), palette.text)
-		canvas.DrawIcon(rightIcon, right.Inset(ui.All(4)), palette.text)
+		canvas.DrawIcon(leftIcon, controlIconBounds(left), palette.text)
+		canvas.DrawIcon(rightIcon, controlIconBounds(right), palette.text)
 		if hitButton(canvas, tabLeftID, left, "Previous tabs") {
 			state.tabOffset = max(0, state.tabOffset-1)
 		}
@@ -715,7 +726,7 @@ func (state *model) paintSearch(canvas *ui.Canvas, width, y float32) {
 		}
 	}
 	closeBounds := ui.Rect{X: width - 29, Y: y + 6, Width: 22, Height: 22}
-	canvas.DrawIcon(closeIcon, closeBounds.Inset(ui.All(4)), palette.muted)
+	canvas.DrawIcon(closeIcon, controlIconBounds(closeBounds), palette.muted)
 	if hitButton(canvas, searchCloseID, closeBounds, "Close search") {
 		state.searchOpen = false
 	}
@@ -737,7 +748,7 @@ func (state *model) paintGoTo(canvas *ui.Canvas, width, y float32) {
 		state.goToLine()
 	}
 	closeBounds := ui.Rect{X: width - 29, Y: y + 9, Width: 22, Height: 22}
-	canvas.DrawIcon(closeIcon, closeBounds.Inset(ui.All(4)), palette.muted)
+	canvas.DrawIcon(closeIcon, controlIconBounds(closeBounds), palette.muted)
 	if hitButton(canvas, goToCloseID, closeBounds, "Close go to line") {
 		state.goToOpen = false
 	}
@@ -927,7 +938,7 @@ func (state *model) paintFileResults(canvas *ui.Canvas, width, y, height float32
 	heading = canvas.FitLine(heading, 12, ui.WeightRegular, width-48)
 	smallLabel(canvas, heading, ui.Rect{X: 10, Y: y + 1, Width: width - 48, Height: 27}, palette.text, 12)
 	closeBounds := ui.Rect{X: width - 29, Y: y + 4, Width: 22, Height: 22}
-	canvas.DrawIcon(closeIcon, closeBounds.Inset(ui.All(4)), palette.muted)
+	canvas.DrawIcon(closeIcon, controlIconBounds(closeBounds), palette.muted)
 	if hitButton(canvas, resultsCloseID, closeBounds, "Close find results") {
 		state.resultsOpen = false
 		state.clearResultFocus()
