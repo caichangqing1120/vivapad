@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a reproducible defect without sharing private documents
+title: '[Bug] '
+labels: [bug]
+body:
+  - type: input
+    id: platform
+    attributes:
+      label: OS, architecture and VivaPad revision
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps and minimal input
+      description: Remove credentials and private file contents before attaching evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result and evidence
+    validations:
+      required: true

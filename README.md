@@ -5,6 +5,13 @@ VivaPad is a cross-platform desktop text editor written in Go with
 Notepad++ layout. This is a runnable first slice, **not** a one-to-one
 Notepad++ implementation or a pixel-matched reproduction yet.
 
+## Development
+
+Requirements start in GitHub Issues. Comment `/claim` and wait for the bot's
+assignment confirmation before implementing; link the Issue in a focused PR
+after verification. See [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[GitHub workflow](docs/github-workflow.md) for CI, bot commands and review rules.
+
 ## Run
 
 Requires Go 1.26 or newer and the platform prerequisites listed by Viva.

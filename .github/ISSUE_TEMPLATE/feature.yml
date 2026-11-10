@@ -1,0 +1,38 @@
+name: Feature or requirement
+description: Define a scoped improvement and its acceptance criteria
+title: '[Feature] '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the user problem and the expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+      description: Include platform constraints and whether the change belongs in Viva or VivaPad.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable outcomes, failure behavior and required native or pixel evidence.
+    validations:
+      required: true
+  - type: input
+    id: specification
+    attributes:
+      label: Existing Spec or plan
+      placeholder: docs/specs/001-vivapad/spec.md
+  - type: checkboxes
+    id: workflow
+    attributes:
+      label: Development workflow
+      options:
+        - label: I will confirm the scope, claim the Issue and wait for assignment confirmation before implementing.
+          required: true

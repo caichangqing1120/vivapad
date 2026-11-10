@@ -149,19 +149,22 @@ func (state *model) paintLeftDockTabs(canvas *ui.Canvas, bounds ui.Rect) {
 	count := 0
 	if state.documentListVisible {
 		tabs[count] = struct {
-			id ui.ID; label, mode string
+			id          ui.ID
+			label, mode string
 		}{leftDockDocumentsID, "Documents", "documents"}
 		count++
 	}
 	if state.folderVisible {
 		tabs[count] = struct {
-			id ui.ID; label, mode string
+			id          ui.ID
+			label, mode string
 		}{leftDockWorkspaceID, "Workspace", "workspace"}
 		count++
 	}
 	if state.functionListVisible {
 		tabs[count] = struct {
-			id ui.ID; label, mode string
+			id          ui.ID
+			label, mode string
 		}{leftDockFunctionsID, "Functions", "functions"}
 		count++
 	}
