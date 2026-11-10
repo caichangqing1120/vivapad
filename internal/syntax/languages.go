@@ -1,0 +1,105 @@
+package syntax
+
+import "strings"
+
+type Language struct {
+	Label       string
+	Mode        string
+	NPPName     string
+	SourceID    string
+	Lexer       string
+	LineComment string
+	IndentAfter string
+}
+
+var languages = [...]Language{
+	{"Normal Text", "", "normal", "IDM_LANG_TEXT", "", "", ""},
+	{"Go", ".go", "go", "IDM_LANG_GOLANG", "Go", "//", "{[("},
+	{"JavaScript", ".js", "javascript", "IDM_LANG_JS", "JavaScript", "//", "{[("},
+	{"TypeScript", ".ts", "typescript", "IDM_LANG_TYPESCRIPT", "TypeScript", "//", "{[("},
+	{"Python", ".py", "python", "IDM_LANG_PYTHON", "Python", "#", ":"},
+	{"JSON", ".json", "json", "IDM_LANG_JSON", "JSON", "", "{[("},
+	{"HTML", ".html", "html", "IDM_LANG_HTML", "HTML", "", ""},
+	{"CSS", ".css", "css", "IDM_LANG_CSS", "CSS", "", "{[("},
+	{"Markdown", ".md", "markdown", "", "Markdown", "", ""},
+	{"SQL", ".sql", "sql", "IDM_LANG_SQL", "SQL", "--", ""},
+	{"C", ".c", "c", "IDM_LANG_C", "C", "//", "{[("},
+	{"C++", ".cpp", "cpp", "IDM_LANG_CPP", "C++", "//", "{[("},
+	{"C#", ".cs", "cs", "IDM_LANG_CS", "C#", "//", "{[("},
+	{"Java", ".java", "java", "IDM_LANG_JAVA", "Java", "//", "{[("},
+	{"Rust", ".rs", "rust", "IDM_LANG_RUST", "Rust", "//", "{[("},
+	{"Ruby", ".rb", "ruby", "IDM_LANG_RUBY", "Ruby", "#", ""},
+	{"PHP", ".php", "php", "IDM_LANG_PHP", "PHP", "//", "{[("},
+	{"Shell", ".sh", "bash", "IDM_LANG_BASH", "Bash", "#", ""},
+	{"YAML", ".yaml", "yaml", "IDM_LANG_YAML", "YAML", "#", ":"},
+	{"XML", ".xml", "xml", "IDM_LANG_XML", "XML", "", ""},
+	{"TOML", ".toml", "toml", "IDM_LANG_TOML", "TOML", "#", ""},
+	{"Lua", ".lua", "lua", "IDM_LANG_LUA", "Lua", "--", ""},
+	{"Swift", ".swift", "swift", "IDM_LANG_SWIFT", "Swift", "//", "{[("},
+	{"INI file", ".ini", "ini", "IDM_LANG_INI", "INI", ";", ""},
+	{"Makefile", ".mk", "makefile", "IDM_LANG_MAKEFILE", "Makefile", "#", ""},
+	{"Diff", ".diff", "diff", "IDM_LANG_DIFF", "Diff", "", ""},
+	{"PowerShell", ".ps1", "powershell", "IDM_LANG_POWERSHELL", "PowerShell", "#", ""},
+	{"Perl", ".pl", "perl", "IDM_LANG_PERL", "Perl", "#", ""},
+	{"R", ".r", "r", "IDM_LANG_R", "R", "#", ""},
+	{"Pascal", ".pas", "pascal", "IDM_LANG_PASCAL", "ObjectPascal", "//", ""},
+	{"Haskell", ".hs", "haskell", "IDM_LANG_HASKELL", "Haskell", "--", ""},
+	{"Erlang", ".erl", "erlang", "IDM_LANG_ERLANG", "Erlang", "%", ""},
+	{"LaTeX", ".tex", "latex", "IDM_LANG_LATEX", "LaTeX", "%", ""},
+	{"CMake", ".cmake", "cmake", "IDM_LANG_CMAKE", "CMake", "#", ""},
+	{"Fortran (free form)", ".f90", "fortran", "IDM_LANG_FORTRAN", "Fortran", "!", ""},
+	{"Visual Basic", ".vb", "vb", "IDM_LANG_VB", "VB.net", "'", ""},
+	{"Objective-C", ".m", "objc", "IDM_LANG_OBJC", "Objective-C", "//", "{[("},
+	{"Verilog", ".v", "verilog", "IDM_LANG_VERILOG", "Verilog", "//", ""},
+	{"VHDL", ".vhd", "vhdl", "IDM_LANG_VHDL", "VHDL", "--", ""},
+	{"Matlab", "lang:matlab", "matlab", "IDM_LANG_MATLAB", "Matlab", "%", ""},
+	{"Nim", ".nim", "nim", "IDM_LANG_NIM", "Nim", "#", ""},
+	{"TCL", ".tcl", "tcl", "IDM_LANG_TCL", "Tcl", "#", ""},
+	{"PostScript", ".ps", "ps", "IDM_LANG_PS", "PostScript", "%", ""},
+	{"Raku", ".raku", "raku", "IDM_LANG_RAKU", "Raku", "#", ""},
+	{"Scheme", ".scm", "scheme", "IDM_LANG_SCHEME", "Scheme", ";", ""},
+	{"CoffeeScript", ".coffee", "coffeescript", "IDM_LANG_COFFEESCRIPT", "CoffeeScript", "#", ""},
+	{"GDScript", ".gd", "gdscript", "IDM_LANG_GDSCRIPT", "GDScript", "#", ""},
+}
+
+func Languages() []Language { return append([]Language(nil), languages[:]...) }
+
+func LanguageByLabel(label string) (Language, bool) {
+	for _, spec := range languages {
+		if spec.Label == label {
+			return spec, true
+		}
+	}
+	return Language{}, false
+}
+
+func LanguageByMode(mode string) (Language, bool) {
+	if strings.EqualFold(mode, ".yml") {
+		mode = ".yaml"
+	}
+	for _, spec := range languages {
+		if spec.Mode == strings.ToLower(mode) {
+			return spec, true
+		}
+	}
+	return Language{}, false
+}
+
+func LanguageByNPP(name string) (Language, bool) {
+	switch strings.ToLower(name) {
+	case "js":
+		name = "javascript"
+	case "ts":
+		name = "typescript"
+	case "py":
+		name = "python"
+	case "md":
+		name = "markdown"
+	}
+	for _, spec := range languages {
+		if strings.EqualFold(spec.NPPName, name) {
+			return spec, true
+		}
+	}
+	return Language{}, false
+}

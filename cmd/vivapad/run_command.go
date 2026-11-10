@@ -1,0 +1,152 @@
+package main
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"unicode"
+
+	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/text"
+	"vivapad/internal/document"
+	"vivapad/internal/runcommand"
+)
+
+var runVariableNames = [...]string{
+	"FULL_CURRENT_PATH", "CURRENT_DIRECTORY", "FILE_NAME", "NAME_PART", "EXT_PART",
+	"CURRENT_WORD", "NPP_DIRECTORY", "NPP_FULL_FILE_PATH", "CURRENT_LINE", "CURRENT_COLUMN", "CURRENT_LINESTR",
+}
+
+func (state *model) openRunDialog() {
+	state.runDialogOpen, state.runSaveMode, state.runVariablesOpen = true, false, false
+	state.runInput, state.runName = text.NewEditor(state.runLast), nil
+	state.runDialogError, state.runDialogFocus = "", true
+}
+
+func (state *model) cancelRunDialog() {
+	if state.runVariablesOpen {
+		state.runVariablesOpen = false
+		return
+	}
+	if state.runSaveMode {
+		state.runSaveMode, state.runName, state.runDialogError = false, nil, ""
+		state.runDialogFocus = true
+		return
+	}
+	state.closeRunDialog()
+}
+
+func (state *model) closeRunDialog() {
+	if state.runInput != nil {
+		state.runLast = state.runInput.String()
+	}
+	state.runDialogOpen, state.runSaveMode, state.runVariablesOpen = false, false, false
+	state.runInput, state.runName = nil, nil
+	state.runDialogError = ""
+}
+
+func runCurrentWord(doc *document.Document) string {
+	characters := []rune(doc.Editor.String())
+	selection := doc.Editor.Selection()
+	if selection.End > selection.Start {
+		return string(characters[selection.Start:min(selection.End, selection.Start+1024)])
+	}
+	caret := doc.Editor.Caret()
+	word := func(character rune) bool {
+		return unicode.IsLetter(character) || unicode.IsNumber(character) || character == '_'
+	}
+	if caret >= len(characters) || !word(characters[caret]) {
+		caret--
+	}
+	if caret < 0 || !word(characters[caret]) {
+		return ""
+	}
+	start, end := caret, caret+1
+	for start > 0 && word(characters[start-1]) {
+		start--
+	}
+	for end < len(characters) && word(characters[end]) && end-start < 1024 {
+		end++
+	}
+	return string(characters[start:end])
+}
+
+func (state *model) runVariables(doc *document.Document) runcommand.Variables {
+	line, column := doc.Position()
+	value, offset := doc.Editor.String(), doc.Editor.ByteOffset(doc.Editor.Caret())
+	start := strings.LastIndexByte(value[:offset], '\n') + 1
+	end := len(value)
+	if next := strings.IndexByte(value[offset:], '\n'); next >= 0 {
+		end = offset + next
+	}
+	appPath, _ := os.Executable()
+	lineText := value[start:end]
+	if len(lineText) > 4096 {
+		lineText = lineText[:4096]
+	}
+	return runcommand.Variables{Path: doc.Path, Word: runCurrentWord(doc), Line: line, Column: column, LineText: lineText, AppPath: appPath}
+}
+
+func (state *model) launchRunTemplate(template string) error {
+	prepared, err := runcommand.Prepare(template, state.runVariables(state.paneDocument(state.activePane)))
+	if err != nil {
+		return err
+	}
+	if state.runLauncher == nil {
+		return errors.New("Run launcher unavailable")
+	}
+	if err := state.runLauncher(prepared); err != nil {
+		return err
+	}
+	state.notice = "Launched " + filepath.Base(prepared.Executable)
+	return nil
+}
+
+func (state *model) applyRunDialog() {
+	if !state.runDialogOpen {
+		return
+	}
+	if state.runSaveMode {
+		candidate := append(append([]runcommand.Named(nil), state.namedRuns...), runcommand.Named{Name: state.runName.String(), Template: state.runInput.String()})
+		if err := runcommand.ValidateNamed(candidate); err != nil {
+			state.runDialogError = err.Error()
+			return
+		}
+		if state.runPath == "" {
+			state.runDialogError = "Run command storage unavailable"
+			return
+		}
+		if err := runcommand.Save(state.runPath, candidate); err != nil {
+			state.runDialogError = err.Error()
+			return
+		}
+		state.namedRuns = candidate
+		name := state.runName.String()
+		state.closeRunDialog()
+		state.notice = "Saved Run command " + name
+		return
+	}
+	if err := state.launchRunTemplate(state.runInput.String()); err != nil {
+		state.runDialogError = err.Error()
+		return
+	}
+	state.closeRunDialog()
+}
+
+func (state *model) browseRunExecutable() {
+	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "Program to Run"})
+	if errors.Is(err, app.ErrCanceled) {
+		return
+	}
+	if err != nil {
+		state.runDialogError = err.Error()
+		return
+	}
+	if len(paths) == 0 {
+		return
+	}
+	state.runInput.Insert(strconv.Quote(paths[0]))
+	state.runDialogError = ""
+}

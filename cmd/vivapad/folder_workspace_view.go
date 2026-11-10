@@ -1,0 +1,86 @@
+package main
+
+import "github.com/vivaui/viva/ui"
+
+func (state *model) paintFolderPanel(canvas *ui.Canvas, bounds ui.Rect) {
+	canvas.Fill(bounds, ui.RGB(250, 250, 250))
+	canvas.Fill(ui.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
+	canvas.Fill(ui.Rect{Y: bounds.Y + 33, Width: bounds.Width, Height: 1}, palette.border)
+	title := "Folder as Workspace"
+	if bounds.Width < 210 {
+		title = "Workspace"
+	}
+	smallLabel(canvas, title, ui.Rect{X: 8, Y: bounds.Y + 5, Width: bounds.Width - 77, Height: 23}, palette.text, 11)
+	for _, button := range []struct {
+		id    ui.ID
+		icon  ui.Icon
+		label string
+		x     float32
+	}{
+		{folderAddID, newIcon, "Add folder", bounds.Width - 69},
+		{folderRefreshID, redoIcon, "Refresh folders", bounds.Width - 47},
+		{folderCloseID, closeIcon, "Close Folder as Workspace", bounds.Width - 25},
+	} {
+		buttonBounds := ui.Rect{X: button.x, Y: bounds.Y + 7, Width: 20, Height: 20}
+		if canvas.Hovered() == button.id {
+			canvas.Fill(buttonBounds, palette.hover)
+		}
+		canvas.DrawIcon(button.icon, buttonBounds.Inset(ui.All(3)), palette.muted)
+		if hitButton(canvas, button.id, buttonBounds, button.label) {
+			switch button.id {
+			case folderAddID:
+				state.chooseFolderRoot()
+			case folderRefreshID:
+				state.refreshFolderTree()
+			case folderCloseID:
+				state.folderVisible = false
+				state.stopFolderWatching()
+				if state.functionListVisible {
+					state.activeLeftDock = "functions"
+				} else if state.documentListVisible {
+					state.activeLeftDock = "documents"
+				} else {
+					state.activeLeftDock = ""
+				}
+			}
+		}
+	}
+	rowArea := ui.Rect{Y: bounds.Y + 34, Width: bounds.Width - 1, Height: max(0, bounds.Height-34)}
+	canvas.HitWithOptions(folderPanelID, rowArea, "Folder as Workspace", ui.HitOptions{Role: ui.RoleGroup})
+	rows := state.folderRows()
+	visible := max(1, int(rowArea.Height/22))
+	state.folderOffset = min(max(0, state.folderOffset), max(0, len(rows)-visible))
+	canvas.Clip(rowArea)
+	var chosen *folderRow
+	for index := state.folderOffset; index < len(rows) && index-state.folderOffset < visible; index++ {
+		row := rows[index]
+		item := ui.Rect{X: 2, Y: rowArea.Y + float32(index-state.folderOffset)*22, Width: rowArea.Width - 3, Height: 22}
+		if row.path == state.folderSelected || canvas.Hovered() == folderRowScope.At(index) {
+			canvas.Fill(item, palette.hover)
+		}
+		indent := min(float32(row.depth*13), bounds.Width-64)
+		icon := fileIcon
+		if row.directory {
+			icon = rightIcon
+			if state.folderExpanded[row.path] {
+				icon = downIcon
+			}
+		}
+		canvas.DrawIcon(icon, ui.Rect{X: 7 + indent, Y: item.Y + 4, Width: 14, Height: 14}, palette.muted)
+		textX := 26 + indent
+		label := canvas.FitLine(row.name, 11, ui.WeightRegular, max(20, item.Width-textX-4))
+		smallLabel(canvas, label, ui.Rect{X: textX, Y: item.Y, Width: max(20, item.Width-textX-4), Height: 22}, palette.text, 11)
+		roleLabel := "Open " + row.name
+		if row.directory {
+			roleLabel = "Toggle folder " + row.name
+		}
+		canvas.HitWithOptions(folderRowScope.At(index), item, roleLabel, ui.HitOptions{Role: ui.RoleButton})
+		if canvas.Clicked(folderRowScope.At(index)) {
+			chosen = &row
+		}
+	}
+	canvas.Unclip()
+	if chosen != nil {
+		state.activateFolderRow(*chosen)
+	}
+}

@@ -1,0 +1,8 @@
+[app]
+name = "VivaPad"
+id = "dev.vivapad.app"
+package = "./cmd/vivapad"
+icon = "assets/vivapad-icon.png"
+
+[mac]
+min_system = "12.0"

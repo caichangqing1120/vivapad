@@ -1,0 +1,44 @@
+package syntax
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestFoldRegionsIgnoreBracesInsideStringsAndComments(t *testing.T) {
+	value := "func main() {\n" +
+		"  if true {\n" +
+		"    println(\"}\")\n" +
+		"  } // { not an opener\n" +
+		"}\n" +
+		"tail"
+	want := []FoldRegion{{Header: 0, LastLine: 4, Level: 1}, {Header: 1, LastLine: 3, Level: 2}}
+	if got := FoldRegions(".go", value); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Go fold regions = %+v, want %+v", got, want)
+	}
+	if got := FoldRegions(".go", "func main() {}\ntail"); len(got) != 0 {
+		t.Fatalf("single-line braces folded: %+v", got)
+	}
+}
+
+func TestFoldRegionsHandleNestedJSONAndEdits(t *testing.T) {
+	value := "{\n  \"items\": [\n    {\"value\": 1}\n  ]\n}\n"
+	want := []FoldRegion{{Header: 0, LastLine: 4, Level: 1}, {Header: 1, LastLine: 3, Level: 2}}
+	if got := FoldRegions(".json", value); !reflect.DeepEqual(got, want) {
+		t.Fatalf("JSON fold regions = %+v, want %+v", got, want)
+	}
+	if got := FoldRegions(".json", "{\"items\": []}\n"); len(got) != 0 {
+		t.Fatalf("fold region survived a flattened edit: %+v", got)
+	}
+}
+
+func TestFoldRegionsFollowPythonIndentationAndSkipBlankComments(t *testing.T) {
+	value := "def outer():\n    if flag:\n        work()\n\n    # note\n    return 1\nafter()"
+	want := []FoldRegion{{Header: 0, LastLine: 5, Level: 1}, {Header: 1, LastLine: 4, Level: 2}}
+	if got := FoldRegions(".py", value); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Python fold regions = %+v, want %+v", got, want)
+	}
+	if got := FoldRegions(".html", "<div>\n  body\n</div>"); len(got) != 0 {
+		t.Fatalf("unsupported grammar advertised folds: %+v", got)
+	}
+}
