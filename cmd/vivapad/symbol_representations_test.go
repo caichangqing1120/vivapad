@@ -34,7 +34,7 @@ func TestSourceNonPrintingAndControlTablesHaveExactCardinalityAndOrder(t *testin
 }
 
 func TestEverySourceRepresentationMatchesPinnedCPP(t *testing.T) {
-	path := filepath.Join("..", "..", "docs", "specs", "001-vivapad", "source-symbols.tsv")
+	path := filepath.Join("testdata", "source-symbols.tsv")
 	file, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
