@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -10,10 +11,12 @@ import (
 
 func TestLanguageCatalogHasOriginalIdentityAndRealLexers(t *testing.T) {
 	specs := Languages()
-	trace, err := os.ReadFile("../../docs/specs/001-vivapad/remaining-command-trace.md")
+	// IDs from the Notepad++ v8.9.8.1 language menu, independent of local plans.
+	data, err := os.ReadFile("testdata/npp-language-ids.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
+	sourceIDs := strings.Fields(string(data))
 	if len(specs) < 40 {
 		t.Fatalf("registered original languages = %d, want at least 40", len(specs))
 	}
@@ -31,7 +34,7 @@ func TestLanguageCatalogHasOriginalIdentityAndRealLexers(t *testing.T) {
 		labels[spec.Label], modes[spec.Mode], npp[spec.NPPName] = true, true, true
 		if spec.SourceID != "" {
 			ids[spec.SourceID] = true
-			if !strings.Contains(string(trace), "`"+spec.SourceID+"`") {
+			if !slices.Contains(sourceIDs, spec.SourceID) {
 				t.Fatalf("language %q has no pinned source ID %s", spec.Label, spec.SourceID)
 			}
 		}

@@ -39,8 +39,8 @@ Restoration preflight also validates the compressed spans and deletion
 editions before mutating either log. Malformed reversion events that cannot
 restore a complete deletion return an error without consuming metadata.
 
-See `docs/specs/001-vivapad/change-history-source-review.md` for reproduction
-and the still-open integration contract. No upstream Notepad++ fix or issue
+Reproduction records and the still-open integration contract are retained
+locally. No upstream Notepad++ fix or issue
 has been published by this task.
 
 ## Line Projection And Navigation

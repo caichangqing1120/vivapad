@@ -13,7 +13,7 @@ body:
     id: reproduce
     attributes:
       label: Steps and minimal input
-      description: Remove credentials and private file contents before attaching evidence.
+      description: Describe reproduction in text without credentials or private contents. Keep docs, Specs, plans, screenshots and captures local; do not attach them.
     validations:
       required: true
   - type: textarea
@@ -25,6 +25,7 @@ body:
   - type: textarea
     id: actual
     attributes:
-      label: Actual result and evidence
+      label: Actual result and verification summary
+      description: List commands, results and platform details in text without uploading local evidence files.
     validations:
       required: true

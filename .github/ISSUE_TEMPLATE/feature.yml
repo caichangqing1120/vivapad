@@ -27,8 +27,9 @@ body:
   - type: input
     id: specification
     attributes:
-      label: Existing Spec or plan
-      placeholder: docs/specs/001-vivapad/spec.md
+      label: Confirmed requirement summary
+      description: Summarize approved decisions in text. Keep Specs, plans and screenshots local; do not upload them.
+      placeholder: Expected behavior and confirmed constraints
   - type: checkboxes
     id: workflow
     attributes:

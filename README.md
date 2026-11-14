@@ -9,8 +9,9 @@ Notepad++ implementation or a pixel-matched reproduction yet.
 
 Requirements start in GitHub Issues. Comment `/claim` and wait for the bot's
 assignment confirmation before implementing; link the Issue in a focused PR
-after verification. See [CONTRIBUTING.md](CONTRIBUTING.md) and the
-[GitHub workflow](docs/github-workflow.md) for CI, bot commands and review rules.
+after verification. See [CONTRIBUTING.md](CONTRIBUTING.md) for CI, bot commands
+and review rules. Detailed Specs, development plans, verification records and
+screenshots are kept locally and are not published in this repository.
 
 ## Run
 
@@ -80,10 +81,8 @@ one-line correction experiment matches 8299 checked-in states and 129043
 states in the expanded independent review. Restoration refuses incomplete
 metadata before mutation. This engine is not yet connected to application
 history, change margins or Next/Previous/Clear commands; those commands remain
-explicitly missing. See
-`docs/specs/001-vivapad/change-history-source-review.md` for reproduction and
-`change-history-editor-contract.md` in that directory for the source-audited
-history-delivery proposal and remaining integration gates.
+explicitly missing. Reproduction records and the history-delivery proposal
+remain local; source integration and native acceptance are still required.
 
 For repeatable, nonintrusive UI testing:
 
@@ -650,9 +649,8 @@ pixel-identical or functionally one-to-one with Notepad++.
 
 The macOS host used for verification has no usable Wine or Windows VM.
 Actual pixel-diff acceptance requires an original Notepad++ screenshot at the
-same version, OS, DPI, dimensions and font configuration. See
-`docs/specs/001-vivapad/verification.md` for checked behavior and
-`docs/specs/001-vivapad/parity-inventory.md` for source-grounded command gaps.
+same version, OS, DPI, dimensions and font configuration. Detailed verification
+records, command inventories and comparison captures remain local.
 Viva's mark source and the icon composition are
 credited in `assets/ATTRIBUTION.md`; language highlighting uses Chroma (MIT).
 
@@ -673,6 +671,6 @@ when both captures use the same OS, viewport, DPI, font, document and state.
 Verification on 2026-11-07: `go test ./... -count=1`, `go test -race ./...`,
 `go vet ./...`, native macOS build/start and `.app` packaging with a 1024px
 icon, Windows and Linux cross-builds, and headless `layout` at 1280x800 and
-640x400. The PNGs in `artifacts/screenshots/` are VivaPad captures, not
-Notepad++ screenshots. Windows and Linux binaries have not been run on those
+640x400. Local VivaPad captures are not Notepad++ reference screenshots.
+Windows and Linux binaries have not been run on those
 systems; physical IME and pixel parity remain unverified.

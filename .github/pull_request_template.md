@@ -4,8 +4,8 @@ Closes #
 
 ## Scope
 
-Describe the behavior change and non-goals. Link the approved Spec/plan for
-substantive work; state the Issue's acceptance criteria for a small fix.
+Describe the behavior change, non-goals and the Issue's confirmed acceptance
+criteria. Keep detailed Specs and development plans local.
 
 ## Verification
 
@@ -18,6 +18,8 @@ explicitly; headless tests and cross-builds do not establish native GUI parity.
 - [ ] Scope and acceptance criteria are confirmed; no blocking requirement decisions remain.
 - [ ] Tests cover the changed behavior and relevant failure cases.
 - [ ] Formatting, vet, full tests, race and CI are green.
-- [ ] Spec/plan and verification evidence reflect the implementation without promoting unverified parity.
+- [ ] Local plans and verification records reflect the implementation without promoting unverified parity.
+- [ ] No `docs/`, Specs, plans, screenshots or captures are included in commits or attachments.
+- [ ] `node tools/github/check-public-files.cjs` passes, including commit history.
 - [ ] No credentials, private documents or local build outputs are included.
 - [ ] Reusable framework work is proposed separately to Viva; no unapproved dependency changes are included.

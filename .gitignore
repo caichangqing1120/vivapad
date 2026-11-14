@@ -1,2 +1,24 @@
 build/
 .DS_Store
+
+# Local requirements, plans, evidence and screenshots never enter public Git.
+[Dd][Oo][Cc][Ss]/
+[Ss][Pp][Ee][Cc][Ss]/
+[Ss][Pp][Ee][Cc].md
+[Ss][Pp][Ee][Cc]-*.md
+[Pp][Ll][Aa][Nn][Ss]/
+[Pp][Ll][Aa][Nn].md
+[Pp][Ll][Aa][Nn]-*.md
+[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt][Ss]/
+[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt]/
+[Cc][Aa][Pp][Tt][Uu][Rr][Ee][Ss]/
+[Cc][Aa][Pp][Tt][Uu][Rr][Ee]/
+*[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt]*.png
+*[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt]*.jpg
+*[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt]*.jpeg
+*[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt]*.webp
+*[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt]*.gif
+*[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt]*.bmp
+*[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt]*.tif
+*[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt]*.tiff
+.superpowers/
