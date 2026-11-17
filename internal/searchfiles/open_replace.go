@@ -56,7 +56,7 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", doc.Name, err)
 		}
-		if count == 0 {
+		if count == 0 || candidate.Editor.String() == before {
 			continue
 		}
 		if err := candidate.ValidateEncoding(); err != nil {
