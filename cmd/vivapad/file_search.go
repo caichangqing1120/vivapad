@@ -342,6 +342,9 @@ func (state *model) openFileResult(index int) bool {
 	doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
 	state.codeEditor().Reveal(match.End)
 	state.selectFileResult(index)
+	if state.notice == "Search result changed; run the search again" {
+		state.notice = ""
+	}
 	return true
 }
 
