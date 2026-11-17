@@ -10,7 +10,7 @@ import (
 	"github.com/vivaui/viva/text"
 )
 
-func TestGB18030LossyOutputRefusesEveryPrewritePath(t *testing.T) {
+func TestUnrepresentableLegacyOutputRefusesEveryPrewritePath(t *testing.T) {
 	for _, action := range []string{"validate", "length", "save", "copy"} {
 		t.Run(action, func(t *testing.T) {
 			root := t.TempDir()
@@ -37,21 +37,21 @@ func TestGB18030LossyOutputRefusesEveryPrewritePath(t *testing.T) {
 			}
 			doc.Editor.SetSelection(text.Range{Start: 2, End: 0})
 			selection, caret := doc.Editor.Selection(), doc.Editor.Caret()
-			doc.SetEncoding(GB18030)
+			doc.SetEncoding(Windows1252)
 			switch action {
 			case "validate":
 				err = doc.ValidateEncoding()
 			case "length":
-				_, err = GB18030.EncodedLength(doc.Editor.String())
+				_, err = Windows1252.EncodedLength(doc.Editor.String())
 			case "save":
 				err = doc.Save("")
 			case "copy":
 				err = doc.SaveCopy(target)
 			}
-			if err == nil || !strings.Contains(err.Error(), "GB18030") {
-				t.Fatalf("%s accepted lossy U+E000: %v", action, err)
+			if err == nil || !strings.Contains(err.Error(), "Windows-1252") {
+				t.Fatalf("%s accepted unrepresentable U+E000: %v", action, err)
 			}
-			if doc.Path != canonical || doc.Encoding() != GB18030 || doc.SavedEncoding() != UTF8 ||
+			if doc.Path != canonical || doc.Encoding() != Windows1252 || doc.SavedEncoding() != UTF8 ||
 				!doc.Dirty() || !doc.Editor.AtSavePoint() || !doc.Editor.CanRedo() || doc.Editor.Selection() != selection || doc.Editor.Caret() != caret || doc.Editor.String() != "A\uE000\n" {
 				t.Fatal("refusal changed source, selection, saved boundary or future Undo")
 			}

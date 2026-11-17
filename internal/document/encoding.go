@@ -100,6 +100,25 @@ func legacyCodec(format Encoding) encoding.Encoding {
 	return nil
 }
 
+func legacyConverters(format Encoding, codec encoding.Encoding) (encode, decode func([]byte) ([]byte, error)) {
+	if format == GB18030 {
+		return encodeGB18030, decodeGB18030
+	}
+	return codec.NewEncoder().Bytes, codec.NewDecoder().Bytes
+}
+
+func encodeLegacyChecked(input []byte, label string, encode, decode func([]byte) ([]byte, error)) ([]byte, error) {
+	data, err := encode(input)
+	if err != nil {
+		return nil, fmt.Errorf("cannot save text as %s: %w", label, err)
+	}
+	decoded, err := decode(data)
+	if err != nil || !bytes.Equal(decoded, input) {
+		return nil, fmt.Errorf("cannot save text as %s without changing Unicode text", label)
+	}
+	return data, nil
+}
+
 func decodeLegacy(data []byte, format Encoding) (string, Encoding, error) {
 	codec := legacyCodec(format)
 	if codec == nil {
@@ -108,11 +127,12 @@ func decodeLegacy(data []byte, format Encoding) (string, Encoding, error) {
 	if bytes.IndexByte(data, 0) >= 0 {
 		return "", 0, errors.New("binary NUL in text")
 	}
-	decoded, err := codec.NewDecoder().Bytes(data)
+	encode, decode := legacyConverters(format, codec)
+	decoded, err := decode(data)
 	if err != nil {
 		return "", 0, err
 	}
-	encoded, err := codec.NewEncoder().Bytes(decoded)
+	encoded, err := encode(decoded)
 	if err != nil || !bytes.Equal(encoded, data) {
 		return "", 0, fmt.Errorf("invalid or non-round-trippable %s text", formatLabel(format))
 	}
@@ -192,14 +212,7 @@ func encodeText(value string, encoding Encoding) ([]byte, error) {
 		if codec == nil {
 			return nil, fmt.Errorf("unsupported text encoding %d", encoding)
 		}
-		data, err := codec.NewEncoder().Bytes([]byte(value))
-		if err != nil {
-			return nil, fmt.Errorf("cannot save text as %s: %w", formatLabel(encoding), err)
-		}
-		decoded, err := codec.NewDecoder().Bytes(data)
-		if err != nil || !bytes.Equal(decoded, []byte(value)) {
-			return nil, fmt.Errorf("cannot save text as %s without changing Unicode text", formatLabel(encoding))
-		}
-		return data, nil
+		encode, decode := legacyConverters(encoding, codec)
+		return encodeLegacyChecked([]byte(value), formatLabel(encoding), encode, decode)
 	}
 }

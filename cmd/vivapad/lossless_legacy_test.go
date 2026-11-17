@@ -12,7 +12,7 @@ import (
 	"vivapad/internal/document"
 )
 
-func TestGB18030MenuSaveRejectsLossyUnicode(t *testing.T) {
+func TestLegacyMenuSaveRejectsUnrepresentableUnicode(t *testing.T) {
 	for _, size := range []struct{ width, height int }{{1280, 800}, {640, 400}} {
 		for _, action := range []string{"Save", "Save As...", "Save a Copy As..."} {
 			t.Run(action, func(t *testing.T) {
@@ -40,9 +40,9 @@ func TestGB18030MenuSaveRejectsLossyUnicode(t *testing.T) {
 				doc.Editor.SetSelection(text.Range{Start: 2, End: 0})
 				selection := doc.Editor.Selection()
 				clickID(t, driver, menuScope.At(4))
-				clickID(t, driver, menuItemScope.At(6))
-				if doc.Encoding() != document.GB18030 {
-					t.Fatal("Encoding menu did not select GB18030")
+				clickID(t, driver, menuItemScope.At(7))
+				if doc.Encoding() != document.Windows1252 {
+					t.Fatal("Encoding menu did not select Windows-1252")
 				}
 				if action != "Save" {
 					if err := driver.QueueSaveFile(target, nil); err != nil {
@@ -57,7 +57,7 @@ func TestGB18030MenuSaveRejectsLossyUnicode(t *testing.T) {
 				} else {
 					clickID(t, driver, saveID)
 				}
-				if !strings.Contains(state.notice, "GB18030") || doc.Path == target || !doc.Dirty() || doc.Editor.Selection() != selection || doc.Editor.String() != "A\uE000\n!" {
+				if !strings.Contains(state.notice, "Windows-1252") || doc.Path == target || !doc.Dirty() || doc.Editor.Selection() != selection || doc.Editor.String() != "A\uE000\n!" {
 					t.Fatalf("lossy %s changed editor or hid error: notice=%q", action, state.notice)
 				}
 				if disk, err := os.ReadFile(path); err != nil || !bytes.Equal(disk, original) {
