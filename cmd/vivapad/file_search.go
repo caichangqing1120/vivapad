@@ -260,56 +260,73 @@ func (state *model) openFileResult(index int) bool {
 	if state.resultOpenDocuments && index < len(state.resultDocuments) {
 		doc = state.resultDocuments[index]
 	}
+	alreadyOpen := doc != nil
 	if doc != nil {
-		position := state.documentIndex(doc)
-		if position < 0 {
+		if state.documentIndex(doc) < 0 {
 			state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
 			state.resultSelected = -1
 			state.clearResultFocus()
 			state.notice = "Search result document is closed"
 			return false
 		}
-		value := doc.Editor.String()
-		if match.Start < 0 || match.End > len(value) || match.Start >= match.End || value[match.Start:match.End] != match.Text {
-			state.notice = "Search result changed; run the search again"
+	} else {
+		absolute, err := filepath.Abs(match.Path)
+		if err != nil {
+			state.notice = err.Error()
 			return false
 		}
-		state.space.Select(position)
-		if state.splitEnabled {
-			pane := state.activePane
-			if state.paneDocs[pane] != doc {
-				if state.paneDocs[1-pane] == doc {
-					pane = 1 - pane
-				} else {
-					pane = state.paneOwner[doc]
-				}
-			}
-			state.activePane, state.paneDocs[pane] = pane, doc
-		} else {
-			state.showInActivePane(doc)
+		if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+			absolute = resolved
 		}
-		doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
-		state.codeEditor().Reveal(match.End)
-		state.selectFileResult(index)
-		return true
+		for _, opened := range state.space.Documents {
+			if opened.Path == absolute {
+				doc, alreadyOpen = opened, true
+				break
+			}
+		}
+		if alreadyOpen && match.Encoding.IsLegacy() && doc.Encoding() != match.Encoding {
+			state.notice = fmt.Sprintf("%s is already open as %s", doc.Name, doc.EncodingLabel())
+			return false
+		}
+		if !alreadyOpen {
+			if match.Encoding.IsLegacy() {
+				doc, err = document.OpenWithEncoding(absolute, match.Encoding)
+			} else {
+				doc, err = document.Open(absolute)
+			}
+			if err != nil {
+				state.notice = err.Error()
+				return false
+			}
+		}
 	}
-	var err error
-	if match.Encoding.IsLegacy() {
-		err = state.space.OpenWithEncoding(match.Path, match.Encoding)
-	} else {
-		err = state.space.Open(match.Path)
-	}
-	if err != nil {
-		state.notice = err.Error()
-		return false
-	}
-	state.showInActivePane(state.space.Current())
-	state.rememberRecent(state.space.Current())
-	doc = state.space.Current()
 	value := doc.Editor.String()
-	if match.Start < 0 || match.End > len(value) || match.Start >= match.End || value[match.Start:match.End] != match.Text {
+	if match.Source != value || match.Start < 0 || match.End > len(value) || match.Start >= match.End || value[match.Start:match.End] != match.Text {
 		state.notice = "Search result changed; run the search again"
 		return false
+	}
+	if !alreadyOpen {
+		if err := state.space.AddOpened(doc); err != nil {
+			state.notice = err.Error()
+			return false
+		}
+	}
+	state.space.Select(state.documentIndex(doc))
+	if alreadyOpen && state.splitEnabled {
+		pane := state.activePane
+		if state.paneDocs[pane] != doc {
+			if state.paneDocs[1-pane] == doc {
+				pane = 1 - pane
+			} else {
+				pane = state.paneOwner[doc]
+			}
+		}
+		state.activePane, state.paneDocs[pane] = pane, doc
+	} else {
+		state.showInActivePane(doc)
+	}
+	if !alreadyOpen {
+		state.rememberRecent(doc)
 	}
 	doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
 	state.codeEditor().Reveal(match.End)

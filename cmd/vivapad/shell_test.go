@@ -1165,7 +1165,7 @@ func TestSplitSearchResultOpensInActivePane(t *testing.T) {
 	}
 	state := newModel()
 	state.toggleSplit()
-	state.fileResults = searchfiles.Result{Matches: []searchfiles.Match{{Path: path, Start: 0, End: 6, Text: "needle"}}}
+	state.fileResults = searchfiles.Result{Matches: []searchfiles.Match{{Path: path, Source: "needle", Start: 0, End: 6, Text: "needle"}}}
 	state.resultsOpen = true
 	driver, err := app.NewDriver(newConfig(state), nil)
 	if err != nil {

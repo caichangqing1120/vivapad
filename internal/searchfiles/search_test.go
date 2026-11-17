@@ -131,6 +131,11 @@ func TestFindDocumentIncludesUnsavedTextAndUnicodePositions(t *testing.T) {
 	if second := result.Matches[1]; second.Line != 2 || second.Column != 6 || second.Text != "cat" {
 		t.Fatalf("second in-memory match = %+v", second)
 	}
+	for _, match := range result.Matches {
+		if match.Source != doc.Editor.String() {
+			t.Fatalf("match source differs from searched normalized buffer: %+v", match)
+		}
+	}
 	if _, err := FindDocument(doc, "(", document.SearchOptions{Regex: true}, 2); err == nil {
 		t.Fatal("invalid in-memory regex accepted")
 	}

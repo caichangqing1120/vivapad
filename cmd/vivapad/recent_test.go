@@ -150,7 +150,7 @@ func TestFileDropAndFindResultUpdateRecentHistory(t *testing.T) {
 	if err != nil || !accepted || len(state.recentEntries) != 1 || filepath.Base(state.recentEntries[0].Path) != "dropped.txt" {
 		t.Fatalf("drop recent = %+v accepted=%v err=%v", state.recentEntries, accepted, err)
 	}
-	state.fileResults.Matches = []searchfiles.Match{{Path: found, Start: 0, End: 4, Text: "find"}}
+	state.fileResults.Matches = []searchfiles.Match{{Path: found, Source: "find", Start: 0, End: 4, Text: "find"}}
 	state.openFileResult(0)
 	if len(state.recentEntries) != 2 || filepath.Base(state.recentEntries[0].Path) != "found.txt" || state.space.Current().Editor.String() != "find" {
 		t.Fatalf("find result recent = %+v current=%+v", state.recentEntries, state.space.Current())

@@ -25,13 +25,15 @@ type Options struct {
 type Match struct {
 	Path       string
 	DiskDigest string
-	Encoding   document.Encoding
-	Line       int
-	Column     int
-	Preview    string
-	Text       string
-	Start      int
-	End        int
+	// Source is the normalized text captured when this match was collected.
+	Source   string
+	Encoding document.Encoding
+	Line     int
+	Column   int
+	Preview  string
+	Text     string
+	Start    int
+	End      int
 }
 
 type Result struct {
@@ -182,7 +184,7 @@ func appendMatches(ctx context.Context, result *Result, doc *document.Document, 
 		}
 		preview := previewLine(value[lineStart:lineEnd], span.Start-lineStart, min(span.End, lineEnd)-lineStart)
 		result.Matches = append(result.Matches, Match{
-			Path: doc.Path, DiskDigest: doc.DiskDigest(), Encoding: doc.Encoding(), Line: line, Column: utf8.RuneCountInString(value[lineStart:span.Start]) + 1,
+			Path: doc.Path, DiskDigest: doc.DiskDigest(), Source: value, Encoding: doc.Encoding(), Line: line, Column: utf8.RuneCountInString(value[lineStart:span.Start]) + 1,
 			Preview: preview, Text: value[span.Start:span.End], Start: span.Start, End: span.End,
 		})
 	}
