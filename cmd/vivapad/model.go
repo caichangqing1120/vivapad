@@ -348,6 +348,7 @@ type model struct {
 	focusViewArmed                bool
 	activePane                    int
 	compositionOwner              compositionOwner
+	compositionGeneration         uint64
 	provisional                   provisionalComposition
 	compositionFallback           map[*text.Editor]bool
 	splitRatio                    float32
@@ -954,6 +955,18 @@ func newConfig(state *model) app.Config {
 	config.TextInput = func(context app.TextInputContext) *app.TextInput {
 		input := state.resolveTextInput(context)
 		state.reconcileTextOwner(context.ID, input)
+		if input == nil || input.OnEvent == nil || context.ID != editorID && context.ID != rightEditorID {
+			return input
+		}
+		editor, generation := state.compositionOwner.editor, state.compositionGeneration
+		onEvent := input.OnEvent
+		input.OnEvent = func(event app.TextEvent) (app.TextState, error) {
+			if event.CompositionPhase != text.CompositionNone &&
+				(state.compositionOwner.target != context.ID || state.compositionOwner.editor != editor || state.compositionGeneration != generation) {
+				return app.TextStateOf(editor), nil
+			}
+			return onEvent(event)
+		}
 		return input
 	}
 	config.OnPointer = func(event gfx.PointerEvent) gfx.EventResult {

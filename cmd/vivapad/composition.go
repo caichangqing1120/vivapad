@@ -206,9 +206,13 @@ func (state *model) reconcileCompositionOwner(target gfx.ID, editor *text.Editor
 }
 
 func (state *model) cancelCompositionOwner() {
+	owner := state.compositionOwner
 	state.cancelLiveComposition()
 	state.provisional = provisionalComposition{}
 	state.compositionOwner = compositionOwner{}
+	if owner.editor != nil || owner.target != (gfx.ID{}) {
+		state.compositionGeneration++
+	}
 }
 
 func (state *model) cancelLiveComposition() {
@@ -454,7 +458,7 @@ func (state *model) applyMacroComposition(doc *document.Document, event app.Text
 	if !handled {
 		return before, false
 	}
-	if event.CompositionPhase == text.CompositionUpdate || event.CompositionPhase == text.CompositionCancel {
+	if event.CompositionPhase == text.CompositionUpdate && doc.Editor.CompositionActive() {
 		return next, true
 	}
 	after := doc.Editor.String()
@@ -479,8 +483,12 @@ func (state *model) applyMacroComposition(doc *document.Document, event app.Text
 	if state.macroRecording && (ordinaryBase != base ||
 		selectedDirect && (after != base || event.CompositionPhase == text.CompositionResult && event.Text != "") ||
 		(event.HasReplacement || event.HasReplacementUTF16) && (after != base || event.Text != "" || explicitChange) ||
-		event.CompositionPhase == text.CompositionEmptyCommit && after != base) {
+		(event.CompositionPhase == text.CompositionUpdate || event.CompositionPhase == text.CompositionCancel ||
+			event.CompositionPhase == text.CompositionEmptyCommit) && after != base) {
 		state.cancelMacroUnsupported("composition replacement")
+	}
+	if event.CompositionPhase == text.CompositionUpdate || event.CompositionPhase == text.CompositionCancel {
+		return next, true
 	}
 	if state.macroRecording && committed != "" {
 		state.recordMacro(doc, macro.Step{Kind: macro.TextStep, TextKind: app.TextInsert, Text: committed})
