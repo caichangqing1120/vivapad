@@ -10,6 +10,7 @@ import (
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
+	"vivapad/internal/document"
 )
 
 func openChangeHistoryFixture(t *testing.T, value string) (*model, *app.Driver) {
@@ -290,5 +291,130 @@ func TestChangeHistoryWorkflowSaveUndoBranchClearAndSave(t *testing.T) {
 	data, err := os.ReadFile(path)
 	if err != nil || string(data) != doc.Editor.String() {
 		t.Fatalf("saved bytes = %q, err=%v; editor=%q", data, err, doc.Editor.String())
+	}
+}
+
+func TestChangeHistoryWorkflowMacroMultipleAndRectangle(t *testing.T) {
+	const initial = "cat\ncat\nlast\n"
+	for _, variant := range []struct {
+		name, want string
+		lines      []int
+		edit       func(*testing.T, *model, *app.Driver)
+	}{
+		{"macro", "Xcat\ncat\nlast\n", []int{0}, func(t *testing.T, state *model, driver *app.Driver) {
+			state.command("Record Macro")
+			if err := driver.Type("X"); err != nil {
+				t.Fatal(err)
+			}
+			state.command("Stop Recording")
+			state.command("Undo")
+			state.command("Playback Macro")
+		}},
+		{"multiple", "X\nX\nlast\n", []int{0, 1}, func(t *testing.T, state *model, driver *app.Driver) {
+			state.space.Current().Editor.SetSelection(text.Range{Start: 0, End: 3})
+			state.multiSelectAll(document.SearchOptions{})
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			if err := driver.Type("X"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"rectangle", "Xat\nXat\nlast\n", []int{0, 1}, func(t *testing.T, state *model, driver *app.Driver) {
+			state.command("Begin/End Select in Column Mode")
+			state.space.Current().Editor.MoveTo(5, false)
+			state.command("Begin/End Select in Column Mode")
+			if err := driver.Type("X"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(variant.name, func(t *testing.T) {
+			state, driver := openChangeHistoryFixture(t, initial)
+			doc := state.space.Current()
+			state.showInActivePane(doc)
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, editorID)
+			doc.Editor.MoveTo(0, false)
+			variant.edit(t, state, driver)
+			if got := doc.Editor.String(); got != variant.want || !doc.Dirty() {
+				t.Fatalf("edit = %q, dirty=%v, notice=%q", got, doc.Dirty(), state.notice)
+			}
+			if data, err := os.ReadFile(doc.Path); err != nil || string(data) != initial {
+				t.Fatalf("edit changed disk before Save: %q, %v", data, err)
+			}
+			state.command("Save")
+			if doc.Dirty() {
+				t.Fatalf("Save remained dirty: %q", state.notice)
+			}
+			bars := state.changeMarginLines(doc)
+			if len(bars) != len(variant.lines) {
+				t.Fatalf("saved margin = %+v, want lines %v", bars, variant.lines)
+			}
+			for index, bar := range bars {
+				if bar.Line != variant.lines[index] || bar.Fill != palette.changeSaved {
+					t.Fatalf("saved margin = %+v, want green lines %v", bars, variant.lines)
+				}
+			}
+			state.command("Undo")
+			if doc.Editor.String() != initial || !doc.Dirty() || !doc.Editor.CanRedo() {
+				t.Fatalf("one Undo = %q, dirty=%v, redo=%v", doc.Editor.String(), doc.Dirty(), doc.Editor.CanRedo())
+			}
+			state.command("Redo")
+			if doc.Editor.String() != variant.want || doc.Dirty() {
+				t.Fatalf("Redo = %q, dirty=%v", doc.Editor.String(), doc.Dirty())
+			}
+		})
+	}
+}
+
+func TestChangeHistoryWorkflowReloadRefusalAndFreshSource(t *testing.T) {
+	state, driver := openChangeHistoryFixture(t, "one\ntwo\n")
+	doc := state.space.Current()
+	doc.Editor.MoveTo(4, false)
+	doc.Editor.Insert("X")
+	oldConsumer, err := doc.ChangeHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := text.Range{Start: 0, End: 3}
+	doc.Editor.SetSelection(selection)
+	value := doc.Editor.String()
+	state.command("Reload from Disk")
+	if state.pendingReload < 0 {
+		t.Fatal("dirty reload did not ask for a decision")
+	}
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, reloadCancelID)
+	if state.space.Current() != doc || doc.Editor.String() != value || doc.Editor.Selection() != selection || !doc.Dirty() {
+		t.Fatal("cancelled reload changed the dirty document")
+	}
+	state.command("Clear Change History")
+	if doc.Editor.String() != value || doc.Editor.Selection() != selection || !doc.Dirty() || doc.Editor.AtSavePoint() || doc.Editor.CanUndo() || doc.Editor.CanRedo() {
+		t.Fatal("Clear changed selection, text, or the unsaved boundary")
+	}
+	if current, err := doc.ChangeHistory(); err != nil || current == oldConsumer {
+		t.Fatalf("Clear did not establish a fresh generation: %v", err)
+	}
+	state.command("Save")
+	if doc.Dirty() {
+		t.Fatalf("Save after Clear failed: %q", state.notice)
+	}
+	beforeReload, err := doc.ChangeHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.command("Reload from Disk")
+	reloaded := state.space.Current()
+	newConsumer, err := reloaded.ChangeHistory()
+	if err != nil || reloaded == doc || newConsumer == beforeReload || reloaded.Editor.String() != value || reloaded.Dirty() || len(state.changeMarginLines(reloaded)) != 0 {
+		t.Fatalf("reload did not bind a clean independent source: %v, notice=%q", err, state.notice)
 	}
 }
