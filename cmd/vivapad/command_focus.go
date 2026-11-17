@@ -44,6 +44,14 @@ func (state *model) restoreEditorCommandFocus(command string) {
 	state.invalidator.Invalidate()
 }
 
+func (state *model) requestNativeChooserFocus() {
+	if state.editorCommandFocusBlocked() {
+		return
+	}
+	state.focusViewRequested, state.focusViewArmed = true, false
+	state.invalidator.Invalidate()
+}
+
 func (state *model) paintEditorCommandFocus(canvas *ui.Canvas) {
 	if !state.focusViewRequested {
 		return

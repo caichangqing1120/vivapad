@@ -1511,6 +1511,7 @@ func newConfig(state *model) app.Config {
 				return ui.EventResult{Handled: true, Repaint: true}
 			}
 		}
+		chooserFromMenu := false
 		switch strings.ToLower(event.Text) {
 		case "b":
 			if event.Modifiers&ui.ModifierShift != 0 {
@@ -1525,10 +1526,24 @@ func newConfig(state *model) app.Config {
 			state.showInActivePane(state.space.NewDocument())
 		case "o":
 			state.cancelMacroForCommand()
-			state.openFiles()
+			if state.menuOpen >= 0 {
+				chooserFromMenu = true
+				state.command("Open...")
+			} else {
+				state.openFiles()
+			}
 		case "s":
 			state.cancelMacroForCommand()
-			state.save(state.space.Active, event.Modifiers&ui.ModifierShift != 0)
+			if state.menuOpen >= 0 {
+				chooserFromMenu = true
+				if event.Modifiers&ui.ModifierShift != 0 {
+					state.command("Save As...")
+				} else {
+					state.command("Save")
+				}
+			} else {
+				state.save(state.space.Active, event.Modifiers&ui.ModifierShift != 0)
+			}
 		case "f", "h":
 			state.cancelMacroForCommand()
 			state.closeIncrementalSearch()
@@ -1573,6 +1588,14 @@ func newConfig(state *model) app.Config {
 			state.closeTab(state.space.Active)
 		default:
 			return ui.EventResult{}
+		}
+		if chooserFromMenu && state.focusViewRequested {
+			focus := editorID
+			if state.splitEnabled && state.activePane == 1 {
+				focus = rightEditorID
+			}
+			state.focusViewRequested, state.focusViewArmed = false, false
+			return ui.EventResult{Handled: true, Repaint: true, Focus: focus}
 		}
 		return ui.EventResult{Handled: true, Repaint: true}
 	}
@@ -2215,6 +2238,7 @@ func codeOptions(language string) (text.CodeOptions, bool) {
 }
 
 func (state *model) openFiles() {
+	defer state.requestNativeChooserFocus()
 	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "Open", AllowMultiple: true})
 	if err != nil {
 		if !errors.Is(err, app.ErrCanceled) {
@@ -2256,6 +2280,7 @@ func (state *model) save(index int, saveAs bool) bool {
 	doc := state.space.Documents[index]
 	path := doc.Path
 	if saveAs || path == "" {
+		defer state.requestNativeChooserFocus()
 		chosen, err := app.SaveFile(app.SaveFileOptions{Title: "Save As", SuggestedName: doc.Name, DefaultExtension: "txt"})
 		if err != nil {
 			if !errors.Is(err, app.ErrCanceled) {
