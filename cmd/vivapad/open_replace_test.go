@@ -81,8 +81,8 @@ func TestReplaceAllOpenDocumentsSkipsEqualTabsThroughSearchMenu(t *testing.T) {
 			state.replacement.Insert("cat")
 			state.searchOptions.Regex = true
 			clickID(t, driver, menuScope.At(2))
-			revealSearchMenuItem(t, driver, 9)
-			clickID(t, driver, menuItemScope.At(9))
+			revealSearchMenuItem(t, driver, searchCommandIndex(t, "Replace All in Open Documents"))
+			clickID(t, driver, searchCommandID(t, "Replace All in Open Documents"))
 			if unchanged.Editor.String() != "cat" || unchanged.Dirty() || unchanged.Editor.CanUndo() ||
 				changed.Editor.String() != "cat cat" || !changed.Dirty() ||
 				state.paneDocument(0) != changed || state.paneDocument(1) != changed ||
@@ -119,8 +119,8 @@ func TestReplaceAllOpenDocumentsReportsNoChangeForEqualWholeTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(2))
-	revealSearchMenuItem(t, driver, 9)
-	clickID(t, driver, menuItemScope.At(9))
+	revealSearchMenuItem(t, driver, searchCommandIndex(t, "Replace All in Open Documents"))
+	clickID(t, driver, searchCommandID(t, "Replace All in Open Documents"))
 	if state.notice != "No open-document replacements needed" || doc.Editor.String() != "cat" || doc.Dirty() || doc.Editor.CanUndo() {
 		t.Fatalf("all-equal command changed saved tab: text=%q dirty=%t notice=%q", doc.Editor.String(), doc.Dirty(), state.notice)
 	}
@@ -161,8 +161,8 @@ func TestReplaceAllOpenDocumentsRefusesChangedReadOnlyTabAtBothSizes(t *testing.
 				t.Fatal(err)
 			}
 			clickID(t, driver, menuScope.At(2))
-			revealSearchMenuItem(t, driver, 9)
-			clickID(t, driver, menuItemScope.At(9))
+			revealSearchMenuItem(t, driver, searchCommandIndex(t, "Replace All in Open Documents"))
+			clickID(t, driver, searchCommandID(t, "Replace All in Open Documents"))
 			if state.notice != "Read-only document in replacement plan" ||
 				unchanged.Editor.String() != "cat" || unchanged.Dirty() || unchanged.Editor.CanUndo() ||
 				changed.Editor.String() != "cat dog" || changed.Dirty() != beforeDirty || changed.Editor.CanUndo() != beforeUndo {
