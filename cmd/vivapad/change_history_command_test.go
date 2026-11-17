@@ -227,3 +227,68 @@ func TestClearChangeHistoryCommandRefusesLiveComposition(t *testing.T) {
 		t.Fatal("refused Clear prevented cancellation or changed the save boundary")
 	}
 }
+
+func TestChangeHistoryWorkflowSaveUndoBranchClearAndSave(t *testing.T) {
+	state, _ := openChangeHistoryFixture(t, "alpha\nbeta\ngamma\n")
+	doc := state.space.Current()
+	path := doc.Path
+	margin := func(wantLine int, wantColor gfx.Color) {
+		t.Helper()
+		bars := state.changeMarginLines(doc)
+		if len(bars) == 0 || bars[len(bars)-1].Line != wantLine || bars[len(bars)-1].Fill != wantColor {
+			t.Fatalf("margin = %+v, want line %d color %+v", bars, wantLine, wantColor)
+		}
+		for _, bar := range bars {
+			if bar.Line != wantLine {
+				t.Fatalf("margin changed another line: %+v", bars)
+			}
+		}
+	}
+	if bars := state.changeMarginLines(doc); len(bars) != 0 {
+		t.Fatalf("opened document already has changes: %+v", bars)
+	}
+	doc.Editor.MoveTo(len([]rune("alpha\n")), false)
+	doc.Editor.Insert("X")
+	margin(1, palette.changeModified)
+	state.command("Save")
+	if doc.Dirty() {
+		t.Fatalf("Save did not establish a clean boundary: %q", state.notice)
+	}
+	margin(1, palette.changeSaved)
+	state.command("Undo")
+	if doc.Editor.String() != "alpha\nbeta\ngamma\n" || !doc.Dirty() {
+		t.Fatalf("Undo lost saved boundary: %q dirty=%v", doc.Editor.String(), doc.Dirty())
+	}
+	margin(1, palette.changeReverted)
+	state.command("Redo")
+	if doc.Dirty() {
+		t.Fatal("Redo did not return to the saved boundary")
+	}
+	margin(1, palette.changeSaved)
+	state.command("Undo")
+	doc.Editor.MoveTo(len([]rune("alpha\n")), false)
+	doc.Editor.Insert("Y")
+	if doc.Editor.CanRedo() {
+		t.Fatal("detached branch retained Redo")
+	}
+	margin(1, palette.changeModified)
+	value := doc.Editor.String()
+	state.command("Clear Change History")
+	if doc.Editor.String() != value || !doc.Dirty() || doc.Editor.AtSavePoint() || doc.Editor.CanUndo() || doc.Editor.CanRedo() {
+		t.Fatalf("Clear changed the detached save boundary: %q dirty=%v", doc.Editor.String(), doc.Dirty())
+	}
+	if bars := state.changeMarginLines(doc); len(bars) != 0 {
+		t.Fatalf("Clear retained margin bars: %+v", bars)
+	}
+	doc.Editor.Insert("Z")
+	margin(1, palette.changeModified)
+	state.command("Save")
+	margin(1, palette.changeSaved)
+	if doc.Dirty() {
+		t.Fatal("Save after Clear remained dirty")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != doc.Editor.String() {
+		t.Fatalf("saved bytes = %q, err=%v; editor=%q", data, err, doc.Editor.String())
+	}
+}
