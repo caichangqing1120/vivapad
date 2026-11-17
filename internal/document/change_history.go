@@ -116,7 +116,7 @@ func (doc *Document) ClearChangeHistory() error {
 // mutating anything. Command layers use it before their own preprocessing (for
 // example cancelling a composition) so a refusal never has side effects.
 func (doc *Document) ClearChangeHistoryPreflight() error {
-	if doc.Editor == nil {
+	if doc == nil || doc.Editor == nil {
 		return errNoChangeHistorySource
 	}
 	if !doc.historyBound || doc.historyEditor != doc.Editor {

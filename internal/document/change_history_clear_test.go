@@ -255,6 +255,13 @@ func TestClearChangesRefusesActiveCompositionWithoutSideEffects(t *testing.T) {
 }
 
 func TestClearChangesRefusesDraftAndReplacedEditor(t *testing.T) {
+	var absent *Document
+	if err := absent.ClearChangeHistoryPreflight(); !errors.Is(err, errNoChangeHistorySource) {
+		t.Fatalf("nil document preflight error = %v, want the no-source error", err)
+	}
+	if err := absent.ClearChangeHistory(); !errors.Is(err, errNoChangeHistorySource) {
+		t.Fatalf("nil document clear error = %v, want the no-source error", err)
+	}
 	draft := NewDraft("draft", text.NewEditor("x"))
 	if err := draft.ClearChangeHistory(); !errors.Is(err, errNoChangeHistorySource) {
 		t.Fatalf("draft clear error = %v, want the no-source error", err)
