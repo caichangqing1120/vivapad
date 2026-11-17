@@ -14,7 +14,7 @@ import (
 
 const (
 	maxSize = 64 << 10
-	version = 5
+	version = 6
 )
 
 type State struct {
@@ -24,6 +24,7 @@ type State struct {
 	TabWidth             int               `json:"tab_width"`
 	Wrap                 bool              `json:"wrap"`
 	LineNumbers          bool              `json:"line_numbers"`
+	ChangeHistoryView    string            `json:"change_history_view,omitempty"`
 	AutoIndent           bool              `json:"auto_indent"`
 	AutoClose            bool              `json:"auto_close"`
 	IndentMode           string            `json:"indent_mode"`
@@ -46,7 +47,7 @@ type diskState struct {
 }
 
 func Default() State {
-	return State{FontSize: 13, SubFontSize: 13, TabWidth: 4, LineNumbers: true, AutoIndent: true, AutoClose: true, IndentMode: "language", DateTimeFormat: datetime.DefaultFormat, ShowIndentGuides: true, ShowControls: true, NPCMode: "abbreviation", Print: printing.DefaultSettings()}
+	return State{FontSize: 13, SubFontSize: 13, TabWidth: 4, LineNumbers: true, ChangeHistoryView: "margin", AutoIndent: true, AutoClose: true, IndentMode: "language", DateTimeFormat: datetime.DefaultFormat, ShowIndentGuides: true, ShowControls: true, NPCMode: "abbreviation", Print: printing.DefaultSettings()}
 }
 
 func (state State) validate() error {
@@ -61,6 +62,11 @@ func (state State) validate() error {
 	}
 	if state.NPCMode != "identity" && state.NPCMode != "abbreviation" && state.NPCMode != "codepoint" {
 		return fmt.Errorf("invalid non-printing representation mode %q", state.NPCMode)
+	}
+	switch state.ChangeHistoryView {
+	case "", "margin", "indicator", "both", "off":
+	default:
+		return fmt.Errorf("invalid change history display mode %q", state.ChangeHistoryView)
 	}
 	if err := datetime.ValidatePattern(state.DateTimeFormat); err != nil {
 		return err
@@ -112,6 +118,9 @@ func Load(path string) (State, error) {
 	}
 	if stored.Version < 5 {
 		stored.State.ShowControls = true
+	}
+	if stored.Version < 6 {
+		stored.State.ChangeHistoryView = "margin"
 	}
 	if stored.State.DateTimeFormat == "" {
 		stored.State.DateTimeFormat = datetime.DefaultFormat

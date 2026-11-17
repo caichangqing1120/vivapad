@@ -57,8 +57,8 @@ func (doc *Document) ChangeHistory() (*changehistory.Consumer, error) {
 	return doc.history, nil
 }
 
-// ClearChangeHistory resets editions and Undo/Redo without changing the save boundary.
-func (doc *Document) ClearChangeHistory() error {
+// ClearChangeHistoryPreflight refuses sources that cannot be safely reset.
+func (doc *Document) ClearChangeHistoryPreflight() error {
 	if doc == nil {
 		return fmt.Errorf("nil document: %w", errNoChangeHistorySource)
 	}
@@ -70,6 +70,14 @@ func (doc *Document) ClearChangeHistory() error {
 	}
 	if doc.Editor.CompositionActive() {
 		return errors.New("cannot clear change history during composition")
+	}
+	return nil
+}
+
+// ClearChangeHistory resets editions and Undo/Redo without changing the save boundary.
+func (doc *Document) ClearChangeHistory() error {
+	if err := doc.ClearChangeHistoryPreflight(); err != nil {
+		return err
 	}
 	doc.Editor.ClearChangeHistory()
 	doc.bindChangeHistory()

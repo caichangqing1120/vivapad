@@ -93,6 +93,9 @@ func TestClearChangesRefusesCompositionAndUnboundEditors(t *testing.T) {
 	if !doc.Editor.CompositionActive() {
 		t.Fatal("expected active composition")
 	}
+	if err := doc.ClearChangeHistoryPreflight(); err == nil {
+		t.Fatal("preflight accepted a live composition")
+	}
 	if err := doc.ClearChangeHistory(); err == nil || !doc.Editor.CompositionActive() {
 		t.Fatalf("clear accepted or discarded active composition: %v", err)
 	}

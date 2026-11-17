@@ -14,12 +14,15 @@ import (
 
 var palette = struct {
 	chrome, toolbar, tabs, tab, border, hover, text, muted, gutter, blue, white gfx.Color
+	changeReverted, changeSaved, changeModified, changeRevertedModified         gfx.Color
 }{
 	chrome: gfx.RGB(248, 248, 249), toolbar: gfx.RGB(253, 253, 253),
 	tabs: gfx.RGB(238, 239, 241), tab: gfx.RGB(230, 232, 235),
 	border: gfx.RGB(207, 210, 214), hover: gfx.RGB(252, 236, 239),
 	text: gfx.RGB(39, 42, 47), muted: gfx.RGB(112, 116, 123),
 	gutter: gfx.RGB(249, 249, 249), blue: gfx.RGB(215, 38, 61), white: gfx.RGB(255, 255, 255),
+	changeReverted: gfx.RGB(0x40, 0xa0, 0xbf), changeSaved: gfx.RGB(0x00, 0xa0, 0x00),
+	changeModified: gfx.RGB(0xff, 0x80, 0x00), changeRevertedModified: gfx.RGB(0xa0, 0xc0, 0x00),
 }
 
 var menuLabels = [...]string{"File", "Edit", "Search", "View", "Encoding", "Language", "Settings", "Tools", "Macro", "Run", "Plugins", "Window", "?"}
@@ -27,11 +30,11 @@ var menuLabels = [...]string{"File", "Edit", "Search", "View", "Encoding", "Lang
 var menuCommands = [...][29]string{
 	{"New", "Open...", "Save", "Save As...", "Save a Copy As...", "Save All", "Close", "Open as GB18030...", "Open as Windows-1252...", "Reload from Disk", "Recent Files", "Close All", "Close Other Tabs", "Sessions", "Rename...", "Close Multiple Documents", "Open Folder as Workspace...", "Open in Default Viewer", "Open Containing Folder", "Open as Encoding...", "Move to Recycle Bin", "Print...", "Print Now", "Exit"},
 	{"Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Line Operations", "Convert Case", "Blank Operations", "Copy to Clipboard", "Delete", "Begin/End Select", "Read-Only in Notepad++", fileReadOnlyLabel(), "Auto-Completion", "Comment/Uncomment", "Insert", "EOL Conversion", "Column Editor...", "Begin/End Select in Column Mode", "On Selection", "Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select"},
-	{"Find...", "Find Next", "Find Previous", "Replace...", "Go to Line...", "Find in Files...", "Replace in Files...", "Find All in Current Document", "Find All in Open Documents", "Replace All in Open Documents", "Mark...", "Clear Marks", "Bookmark", "Go to Matching Brace", "Select All In-between {} [] or ()", "Next Search Result", "Previous Search Result", "Search Results Window", "Selected Text Search", "Incremental Search", "Find characters in range...", "Jump Up", "Jump Down", "Style All Occurrences of Token", "Style One Token", "Clear Style", "Copy Styled Text"},
+	{"Find...", "Find Next", "Find Previous", "Replace...", "Go to Line...", "Find in Files...", "Replace in Files...", "Find All in Current Document", "Find All in Open Documents", "Replace All in Open Documents", "Mark...", "Clear Marks", "Bookmark", "Go to Matching Brace", "Select All In-between {} [] or ()", "Next Search Result", "Previous Search Result", "Search Results Window", "Selected Text Search", "Incremental Search", "Find characters in range...", "Jump Up", "Jump Down", "Style All Occurrences of Token", "Style One Token", "Clear Style", "Copy Styled Text", "Change History"},
 	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views"},
 	{"Unix (LF)", "Windows (CR LF)", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE", "GB18030", "Windows-1252", "Character sets"},
 	{"Normal Text", "Go", "JavaScript", "TypeScript", "Python", "JSON", "HTML", "CSS", "Markdown", "SQL"},
-	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format..."},
+	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicators", "Change History: Both", "Change History: Off"},
 	{"MD5", "SHA-1", "SHA-256", "SHA-512"},
 	{"Record Macro", "Stop Recording", "Playback Macro", "Save Current Recorded Macro...", "Run a Macro Multiple Times...", "Playback 5 Times", "Clear Macro", "Saved Macros"},
 	{"Run..."},
@@ -269,6 +272,7 @@ func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 			canvas.HitWithOptions(menuScope.At(index), item, label, gfx.HitOptions{Role: gfx.RoleButton})
 			if canvas.Clicked(menuScope.At(index)) {
 				state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
+				state.changeHistoryMenuOpen = false
 				state.markJumpMenuOpen = false
 				state.styleMenuMode = ""
 				state.insertDateOpen = false
@@ -555,6 +559,7 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 		ScrollbarID:     barID, HorizontalScrollbarID: horizontalID,
 		Language: state.languageFor(doc), Highlight: state.syntax.Highlight,
 	}
+	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)
 	if len(regions) != 0 || len(hidden) != 0 {
@@ -1039,6 +1044,7 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.HitWithOptions(menuDismissID, gfx.Rect{Y: menuHeight, Width: size.Width, Height: size.Height - menuHeight}, "Close menu", gfx.HitOptions{Role: gfx.RoleButton})
 	if canvas.Clicked(menuDismissID) {
 		state.menuOpen, state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = -1, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
+		state.changeHistoryMenuOpen = false
 		state.insertDateOpen = false
 		state.markJumpMenuOpen = false
 		state.styleMenuMode = ""
@@ -1200,7 +1206,7 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 		if checked {
 			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 6, Y: iconY, Width: iconSize, Height: iconSize}, palette.blue)
 		}
-		if state.menuOpen == 7 || command == "Recent Files" || command == "Line Operations" || command == "Insert" || command == "Convert Case" || command == "Comment/Uncomment" || command == "EOL Conversion" || command == "Show Symbol" || command == "Tab" || command == "Fold Level" || command == "Unfold Level" || command == "Sort By" || command == "Blank Operations" || command == "Copy to Clipboard" || command == "On Selection" || command == "Multi-select All" || command == "Multi-select Next" || command == "Read-Only in Notepad++" || command == "Auto-Completion" || command == "Sessions" || command == "Bookmark" || command == "Jump Up" || command == "Jump Down" || command == "Style All Occurrences of Token" || command == "Style One Token" || command == "Clear Style" || command == "Copy Styled Text" || command == "Close Multiple Documents" || command == "Open Containing Folder" || command == "Selected Text Search" || command == "Character sets" || command == "Open as Encoding..." || command == "Saved Macros" {
+		if state.menuOpen == 7 || command == "Recent Files" || command == "Line Operations" || command == "Insert" || command == "Convert Case" || command == "Comment/Uncomment" || command == "EOL Conversion" || command == "Show Symbol" || command == "Tab" || command == "Fold Level" || command == "Unfold Level" || command == "Sort By" || command == "Blank Operations" || command == "Copy to Clipboard" || command == "On Selection" || command == "Multi-select All" || command == "Multi-select Next" || command == "Read-Only in Notepad++" || command == "Auto-Completion" || command == "Sessions" || command == "Bookmark" || command == "Change History" || command == "Jump Up" || command == "Jump Down" || command == "Style All Occurrences of Token" || command == "Style One Token" || command == "Clear Style" || command == "Copy Styled Text" || command == "Close Multiple Documents" || command == "Open Containing Folder" || command == "Selected Text Search" || command == "Character sets" || command == "Open as Encoding..." || command == "Saved Macros" {
 			canvas.DrawIcon(rightIcon, gfx.Rect{X: item.X + item.Width - 21, Y: iconY, Width: iconSize, Height: iconSize}, palette.muted)
 		}
 		fontSize := float32(12)
@@ -1291,6 +1297,11 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 	if state.selectedSearchMenuOpen && state.menuOpen == 2 {
 		state.paintSelectedSearchMenu(canvas, size, x+width)
 	}
+	if state.changeHistoryMenuOpen && state.menuOpen == 2 {
+		index := len(menuCommands[2]) - 1 - state.searchMenuOffset
+		parentY := menuHeight + 4 + controls/2 + float32(index)*rowHeight
+		state.paintChangeHistoryMenu(canvas, size, x+width, parentY)
+	}
 	canvas.PopOverlayClip()
 	canvas.PopLayer()
 }
@@ -1346,6 +1357,14 @@ func (state *model) menuSelected(command string) bool {
 		return state.alwaysOnTop
 	case "Word Wrap":
 		return state.wrap
+	case "Change History: Margin":
+		return state.changeHistoryView == "margin"
+	case "Change History: Indicators":
+		return state.changeHistoryView == "indicator"
+	case "Change History: Both":
+		return state.changeHistoryView == "both"
+	case "Change History: Off":
+		return state.changeHistoryView == "off"
 	case "Tab Width: 2":
 		return state.tabWidth == 2
 	case "Tab Width: 4":

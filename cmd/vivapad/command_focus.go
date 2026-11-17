@@ -30,6 +30,7 @@ func (state *model) restoreEditorCommandFocus(command string) {
 	}
 	switch command {
 	case "Record Macro", "Stop Recording", "Clear Macro",
+		"Next Change", "Previous Change", "Clear Change History",
 		"Read-Only on Current Document", "Read-Only for All Documents", "Clear Read-Only for All Documents",
 		"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom",
 		"Split View", "Move to Other View", "Clone to Other View", "Focus on Another View",

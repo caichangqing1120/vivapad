@@ -223,6 +223,7 @@ var (
 	containingFolderScope      = tree.Sub(page, tree.Name("containing-folder-menu"))
 	autoCompletionScope        = tree.Sub(page, tree.Name("auto-completion-menu"))
 	selectedSearchScope        = tree.Sub(page, tree.Name("selected-search-menu"))
+	changeHistoryScope         = tree.Sub(page, tree.Name("change-history-menu"))
 	wordCompletionScope        = tree.Sub(page, tree.Name("word-completion"))
 	blankScope                 = tree.Sub(page, tree.Name("blank-operations"))
 	copyPathsScope             = tree.Sub(page, tree.Name("copy-paths"))
@@ -556,6 +557,9 @@ type model struct {
 	containingMenuOpen            bool
 	autoMenuOpen                  bool
 	selectedSearchMenuOpen        bool
+	changeHistoryMenuOpen         bool
+	changeHistoryView             string
+	changeView                    map[*document.Document]*changeViewCache
 	wordCompletion                *wordCompletionState
 	wordFocusPending              bool
 	blankMenuOpen                 bool
@@ -745,7 +749,7 @@ func newModel() *model {
 		replacement: text.NewEditor(""), goToField: text.NewEditor(""),
 		filesRoot: text.NewEditor(workingDirectory), filesPattern: text.NewEditor("*"),
 		filesRecursive: true, searchReplies: make(chan fileSearchResponse, 16),
-		menuOpen: -1, pendingClose: -1, pendingReload: -1, resultSelected: -1, showLineNumbers: true, showIndentGuides: true, showControls: true, markWrap: true, markMode: "normal", fontSize: 13, subFontSize: 13,
+		menuOpen: -1, pendingClose: -1, pendingReload: -1, resultSelected: -1, showLineNumbers: true, changeHistoryView: "margin", showIndentGuides: true, showControls: true, markWrap: true, markMode: "normal", fontSize: 13, subFontSize: 13,
 		tabWidth: 4, indentMode: "language", autoIndent: true, autoClose: true, npcMode: "abbreviation",
 		printSettings:  printing.DefaultSettings(),
 		dateTimeFormat: datetime.DefaultFormat, clock: time.Now,
@@ -891,6 +895,10 @@ func (state *model) applyPreferences(stored preferences.State) {
 	state.dateTimeFormat, state.dateTimeReverse = stored.DateTimeFormat, stored.DateTimeReverseOrder
 	state.showWhitespace, state.showEOL, state.showIndentGuides, state.showWrapSymbol = stored.ShowWhitespace, stored.ShowEOL, stored.ShowIndentGuides, stored.ShowWrapSymbol
 	state.showNonPrinting, state.showControls, state.representationsReady = stored.ShowNonPrinting, stored.ShowControls, false
+	state.changeHistoryView = stored.ChangeHistoryView
+	if state.changeHistoryView == "" {
+		state.changeHistoryView = "margin"
+	}
 	state.npcMode, state.npcIncludeControls = stored.NPCMode, stored.NPCIncludeControls
 	state.printSettings = stored.Print
 }
@@ -902,7 +910,7 @@ func (state *model) savePreferences() error {
 	}
 	stored := preferences.State{
 		FontSize: state.fontSize, SubFontSize: state.subFontSize, ZoomSync: state.zoomSync, TabWidth: state.tabWidth,
-		Wrap: state.wrap, LineNumbers: state.showLineNumbers,
+		Wrap: state.wrap, LineNumbers: state.showLineNumbers, ChangeHistoryView: state.changeHistoryView,
 		IndentMode: state.indentMode, AutoIndent: state.autoIndent, AutoClose: state.autoClose,
 		DateTimeFormat: state.dateTimeFormat, DateTimeReverseOrder: state.dateTimeReverse,
 		ShowWhitespace: state.showWhitespace, ShowEOL: state.showEOL, ShowIndentGuides: state.showIndentGuides, ShowWrapSymbol: state.showWrapSymbol,
@@ -1602,6 +1610,9 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	config.OnKey = func(event gfx.KeyEvent) gfx.EventResult {
+		if result, handled := state.changeHistoryMenuKey(event); handled {
+			return result
+		}
 		if state.markDialogOpen {
 			if event.Key == gfx.KeyEscape && state.menuOpen < 0 {
 				state.markDialogOpen = false
@@ -1722,6 +1733,10 @@ func newConfig(state *model) app.Config {
 			}
 		}
 		if event.Key == gfx.KeyEscape {
+			if state.changeHistoryMenuOpen {
+				state.changeHistoryMenuOpen = false
+				return gfx.EventResult{Handled: true, Repaint: true}
+			}
 			if state.styleMenuMode != "" {
 				state.styleMenuMode = ""
 				return gfx.EventResult{Handled: true, Repaint: true}
@@ -2358,6 +2373,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.paneOwner, doc)
 	delete(state.languages, doc)
 	delete(state.bookmarks, doc)
+	delete(state.changeView, doc)
 	for pane := range state.multiSelections {
 		if state.multiSelections[pane].doc == doc {
 			state.multiSelections[pane] = multiSelectionState{}
@@ -2650,6 +2666,14 @@ func (state *model) goToLine() {
 
 func (state *model) command(command string) {
 	doc := state.space.Current()
+	if command == "Clear Change History" {
+		if err := doc.ClearChangeHistoryPreflight(); err != nil {
+			state.menuOpen, state.changeHistoryMenuOpen = -1, false
+			state.notice = err.Error()
+			state.restoreEditorCommandFocus(command)
+			return
+		}
+	}
 	state.bookmarkLines(doc)
 	before := doc.Editor.String()
 	editStart := doc.Editor.Selection().Start
@@ -2660,6 +2684,7 @@ func (state *model) command(command string) {
 	}()
 	state.menuOpen = -1
 	state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
+	state.changeHistoryMenuOpen = false
 	state.insertDateOpen = false
 	state.markJumpMenuOpen = false
 	state.styleMenuMode = ""
@@ -3330,6 +3355,23 @@ func (state *model) command(command string) {
 		state.find(false)
 	case "Find Previous":
 		state.find(true)
+	case "Next Change":
+		state.navigateChange(false)
+	case "Previous Change":
+		state.navigateChange(true)
+	case "Clear Change History":
+		state.clearChangeHistory()
+	case "Change History: Margin", "Change History: Indicators", "Change History: Both", "Change History: Off":
+		state.changeHistoryView = map[string]string{
+			"Change History: Margin": "margin", "Change History: Indicators": "indicator",
+			"Change History: Both": "both", "Change History: Off": "off",
+		}[command]
+		clear(state.changeView)
+		if err := state.savePreferences(); err != nil {
+			state.notice = "Change history view: " + err.Error()
+		}
+	case "Change History":
+		state.menuOpen, state.changeHistoryMenuOpen = 2, true
 	case "Selected Text Search":
 		state.menuOpen, state.selectedSearchMenuOpen = 2, true
 	case "Select and Find Next":
