@@ -196,6 +196,10 @@ func encodeText(value string, encoding Encoding) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("cannot save text as %s: %w", formatLabel(encoding), err)
 		}
+		decoded, err := codec.NewDecoder().Bytes(data)
+		if err != nil || !bytes.Equal(decoded, []byte(value)) {
+			return nil, fmt.Errorf("cannot save text as %s without changing Unicode text", formatLabel(encoding))
+		}
 		return data, nil
 	}
 }
