@@ -5,6 +5,7 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 	"vivapad/internal/macro"
 )
@@ -12,8 +13,12 @@ import (
 func (state *model) macroTextInput(doc *document.Document) *app.TextInput {
 	return &app.TextInput{State: app.TextStateOf(doc.Editor), OnEvent: func(event app.TextEvent) (app.TextState, error) {
 		if state.isReadOnly(doc) {
+			state.cancelDocumentComposition(doc)
 			state.notice = "Read-only document"
 			return app.TextStateOf(doc.Editor), nil
+		}
+		if event.CompositionPhase != text.CompositionNone && doc.Editor.TentativeCompositionEnabled() {
+			return state.applyPublicComposition(doc, event), nil
 		}
 		if current := state.wordCompletion; current != nil && current.doc == doc && state.validWordCompletion() &&
 			event.Kind == app.TextCommandEvent && (event.Command == app.TextInsertNewline || event.Command == app.TextInsertLineBreak) {

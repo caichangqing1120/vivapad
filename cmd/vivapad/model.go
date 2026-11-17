@@ -385,6 +385,9 @@ type model struct {
 	markMode                      string
 	markDotAll                    bool
 	bookmarks                     map[*document.Document]*bookmarkState
+	provisional                   provisionalComposition
+	compositionOwner              compositionOwner
+	compositionGeneration         uint64
 	folded                        map[*document.Document]map[int]bool
 	foldCache                     map[*document.Document]foldCache
 	hiddenLines                   map[*document.Document][]hiddenLineRange
@@ -1056,7 +1059,29 @@ func newConfig(state *model) app.Config {
 		}
 		return nil
 	}
+	resolveTextInput := config.TextInput
+	config.TextInput = func(context app.TextInputContext) *app.TextInput {
+		input := resolveTextInput(context)
+		state.reconcileCompositionOwner(context.ID, input)
+		if input == nil || input.OnEvent == nil || (context.ID != editorID && context.ID != rightEditorID) {
+			return input
+		}
+		editor := state.compositionOwner.editor
+		generation := state.compositionGeneration
+		onEvent := input.OnEvent
+		input.OnEvent = func(event app.TextEvent) (app.TextState, error) {
+			if event.CompositionPhase != text.CompositionNone &&
+				(state.compositionOwner.target != context.ID || state.compositionOwner.editor != editor || state.compositionGeneration != generation) {
+				return app.TextStateOf(editor), nil
+			}
+			return onEvent(event)
+		}
+		return input
+	}
 	config.OnPointer = func(event gfx.PointerEvent) gfx.EventResult {
+		if event.Kind == gfx.PointerDown {
+			state.pointerCompositionAway(event.Target)
+		}
 		if event.Kind == gfx.PointerDown || event.Kind == gfx.PointerUp {
 			state.menuPointerShift = event.Modifiers&gfx.ModifierShift != 0
 		}
