@@ -2277,7 +2277,11 @@ func (state *model) save(index int, saveAs bool) bool {
 		}
 	}
 	if err := doc.Save(path); err != nil {
-		state.notice = err.Error()
+		if errors.Is(err, os.ErrPermission) {
+			state.notice = "Save failed: permission denied"
+		} else {
+			state.notice = err.Error()
+		}
 		return false
 	}
 	state.notice = "Saved " + filepath.Base(doc.Path)
