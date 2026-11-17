@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -58,7 +58,7 @@ func TestWindowMenuOverflowEscapePreservesDirtyTab(t *testing.T) {
 	doc := state.space.Current()
 	doc.Editor.Insert("keep")
 	clickID(t, driver, menuOverflowID)
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.menuOverflowOpen || doc.Editor.String() != "keep" || !doc.Dirty() {
@@ -137,7 +137,7 @@ func TestWindowRecentMenuScrollsAndCapsOriginalFortyItems(t *testing.T) {
 		if step == 0 {
 			for _, hit := range driver.Snapshot().Hits {
 				if hit.ID == windowRecentScope.At(0) {
-					if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
+					if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
 						t.Fatal(err)
 					}
 					if state.windowRecentOffset == 0 {

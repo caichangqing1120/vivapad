@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,32 @@ import (
 	"vivapad/internal/document"
 	"vivapad/internal/recovery"
 )
+
+func TestMixedEOLRecoveryUndoRetainsDiskSeparators(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "mixed.txt")
+	privatePath := filepath.Join(root, "config", "session.json")
+	original := []byte("a\r\nb\nc\rd")
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newStartupModel([]string{path}, privatePath)
+	state.space.Current().Editor.ReplaceRange(text.Range{Start: 2, End: 2}, "X")
+	if err := recovery.Save(state.recoveryPath, state.currentRecovery()); err != nil {
+		t.Fatal(err)
+	}
+	restored := newStartupModel(nil, privatePath).space.Current()
+	if !restored.Editor.Undo() || restored.Editor.String() != "a\nb\nc\nd" {
+		t.Fatal("recovery Undo did not restore disk text")
+	}
+	copyPath := filepath.Join(root, "undone.txt")
+	if err := restored.SaveCopy(copyPath); err != nil {
+		t.Fatal(err)
+	}
+	if disk, err := os.ReadFile(copyPath); err != nil || !bytes.Equal(disk, original) {
+		t.Fatalf("recovery Undo lost disk separators: %q, %v", disk, err)
+	}
+}
 
 func TestMixedEOLRecoveryPreservesBreaksAfterUnsavedEdit(t *testing.T) {
 	root := t.TempDir()

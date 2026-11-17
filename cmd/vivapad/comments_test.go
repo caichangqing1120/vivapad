@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/macro"
 )
 
@@ -85,7 +85,7 @@ func TestSingleLineCommentsRespectLanguageReadOnlyAndSplitView(t *testing.T) {
 	if doc.Editor.String() != "value" || state.activePane != 1 {
 		t.Fatalf("split-view uncomment = %q pane=%d", doc.Editor.String(), state.activePane)
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 }

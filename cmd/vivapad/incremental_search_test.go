@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -64,7 +64,7 @@ func TestIncrementalSearchNativeTypingFiltersCountAndHighlights(t *testing.T) {
 	if state.incrementQuery.String() != "alphab" || doc.Editor.Selection() != (text.Range{Start: 6, End: 12}) || state.incrementStatus != "1/1" || state.query.String() != "leave unchanged" {
 		t.Fatalf("refined incremental = %q %+v %q", state.incrementQuery.String(), doc.Editor.Selection(), state.incrementStatus)
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.String() != "alpha alphabet alpha" || !strings.Contains(state.incrementStatus, "Reached end") {
@@ -79,7 +79,7 @@ func TestIncrementalSearchCaseCountNoMatchAndEscape(t *testing.T) {
 	doc.Editor.MoveTo(0, false)
 	clickID(t, driver, editorID)
 	doc.Editor.MoveTo(0, false)
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierAlt, 'i'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierAlt, 'i'); err != nil || !handled {
 		t.Fatalf("incremental shortcut handled=%v err=%v", handled, err)
 	}
 	if err := driver.Type("cat"); err != nil {
@@ -106,7 +106,7 @@ func TestIncrementalSearchCaseCountNoMatchAndEscape(t *testing.T) {
 	if state.incrementStatus != "Phrase not found" || doc.Editor.String() != "Cat cat CAT" {
 		t.Fatalf("not found = %q text=%q", state.incrementStatus, doc.Editor.String())
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.incrementOpen || len(state.incrementMatches) != 0 || driver.Snapshot().Focused != editorID || state.query.String() != "" {
@@ -149,7 +149,7 @@ func TestIncrementalSearchMenuFitsCompactAndReadonlySplitPane(t *testing.T) {
 	if right.Editor.Selection() != (text.Range{Start: 0, End: 5}) || left.Editor.String() != "left left" || right.Editor.String() != "right right" {
 		t.Fatal("read-only split incremental search changed text or pane")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if driver.Snapshot().Focused != rightEditorID {
@@ -251,19 +251,19 @@ func TestIncrementalFocusedF3AndRepeatShortcutUseSeparateQuery(t *testing.T) {
 	if err := driver.Type("cat"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyF3, 0); err != nil {
+	if err := driver.Key(gfx.KeyF3, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) {
 		t.Fatalf("focused incremental F3 = %+v", doc.Editor.Selection())
 	}
-	if err := driver.Key(ui.KeyF3, ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyF3, gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.Selection() != (text.Range{Start: 0, End: 3}) {
 		t.Fatalf("focused incremental Shift+F3 = %+v", doc.Editor.Selection())
 	}
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierAlt, 'i'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierAlt, 'i'); err != nil || !handled {
 		t.Fatalf("repeat incremental shortcut handled=%v err=%v", handled, err)
 	}
 	if doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) || state.query.String() != "ordinary" || state.incrementQuery.String() != "cat" {

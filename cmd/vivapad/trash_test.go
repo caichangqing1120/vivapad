@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/recent"
 )
 
@@ -232,7 +232,7 @@ func TestCaptureTrashConfirmationWhenRequested(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := web.Driver().Key(ui.KeyEscape, 0); err != nil || state.pendingTrash != nil {
+	if err := web.Driver().Key(gfx.KeyEscape, 0); err != nil || state.pendingTrash != nil {
 		t.Fatalf("Escape did not cancel trash: %v", err)
 	}
 	if data, err := os.ReadFile(path); err != nil || string(data) != "saved" {

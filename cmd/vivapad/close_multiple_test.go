@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -185,7 +185,7 @@ func TestCloseMultipleMenuUnchangedKeepsDirtyActiveTab(t *testing.T) {
 	}
 	clickID(t, driver, menuScope.At(0))
 	clickID(t, driver, menuItemScope.At(15))
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.closeMultipleMenuOpen || state.menuOpen != 0 {

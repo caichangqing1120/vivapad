@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/go-pdf/fpdf"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"golang.org/x/image/font/sfnt"
 )
 
@@ -196,7 +196,7 @@ func pdfBandRuleY(bounds PageBounds, top bool) float64 {
 	return bounds.Bottom + 4
 }
 
-func pdfColor(color ui.Color) (int, int, int) {
+func pdfColor(color gfx.Color) (int, int, int) {
 	channel := func(value float32) int { return int(math.Round(float64(min(max(value, 0), 1)) * 255)) }
 	return channel(color.Red), channel(color.Green), channel(color.Blue)
 }

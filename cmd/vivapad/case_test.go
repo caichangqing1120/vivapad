@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestConvertCaseMenuChangesSelectionAndUndoes(t *testing.T) {
@@ -70,7 +70,7 @@ func TestConvertCaseSubmenuEscapeDoesNotEdit(t *testing.T) {
 	}
 	clickID(t, driver, menuScope.At(1))
 	clickID(t, driver, menuItemScope.At(11))
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.caseMenuOpen || state.space.Current().Editor.String() != "Keep" {
@@ -87,7 +87,7 @@ func TestConvertCaseKeyboardShortcutsUseCurrentSelection(t *testing.T) {
 	if err := driver.SelectText(0, 3); err != nil {
 		t.Fatal(err)
 	}
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'u'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'u'); err != nil || !handled {
 		t.Fatalf("uppercase shortcut handled=%v err=%v", handled, err)
 	}
 	if got := state.space.Current().Editor.String(); got != "AB猫" {

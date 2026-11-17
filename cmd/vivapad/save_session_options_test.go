@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/session"
 )
 
@@ -204,7 +204,7 @@ func TestCaptureSaveSessionOptionsWhenRequested(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := web.Driver().Key(ui.KeyEscape, 0); err != nil || state.saveSessionOptionsOpen {
+	if err := web.Driver().Key(gfx.KeyEscape, 0); err != nil || state.saveSessionOptionsOpen {
 		t.Fatalf("Escape left options open: %v", err)
 	}
 }

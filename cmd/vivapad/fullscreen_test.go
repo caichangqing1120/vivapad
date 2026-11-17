@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -24,7 +24,7 @@ func TestFullScreenViewMenuRestoresFrameAndEditingState(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := driver.Frame()
-	monitor := ui.Rect{X: -1200, Width: 1200, Height: 720}
+	monitor := gfx.Rect{X: -1200, Width: 1200, Height: 720}
 	if err := driver.SetFullscreenMonitor(monitor); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestFullScreenSystemTransitionAndRejectedRequest(t *testing.T) {
 	if !state.fullscreen {
 		t.Fatal("system fullscreen transition did not update the model")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.fullscreen || driver.Fullscreen() {
@@ -99,7 +99,7 @@ func TestFullScreenCompactSplitDocksKeepRestoreReachable(t *testing.T) {
 	state.paneDocs = [2]*document.Document{left, right}
 	state.paneOwner[left], state.paneOwner[right] = 0, 1
 	state.folderVisible, state.documentMapVisible = true, true
-	if err := driver.SetFullscreenMonitor(ui.Rect{Width: 640, Height: 400}); err != nil {
+	if err := driver.SetFullscreenMonitor(gfx.Rect{Width: 640, Height: 400}); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.SetFullscreen(true); err != nil {

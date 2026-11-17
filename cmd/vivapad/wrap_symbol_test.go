@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestWrapSymbolMenuBothViewsWordWrapAndPersistence(t *testing.T) {
@@ -50,8 +50,8 @@ func TestWrapSymbolMenuBothViewsWordWrapAndPersistence(t *testing.T) {
 		t.Fatal("wrap symbol toggle edited text or failed to check menu")
 	}
 	count := func() int {
-		var canvas ui.Canvas
-		state.paint(&canvas, ui.Size{Width: 640, Height: 400})
+		var canvas gfx.Canvas
+		state.paint(&canvas, gfx.Size{Width: 640, Height: 400})
 		marks := 0
 		for _, label := range canvas.Texts() {
 			if label.Value == "↪" {
@@ -72,7 +72,7 @@ func TestWrapSymbolMenuBothViewsWordWrapAndPersistence(t *testing.T) {
 	if !visible {
 		t.Fatal("wrapped caret is not visible")
 	}
-	if offset, ok := state.codeEditor().OffsetAt(ui.Point{X: caret.X + 0.1, Y: caret.Y + caret.Height/2}); !ok || offset != doc.Editor.ByteOffset(doc.Editor.Caret()) {
+	if offset, ok := state.codeEditor().OffsetAt(gfx.Point{X: caret.X + 0.1, Y: caret.Y + caret.Height/2}); !ok || offset != doc.Editor.ByteOffset(doc.Editor.Caret()) {
 		t.Fatalf("wrapped caret hit offset = %d, %v; want %d", offset, ok, doc.Editor.ByteOffset(doc.Editor.Caret()))
 	}
 	state.command("Clone to Other View")
@@ -127,10 +127,10 @@ func TestCaptureWrapSymbolWhenRequested(t *testing.T) {
 		if err := session.Screenshot(filepath.Join(output, "wrap-symbol-menu-"+size.name+".png")); err != nil {
 			t.Fatal(err)
 		}
-		if err := session.Driver().Key(ui.KeyEscape, 0); err != nil {
+		if err := session.Driver().Key(gfx.KeyEscape, 0); err != nil {
 			t.Fatal(err)
 		}
-		if err := session.Driver().Key(ui.KeyEscape, 0); err != nil {
+		if err := session.Driver().Key(gfx.KeyEscape, 0); err != nil {
 			t.Fatal(err)
 		}
 	}

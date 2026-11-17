@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestAlwaysOnTopMenuKeepsDocumentAndOnlyChecksSuccessfulRequests(t *testing.T) {
@@ -57,7 +57,7 @@ func TestAlwaysOnTopMenuKeepsDocumentAndOnlyChecksSuccessfulRequests(t *testing.
 	if state.alwaysOnTop || requests[len(requests)-1] || doc.Editor.String() != before {
 		t.Fatalf("topmost did not turn off: %v, %v", state.alwaysOnTop, requests)
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 const (
@@ -325,7 +325,7 @@ func (printer *Printer) toY(points float64) int32 {
 	return int32(math.Round(points*printer.dpiY/72 - printer.physical.Top))
 }
 
-func printerColor(color ui.Color) uintptr {
+func printerColor(color gfx.Color) uintptr {
 	channel := func(value float32) uint32 {
 		return uint32(math.Round(float64(min(max(value, 0), 1)) * 255))
 	}
@@ -348,7 +348,7 @@ func (printer *Printer) measureText(value string) (int32, error) {
 	return size.width, nil
 }
 
-func (printer *Printer) drawText(value string, x, y int32, color ui.Color) (int32, error) {
+func (printer *Printer) drawText(value string, x, y int32, color gfx.Color) (int32, error) {
 	if value == "" {
 		return 0, nil
 	}
@@ -387,7 +387,7 @@ func (printer *Printer) drawBand(band TextBand, page Page, top bool) (err error)
 		y = page.Bounds.Top - lineHeight*1.5
 	}
 	left, right := printer.toX(page.Bounds.Left), printer.toX(page.Bounds.Right)
-	black := ui.RGB(0, 0, 0)
+	black := gfx.RGB(0, 0, 0)
 	if _, err := printer.drawText(band.Left, left, printer.toY(y), black); err != nil {
 		return err
 	}
@@ -438,7 +438,7 @@ func (printer *Printer) drawPage(job Job, page Page, rows [][]Segment) error {
 			}
 		}
 		if row.LineNumber > 0 && job.Settings.LineNumbers {
-			if _, err := printer.drawText(strconv.Itoa(row.LineNumber), printer.toX(page.Bounds.Left), y, ui.RGB(112, 116, 123)); err != nil {
+			if _, err := printer.drawText(strconv.Itoa(row.LineNumber), printer.toX(page.Bounds.Left), y, gfx.RGB(112, 116, 123)); err != nil {
 				return err
 			}
 		}

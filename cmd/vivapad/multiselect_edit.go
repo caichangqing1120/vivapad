@@ -166,7 +166,7 @@ func (state *model) copyMultiSelection(doc *document.Document, cut bool) {
 func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 	doc := state.paneDocument(pane)
 	copyText := state.multiSelectionText(pane)
-	return &app.TextInput{State: app.TextStateOf(doc.Editor), CopyOverride: true, CopyText: copyText, OnEvent: func(event app.TextEvent) (app.TextState, error) {
+	return &app.TextInput{State: app.TextStateOf(doc.Editor), CopyOverride: true, CopyText: func() string { return copyText }, OnEvent: func(event app.TextEvent) (app.TextState, error) {
 		if state.isReadOnly(doc) {
 			state.notice = "Read-only document"
 			return app.TextStateOf(doc.Editor), nil

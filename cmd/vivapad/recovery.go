@@ -52,15 +52,12 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 		doc.Editor.Insert(tab.Content)
 		doc.Editor.SetSelection(text.Range{Start: tab.SelectionStart, End: tab.SelectionEnd})
 		doc.SetEncoding(tab.Encoding)
-		doc.SetLineEnding(tab.LineEnding)
+		if err := doc.RestoreLineEndings(tab.LineEnding, tab.LineEndings); err != nil {
+			state.notice = "Recovery EOL unavailable: " + err.Error()
+		}
 		if tab.LanguageSelected {
 			state.languages[doc] = tab.Language
 			state.configureCode(doc)
-		}
-		if tab.LineEndings != "" {
-			if err := doc.RestoreEOLSequence(tab.LineEndings); err != nil {
-				state.notice = "Recovery EOL unavailable: " + err.Error()
-			}
 		}
 		doc.MarkRecovered()
 		if err := state.applyFoldHeaders(doc, tab.FoldedHeaders); err != nil {

@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/session"
 )
 
@@ -184,7 +184,7 @@ func TestRenameUntitledDialogAcceptsTypingAndEscapeBlocksUnderlyingCommands(t *t
 	if err := driver.Type("meeting-notes"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Name != "meeting-notes" || state.renameDoc != nil {
@@ -192,7 +192,7 @@ func TestRenameUntitledDialogAcceptsTypingAndEscapeBlocksUnderlyingCommands(t *t
 	}
 	clickID(t, driver, menuScope.At(0))
 	clickID(t, driver, menuItemScope.At(14))
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Name != "meeting-notes" || state.renameDoc != nil {

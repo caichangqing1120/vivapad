@@ -3,20 +3,20 @@ package main
 import (
 	"strings"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
 var tabColorCommands = [...]string{"Apply Color 1", "Apply Color 2", "Apply Color 3", "Apply Color 4", "Apply Color 5", "Remove Color"}
 
-var tabColorPastels = [...]ui.Color{
-	ui.RGB(249, 224, 205), ui.RGB(245, 235, 203), ui.RGB(219, 239, 218),
-	ui.RGB(221, 232, 251), ui.RGB(238, 222, 246),
+var tabColorPastels = [...]gfx.Color{
+	gfx.RGB(249, 224, 205), gfx.RGB(245, 235, 203), gfx.RGB(219, 239, 218),
+	gfx.RGB(221, 232, 251), gfx.RGB(238, 222, 246),
 }
 
-var tabColorAccents = [...]ui.Color{
-	ui.RGB(207, 107, 53), ui.RGB(173, 139, 42), ui.RGB(66, 156, 81),
-	ui.RGB(75, 120, 203), ui.RGB(151, 88, 172),
+var tabColorAccents = [...]gfx.Color{
+	gfx.RGB(207, 107, 53), gfx.RGB(173, 139, 42), gfx.RGB(66, 156, 81),
+	gfx.RGB(75, 120, 203), gfx.RGB(151, 88, 172),
 }
 
 func tabColorCommand(command string) uint8 {
@@ -53,7 +53,7 @@ func (state *model) restoreTabColors(colors map[string]uint8) {
 	}
 }
 
-func (state *model) tabColorPaint(doc *document.Document, selected bool) (background, accent ui.Color) {
+func (state *model) tabColorPaint(doc *document.Document, selected bool) (background, accent gfx.Color) {
 	background, accent = palette.tab, palette.blue
 	if selected {
 		background = palette.white
@@ -74,16 +74,16 @@ func (state *model) tabColorHint(doc *document.Document) string {
 	return ""
 }
 
-func (state *model) tabColorMenuRow(canvas *ui.Canvas, item ui.Rect, command string, checked bool) {
+func (state *model) tabColorMenuRow(canvas *gfx.Canvas, item gfx.Rect, command string, checked bool) {
 	if command == "Remove Color" {
-		canvas.DrawIcon(closeIcon, ui.Rect{X: item.X + 8, Y: item.Y + 5, Width: 12, Height: 12}, palette.muted)
+		canvas.DrawIcon(closeIcon, gfx.Rect{X: item.X + 8, Y: item.Y + 5, Width: 12, Height: 12}, palette.muted)
 		return
 	}
 	color := tabColorCommand(command)
 	if color > 0 {
-		canvas.Border(ui.Rect{X: item.X + 8, Y: item.Y + 4, Width: 14, Height: 14}, 1, palette.border, tabColorPastels[color-1])
+		canvas.Border(gfx.Rect{X: item.X + 8, Y: item.Y + 4, Width: 14, Height: 14}, 1, palette.border, tabColorPastels[color-1])
 		if checked {
-			canvas.Fill(ui.Rect{X: item.X + 9, Y: item.Y + 17, Width: 12, Height: 2}, tabColorAccents[color-1])
+			canvas.Fill(gfx.Rect{X: item.X + 9, Y: item.Y + 17, Width: 12, Height: 2}, tabColorAccents[color-1])
 		}
 	}
 }

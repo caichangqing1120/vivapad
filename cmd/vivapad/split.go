@@ -4,7 +4,7 @@ import (
 	"slices"
 
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 	"vivapad/internal/session"
 )
@@ -293,7 +293,7 @@ func (state *model) splitPosition(width float32) float32 {
 	return min(max(state.splitRatio*width, minimum), width-minimum-8)
 }
 
-func paneForTarget(target ui.ID) int {
+func paneForTarget(target gfx.ID) int {
 	switch target {
 	case editorID, scrollbarID, horizontalBarID, leftPaneID:
 		return 0
@@ -304,24 +304,24 @@ func paneForTarget(target ui.ID) int {
 	}
 }
 
-func (state *model) splitKey(event ui.KeyEvent, width float32) ui.EventResult {
+func (state *model) splitKey(event gfx.KeyEvent, width float32) gfx.EventResult {
 	if !state.splitEnabled || event.Target != splitterID {
-		return ui.EventResult{}
+		return gfx.EventResult{}
 	}
 	position := state.splitPosition(width)
 	switch event.Key {
-	case ui.KeyLeft:
+	case gfx.KeyLeft:
 		position -= 16
-	case ui.KeyRight:
+	case gfx.KeyRight:
 		position += 16
-	case ui.KeyHome:
+	case gfx.KeyHome:
 		position = 0
-	case ui.KeyEnd:
+	case gfx.KeyEnd:
 		position = width
 	default:
-		return ui.EventResult{}
+		return gfx.EventResult{}
 	}
 	minimum := min(200, max(70, (width-8)/2))
 	state.splitRatio = min(max(position, minimum), width-minimum-8) / width
-	return ui.EventResult{Handled: true, Repaint: true}
+	return gfx.EventResult{Handled: true, Repaint: true}
 }

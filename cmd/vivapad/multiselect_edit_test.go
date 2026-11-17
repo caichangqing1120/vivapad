@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -38,7 +38,7 @@ func TestMultiSelectionNativeTypingAndUndoAreAtomic(t *testing.T) {
 	if doc.Editor.String() != "X X X" || len(state.multiSelections[0].ranges) != 3 {
 		t.Fatalf("multi-caret redo = %q, ranges=%+v", doc.Editor.String(), state.multiSelections[0].ranges)
 	}
-	if err := driver.Key(ui.KeyBackspace, 0); err != nil {
+	if err := driver.Key(gfx.KeyBackspace, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.String() != "  " {

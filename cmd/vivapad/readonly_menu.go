@@ -3,7 +3,7 @@ package main
 import (
 	"runtime"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -65,26 +65,26 @@ func (state *model) textMutation(command string) bool {
 	return false
 }
 
-func (state *model) paintReadOnlyMenu(canvas *ui.Canvas, size ui.Size, parentRight float32) {
+func (state *model) paintReadOnlyMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
 	width := min(float32(310), size.Width-parentRight-4)
 	height := float32(len(readOnlyCommands))*27 + 8
 	x := parentRight
 	y := min(menuHeight+4+16*27, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	canvas.Border(ui.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
 	selected := -1
 	for index, command := range readOnlyCommands {
-		item := ui.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
+		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
 		id := readOnlyScope.At(index)
 		if canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
 		if index == 0 && state.readOnly[state.space.Current()] {
-			canvas.DrawIcon(checkIcon, ui.Rect{X: item.X + 5, Y: item.Y + 6, Width: 14, Height: 14}, palette.blue)
+			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 5, Y: item.Y + 6, Width: 14, Height: 14}, palette.blue)
 		}
-		label := canvas.FitLine(command, 11, ui.WeightRegular, item.Width-39)
-		smallLabel(canvas, label, ui.Rect{X: item.X + 26, Y: item.Y, Width: item.Width - 32, Height: item.Height}, palette.text, 11)
-		canvas.HitWithOptions(id, item, command, ui.HitOptions{Role: ui.RoleMenuItem, Checked: index == 0 && state.readOnly[state.space.Current()]})
+		label := canvas.FitLine(command, 11, gfx.WeightRegular, item.Width-39)
+		smallLabel(canvas, label, gfx.Rect{X: item.X + 26, Y: item.Y, Width: item.Width - 32, Height: item.Height}, palette.text, 11)
+		canvas.HitWithOptions(id, item, command, gfx.HitOptions{Role: gfx.RoleMenuItem, Checked: index == 0 && state.readOnly[state.space.Current()]})
 		if canvas.Clicked(id) {
 			selected = index
 		}

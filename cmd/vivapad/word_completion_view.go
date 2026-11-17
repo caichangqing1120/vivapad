@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 var autoCompletionCommands = [...]string{
@@ -12,16 +12,16 @@ var autoCompletionCommands = [...]string{
 	"Function Parameters Previous Hint", "Function Parameters Next Hint", "Path Completion",
 }
 
-func (state *model) paintAutoCompletionMenu(canvas *ui.Canvas, size ui.Size, parentRight float32) {
+func (state *model) paintAutoCompletionMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
 	width := min(float32(275), size.Width-parentRight-4)
 	height := float32(len(autoCompletionCommands))*27 + 8
 	x := parentRight
 	y := min(menuHeight+4+17*27, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	canvas.Border(ui.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
 	selected := -1
 	for index, command := range autoCompletionCommands {
-		item := ui.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
+		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
 		id := autoCompletionScope.At(index)
 		disabled := index != 1 && index != 5
 		if !disabled && canvas.Hovered() == id {
@@ -31,9 +31,9 @@ func (state *model) paintAutoCompletionMenu(canvas *ui.Canvas, size ui.Size, par
 		if disabled {
 			color = palette.muted
 		}
-		label := canvas.FitLine(command, 11, ui.WeightRegular, item.Width-18)
-		smallLabel(canvas, label, ui.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, color, 11)
-		canvas.HitWithOptions(id, item, command, ui.HitOptions{Role: ui.RoleMenuItem, Disabled: disabled})
+		label := canvas.FitLine(command, 11, gfx.WeightRegular, item.Width-18)
+		smallLabel(canvas, label, gfx.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, color, 11)
+		canvas.HitWithOptions(id, item, command, gfx.HitOptions{Role: gfx.RoleMenuItem, Disabled: disabled})
 		if !disabled && canvas.Clicked(id) {
 			selected = index
 		}
@@ -44,7 +44,7 @@ func (state *model) paintAutoCompletionMenu(canvas *ui.Canvas, size ui.Size, par
 	}
 }
 
-func (state *model) paintWordCompletionPopup(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintWordCompletionPopup(canvas *gfx.Canvas, size gfx.Size) {
 	if !state.validWordCompletion() {
 		state.wordCompletion = nil
 		if state.wordFocusPending {
@@ -69,7 +69,7 @@ func (state *model) paintWordCompletionPopup(canvas *ui.Canvas, size ui.Size) {
 		}
 		for _, hit := range canvas.Hits() {
 			if hit.ID == id {
-				caret = ui.Rect{X: hit.Bounds.X + hit.Bounds.Width - 12, Y: hit.Bounds.Y + 8, Width: 1, Height: 20}
+				caret = gfx.Rect{X: hit.Bounds.X + hit.Bounds.Width - 12, Y: hit.Bounds.Y + 8, Width: 1, Height: 20}
 				break
 			}
 		}
@@ -89,10 +89,10 @@ func (state *model) paintWordCompletionPopup(canvas *ui.Canvas, size ui.Size) {
 		y = max(menuHeight+toolbarHeight+tabHeight, caret.Y-height-2)
 	}
 	canvas.PushLayer(3)
-	canvas.Border(ui.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
 	chosen := -1
 	for index := current.offset; index < current.offset+visible; index++ {
-		item := ui.Rect{X: x + 4, Y: y + 4 + float32(index-current.offset)*22, Width: width - 8, Height: 22}
+		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index-current.offset)*22, Width: width - 8, Height: 22}
 		id := wordCompletionScope.At(index)
 		if index == current.selected || canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
@@ -105,9 +105,9 @@ func (state *model) paintWordCompletionPopup(canvas *ui.Canvas, size ui.Size) {
 				value += string(filepath.Separator)
 			}
 		}
-		label := canvas.FitLine(value, 11, ui.WeightRegular, item.Width-16)
-		smallLabel(canvas, label, ui.Rect{X: item.X + 8, Y: item.Y, Width: item.Width - 16, Height: item.Height}, palette.text, 11)
-		canvas.HitWithOptions(id, item, current.items[index], ui.HitOptions{Role: ui.RoleOption, Selected: index == current.selected, Hint: current.items[index]})
+		label := canvas.FitLine(value, 11, gfx.WeightRegular, item.Width-16)
+		smallLabel(canvas, label, gfx.Rect{X: item.X + 8, Y: item.Y, Width: item.Width - 16, Height: item.Height}, palette.text, 11)
+		canvas.HitWithOptions(id, item, current.items[index], gfx.HitOptions{Role: gfx.RoleOption, Selected: index == current.selected, Hint: current.items[index]})
 		if canvas.Clicked(id) {
 			chosen = index
 		}

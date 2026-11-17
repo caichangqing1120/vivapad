@@ -3,7 +3,7 @@ package main
 import (
 	"slices"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func (state *model) editorCommandFocusBlocked() bool {
@@ -44,7 +44,7 @@ func (state *model) restoreEditorCommandFocus(command string) {
 	state.invalidator.Invalidate()
 }
 
-func (state *model) paintEditorCommandFocus(canvas *ui.Canvas) {
+func (state *model) paintEditorCommandFocus(canvas *gfx.Canvas) {
 	if !state.focusViewRequested {
 		return
 	}
@@ -53,7 +53,7 @@ func (state *model) paintEditorCommandFocus(canvas *ui.Canvas) {
 		focus = rightEditorID
 	}
 	requested := canvas.FocusRequest()
-	if state.editorCommandFocusBlocked() || requested != (ui.ID{}) && requested != focus {
+	if state.editorCommandFocusBlocked() || requested != (gfx.ID{}) && requested != focus {
 		state.focusViewRequested, state.focusViewArmed = false, false
 		return
 	}

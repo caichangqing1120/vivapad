@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestFindByteRangeDialogDefaultUnicodeAndRepeatedFind(t *testing.T) {
@@ -74,7 +74,7 @@ func TestFindByteRangeCustomValidationWrapAndSplitReadOnly(t *testing.T) {
 	if right.Editor.Selection() != (text.Range{Start: 1, End: 2}) || state.byteRangeError != "" {
 		t.Fatalf("backward wrap = %+v error=%q", right.Editor.Selection(), state.byteRangeError)
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil || state.byteRangeOpen {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.byteRangeOpen {
 		t.Fatalf("Escape did not close byte-range dialog: %v", err)
 	}
 }
@@ -155,7 +155,7 @@ func TestFindByteRangeWrapInvalidBoundsAndKeyboard(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, byteRangeEndID)
-	if err := driver.Key(ui.KeyEnter, 0); err != nil || state.byteRangeError != "" || doc.Editor.Selection() != (text.Range{Start: 3, End: 4}) {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil || state.byteRangeError != "" || doc.Editor.Selection() != (text.Range{Start: 3, End: 4}) {
 		t.Fatalf("Enter find = %+v error=%q, %v", doc.Editor.Selection(), state.byteRangeError, err)
 	}
 }
@@ -175,7 +175,7 @@ func TestFindByteRangeAllowsEditorAndWindowNavigation(t *testing.T) {
 	if err := driver.Type("A猫"); err != nil || state.space.Current().Editor.String() != "A猫" {
 		t.Fatalf("modeless editor typing = %q, %v", state.space.Current().Editor.String(), err)
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil || state.space.Current().Editor.String() != "A猫\n" {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil || state.space.Current().Editor.String() != "A猫\n" {
 		t.Fatalf("modeless editor Enter = %q, %v", state.space.Current().Editor.String(), err)
 	}
 	state.space.Current().Editor.ClearHistory()
@@ -195,7 +195,7 @@ func TestFindByteRangeAllowsEditorAndWindowNavigation(t *testing.T) {
 	if !closed {
 		t.Fatal("modeless byte-range dialog blocked a clean window close")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil || state.byteRangeOpen {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.byteRangeOpen {
 		t.Fatalf("Escape failed to close dialog: %v", err)
 	}
 }

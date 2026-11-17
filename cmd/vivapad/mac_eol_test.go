@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/recovery"
 	"vivapad/internal/session"
@@ -115,7 +115,7 @@ func TestNPPSessionReopensCRFileWithByteSelection(t *testing.T) {
 	if doc.LineEnding() != document.CR || doc.Editor.String() != "猫\nabc" || doc.Editor.Selection() != (text.Range{Start: 2, End: 5}) || nppBytePosition(doc, 2) != 4 {
 		t.Fatalf("NPP CR import: ending=%v value=%q selection=%+v pos=%d", doc.LineEnding(), doc.Editor.String(), doc.Editor.Selection(), nppBytePosition(doc, 2))
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 }

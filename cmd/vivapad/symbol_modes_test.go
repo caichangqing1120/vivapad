@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 )
 
 func labelFor(state *model, character rune) (string, bool) {
@@ -117,7 +117,7 @@ func TestSymbolPreferencesModesFitCompactViewport(t *testing.T) {
 	if state.npcMode != "codepoint" || !state.npcIncludeControls || state.space.Current().Dirty() {
 		t.Fatalf("NPC Preferences changed text or not mode: mode=%q include=%v", state.npcMode, state.npcIncludeControls)
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -159,7 +159,7 @@ func TestCaptureNPCModesWhenRequested(t *testing.T) {
 		if err := session.Screenshot(filepath.Join(output, "npc-mode-preferences-"+size.name+".png")); err != nil {
 			t.Fatal(err)
 		}
-		if err := session.Driver().Key(ui.KeyEscape, 0); err != nil {
+		if err := session.Driver().Key(gfx.KeyEscape, 0); err != nil {
 			t.Fatal(err)
 		}
 	}

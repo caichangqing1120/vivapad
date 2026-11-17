@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/preferences"
 )
 
@@ -52,11 +52,11 @@ func TestPreferencesDialogEditsExistingSettingsAndPersists(t *testing.T) {
 	if err := os.WriteFile(dropped, []byte("drop"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	newConfig(state).OnFileDrop(ui.FileDropEvent{Phase: ui.FileDropDrop, Paths: []string{dropped}})
+	newConfig(state).OnFileDrop(gfx.FileDropEvent{Phase: gfx.FileDropDrop, Paths: []string{dropped}})
 	if len(state.space.Documents) != 1 {
 		t.Fatal("Preferences allowed a file drop behind the modal")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil || state.preferencesOpen {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.preferencesOpen {
 		t.Fatalf("Escape failed to close Preferences: %v", err)
 	}
 	stored, err := preferences.Load(filepath.Join(filepath.Dir(path), "settings.json"))
@@ -101,7 +101,7 @@ func TestPreferencesDialogCompactModalAndCloseGuard(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []ui.ID{preferencesEditingID, preferencesViewID, preferencesTabScope.At(0), preferencesCloseID} {
+	for _, id := range []gfx.ID{preferencesEditingID, preferencesViewID, preferencesTabScope.At(0), preferencesCloseID} {
 		found := false
 		for _, hit := range driver.Snapshot().Hits {
 			if hit.ID == id {

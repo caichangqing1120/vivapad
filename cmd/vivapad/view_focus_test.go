@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -31,7 +31,7 @@ func TestFocusOnAnotherViewKeepsBothEditorsIntact(t *testing.T) {
 	}
 	for _, want := range []struct {
 		pane  int
-		focus ui.ID
+		focus gfx.ID
 		doc   *document.Document
 	}{{1, rightEditorID, right}, {0, editorID, left}} {
 		clickID(t, driver, menuScope.At(3))

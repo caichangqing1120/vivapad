@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestPDFRendererUsesEmbeddedFontMetricsAndPrinterPage(t *testing.T) {
@@ -34,7 +34,7 @@ func TestPDFRendererUsesEmbeddedFontMetricsAndPrinterPage(t *testing.T) {
 	if err != nil || len(pages) != 1 {
 		t.Fatalf("PDF pagination = %d pages, %v", len(pages), err)
 	}
-	pages[0].Styles = [][]ColorRun{{{StartByte: 0, EndByte: 5, Color: ui.RGB(64, 102, 191)}}, nil}
+	pages[0].Styles = [][]ColorRun{{{StartByte: 0, EndByte: 5, Color: gfx.RGB(64, 102, 191)}}, nil}
 	output, err := renderer.Render(job, pages, device)
 	if err != nil || len(output) < 1000 || !bytes.HasPrefix(output, []byte("%PDF-")) {
 		t.Fatalf("rendered PDF = %d bytes, %v", len(output), err)

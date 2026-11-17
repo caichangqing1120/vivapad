@@ -1,8 +1,8 @@
 package main
 
 import (
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"slices"
 )
 
@@ -56,15 +56,15 @@ func (state *model) redactSelection(bullet bool) {
 	}
 }
 
-func (state *model) paintOnSelectionMenu(canvas *ui.Canvas, size ui.Size, parentRight float32) {
+func (state *model) paintOnSelectionMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
 	width := min(float32(280), size.Width-parentRight-4)
 	height := float32(3*27 + 8)
 	x := parentRight
 	y := min(menuHeight+4+23*24, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	panel := ui.Rect{X: x, Y: y, Width: width, Height: height}
+	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
 	canvas.Border(panel, 1, palette.border, palette.white)
-	canvas.HitWithOptions(onSelectionScope.At(3), panel, "On Selection", ui.HitOptions{Role: ui.RoleMenu})
+	canvas.HitWithOptions(onSelectionScope.At(3), panel, "On Selection", gfx.HitOptions{Role: gfx.RoleMenu})
 	for index, item := range []struct {
 		label, command string
 	}{
@@ -72,13 +72,13 @@ func (state *model) paintOnSelectionMenu(canvas *ui.Canvas, size ui.Size, parent
 		{"Open Containing Folder", "Open Containing Folder from Selection"},
 		{"Redact Selection (Shift: ●)", "Redact Selection"},
 	} {
-		bounds := ui.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
+		bounds := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
 		id := onSelectionScope.At(index)
 		if canvas.Hovered() == id {
 			canvas.Fill(bounds, palette.hover)
 		}
-		smallLabel(canvas, item.label, bounds.Inset(ui.All(8)), palette.text, 11)
-		canvas.HitWithOptions(id, bounds, item.label, ui.HitOptions{Role: ui.RoleMenuItem})
+		smallLabel(canvas, item.label, bounds.Inset(gfx.All(8)), palette.text, 11)
+		canvas.HitWithOptions(id, bounds, item.label, gfx.HitOptions{Role: gfx.RoleMenuItem})
 		if canvas.Clicked(id) {
 			command := item.command
 			if index == 2 && state.menuPointerShift {

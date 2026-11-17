@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -83,34 +83,34 @@ func (state *model) reloadDocument(index int, discard bool) *document.Document {
 	return current
 }
 
-func (state *model) paintReloadDialog(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintReloadDialog(canvas *gfx.Canvas, size gfx.Size) {
 	if state.pendingReload >= len(state.space.Documents) {
 		state.pendingReload = -1
 		return
 	}
 	canvas.SetEscapeTarget(reloadCancelID)
 	canvas.PushLayer(3)
-	canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.RGBA(0, 0, 0, 0.25))
-	canvas.HitWithOptions(dialogBackdropID, ui.Rect{Width: size.Width, Height: size.Height}, "Reload confirmation", ui.HitOptions{Role: ui.RoleButton, SkipFocus: true})
+	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
+	canvas.HitWithOptions(dialogBackdropID, gfx.Rect{Width: size.Width, Height: size.Height}, "Reload confirmation", gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true})
 	canvas.PushLayer(4)
 	width := float32(388)
 	x, y := (size.Width-width)/2, (size.Height-158)/2
-	canvas.RoundedBorder(ui.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.white)
 	name := state.space.Documents[state.pendingReload].Name
-	title := canvas.FitLine(fmt.Sprintf("Reload %s from disk?", name), 15, ui.WeightRegular, width-40)
-	smallLabel(canvas, title, ui.Rect{X: x + 20, Y: y + 18, Width: width - 40, Height: 30}, palette.text, 15)
-	smallLabel(canvas, "Unsaved changes in this tab will be discarded.", ui.Rect{X: x + 20, Y: y + 56, Width: width - 40, Height: 25}, palette.muted, 12)
+	title := canvas.FitLine(fmt.Sprintf("Reload %s from disk?", name), 15, gfx.WeightRegular, width-40)
+	smallLabel(canvas, title, gfx.Rect{X: x + 20, Y: y + 18, Width: width - 40, Height: 30}, palette.text, 15)
+	smallLabel(canvas, "Unsaved changes in this tab will be discarded.", gfx.Rect{X: x + 20, Y: y + 56, Width: width - 40, Height: 25}, palette.muted, 12)
 	for _, item := range []struct {
-		id    ui.ID
+		id    gfx.ID
 		label string
 		x     float32
 	}{
 		{reloadConfirmID, "Reload", x + 188},
 		{reloadCancelID, "Cancel", x + 284},
 	} {
-		bounds := ui.Rect{X: item.x, Y: y + 105, Width: 80, Height: 30}
+		bounds := gfx.Rect{X: item.x, Y: y + 105, Width: 80, Height: 30}
 		canvas.Border(bounds, 1, palette.border, palette.toolbar)
-		canvas.LabelCenter(item.label, bounds, ui.TextStyle{Size: 12, Color: palette.text})
+		canvas.LabelCenter(item.label, bounds, gfx.TextStyle{Size: 12, Color: palette.text})
 		if hitButton(canvas, item.id, bounds, item.label) {
 			index := state.pendingReload
 			state.pendingReload = -1

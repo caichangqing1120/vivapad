@@ -6,6 +6,7 @@ import (
 
 	"github.com/hexops/gotextdiff/myers"
 	"github.com/hexops/gotextdiff/span"
+	"github.com/vivaui/viva/text"
 )
 
 func normalizeLineEndings(value string) (string, string, []string) {
@@ -58,15 +59,86 @@ func (doc *Document) MixedLineEndings() bool {
 }
 
 func (doc *Document) currentLineEndings() []string {
-	if len(doc.eolBreaks) == 0 || doc.uniformEOL {
+	_, err := doc.currentLFLabels()
+	if err != nil || doc.eolUniform {
 		return nil
 	}
-	value := doc.Editor.String()
-	if doc.eolCache == nil || doc.eolCacheText != value {
-		doc.eolCache = mapLineEndings(doc.eolBaseText, value, doc.eolBreaks, doc.newline)
-		doc.eolCacheText = value
-	}
 	return doc.eolCache
+}
+
+func (doc *Document) currentLFLabels() ([]byte, error) {
+	if doc == nil || doc.Editor == nil || doc.Editor != doc.eolEditor {
+		return nil, fmt.Errorf("document has no live EOL label source")
+	}
+	revision, ok := doc.Editor.LFLabelRevision()
+	if !ok {
+		return nil, fmt.Errorf("document EOL labels are unavailable")
+	}
+	if !doc.eolCacheValid || doc.eolRevision != revision || doc.eolCacheEOL != doc.newline {
+		doc.eolLabels, _ = doc.Editor.LFLabels(doc.eolLabels[:0])
+		if cap(doc.eolLabels) > 64 && len(doc.eolLabels) < cap(doc.eolLabels)/4 {
+			doc.eolLabels = append([]byte(nil), doc.eolLabels...)
+		}
+		if cap(doc.eolCache) < len(doc.eolLabels) || cap(doc.eolCache) > 64 && len(doc.eolLabels) < cap(doc.eolCache)/4 {
+			doc.eolCache = make([]string, len(doc.eolLabels))
+		} else {
+			doc.eolCache = doc.eolCache[:len(doc.eolLabels)]
+		}
+		for index, code := range doc.eolLabels {
+			doc.eolCache[index] = lineEndingFromCode(code)
+		}
+		doc.eolRevision, doc.eolCacheValid = revision, true
+		doc.eolCacheEOL, doc.eolUniform = doc.newline, uniformLFLabels(doc.eolLabels, lineEndingCode(doc.newline))
+	}
+	return doc.eolLabels, nil
+}
+
+func lineEndingCode(ending string) byte {
+	switch ending {
+	case "\r\n":
+		return 'W'
+	case "\r":
+		return 'M'
+	default:
+		return 'L'
+	}
+}
+
+func lineEndingFromCode(code byte) string {
+	switch code {
+	case 'W':
+		return "\r\n"
+	case 'M':
+		return "\r"
+	default:
+		return "\n"
+	}
+}
+
+func lineEndingsFromLabels(labels []byte) []string {
+	breaks := make([]string, len(labels))
+	for index, code := range labels {
+		breaks[index] = lineEndingFromCode(code)
+	}
+	return breaks
+}
+
+func uniformLFLabels(labels []byte, code byte) bool {
+	for _, label := range labels {
+		if label != code {
+			return false
+		}
+	}
+	return true
+}
+
+func mapLFLineEndings(change text.LFLabelReplacement) []byte {
+	breaks := mapLineEndings(change.Removed, change.Inserted, lineEndingsFromLabels(change.Labels), lineEndingFromCode(change.Default))
+	labels := make([]byte, len(breaks))
+	for index, ending := range breaks {
+		labels[index] = lineEndingCode(ending)
+	}
+	return labels
 }
 
 func (doc *Document) LineEndingAt(line int) string {
@@ -119,52 +191,78 @@ func (doc *Document) EOLLabels(dst []string) []string {
 }
 
 func (doc *Document) EOLSequence() string {
-	breaks := doc.currentLineEndings()
-	if len(breaks) == 0 {
+	labels, err := doc.currentLFLabels()
+	if err != nil || doc.eolUniform {
 		return ""
 	}
-	var sequence strings.Builder
-	sequence.Grow(len(breaks))
-	for _, ending := range breaks {
-		switch ending {
-		case "\r\n":
-			sequence.WriteByte('W')
-		case "\r":
-			sequence.WriteByte('M')
-		default:
-			sequence.WriteByte('L')
-		}
-	}
-	return sequence.String()
+	return string(labels)
 }
 
 func (doc *Document) RestoreEOLSequence(sequence string) error {
-	if sequence == "" || len(sequence) != strings.Count(doc.Editor.String(), "\n") {
+	if sequence == "" {
 		return fmt.Errorf("recovered EOL sequence does not match text")
 	}
-	breaks := make([]string, len(sequence))
-	for index, code := range []byte(sequence) {
+	return doc.restoreLineEndings(doc.newline, sequence)
+}
+
+// RestoreLineEndings installs recovery metadata without relabeling historical LFs.
+func (doc *Document) RestoreLineEndings(ending LineEnding, sequence string) error {
+	newline := "\n"
+	switch ending {
+	case LF:
+	case CRLF:
+		newline = "\r\n"
+	case CR:
+		newline = "\r"
+	default:
+		return fmt.Errorf("invalid recovered line ending %d", ending)
+	}
+	return doc.restoreLineEndings(newline, sequence)
+}
+
+func (doc *Document) restoreLineEndings(newline, sequence string) error {
+	current, err := doc.currentLFLabels()
+	if err != nil {
+		return err
+	}
+	if sequence != "" && len(sequence) != len(current) {
+		return fmt.Errorf("recovered EOL sequence does not match text")
+	}
+	for _, code := range []byte(sequence) {
 		switch code {
 		case 'W':
-			breaks[index] = "\r\n"
 		case 'M':
-			breaks[index] = "\r"
 		case 'L':
-			breaks[index] = "\n"
 		default:
 			return fmt.Errorf("invalid recovered EOL code %q", code)
 		}
 	}
-	doc.eolBaseText, doc.eolBreaks, doc.uniformEOL = doc.Editor.String(), breaks, false
-	doc.eolCacheText, doc.eolCache = "", nil
+	labels := []byte(sequence)
+	if sequence == "" {
+		labels = make([]byte, len(current))
+		for index := range labels {
+			labels[index] = lineEndingCode(newline)
+		}
+	}
+	if !doc.Editor.SetLFLabels(labels, lineEndingCode(newline)) {
+		return fmt.Errorf("cannot restore EOL labels on the active source")
+	}
+	doc.newline, doc.uniformEOL = newline, false
 	return nil
 }
 
-func (doc *Document) physicalValue(value string) (string, []string) {
-	breaks := doc.currentLineEndings()
-	if breaks == nil {
+func (doc *Document) physicalValue(value string) (string, error) {
+	labels, err := doc.currentLFLabels()
+	if err != nil {
+		return "", err
+	}
+	if len(labels) != strings.Count(value, "\n") {
+		return "", fmt.Errorf("document EOL labels do not match text")
+	}
+	if doc.eolUniform {
 		return strings.ReplaceAll(value, "\n", doc.newline), nil
 	}
+	breaks := lineEndingsFromLabels(labels)
 	var physical strings.Builder
 	physical.Grow(len(value) + len(breaks))
 	line, start := 0, 0
@@ -177,10 +275,7 @@ func (doc *Document) physicalValue(value string) (string, []string) {
 		}
 	}
 	physical.WriteString(value[start:])
-	if !hasMixedBreaks(breaks) && (len(breaks) == 0 || breaks[0] == doc.newline) {
-		return physical.String(), nil
-	}
-	return physical.String(), append([]string(nil), breaks...)
+	return physical.String(), nil
 }
 
 func mapLineEndings(before, after string, breaks []string, defaultNewline string) []string {

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestMarkMenuOpensCompactPanelAndRunsActionsWithoutEditing(t *testing.T) {
@@ -23,7 +23,7 @@ func TestMarkMenuOpensCompactPanelAndRunsActionsWithoutEditing(t *testing.T) {
 	if !state.markDialogOpen || len(state.markedSpans) != 0 {
 		t.Fatalf("Mark menu did not open the panel without executing: open=%v marks=%+v", state.markDialogOpen, state.markedSpans)
 	}
-	for _, id := range []ui.ID{markPanelID, queryID, markBookmarkID, markPurgeID, markInSelectionID, markWrapID,
+	for _, id := range []gfx.ID{markPanelID, queryID, markBookmarkID, markPurgeID, markInSelectionID, markWrapID,
 		markModeScope.At(0), markModeScope.At(1), markModeScope.At(2), markAllID, markClearID, markCopyID, markCloseID} {
 		found := false
 		for _, hit := range driver.Snapshot().Hits {
@@ -42,7 +42,7 @@ func TestMarkMenuOpensCompactPanelAndRunsActionsWithoutEditing(t *testing.T) {
 		t.Fatalf("compact Mark layout: %+v", problems)
 	}
 	clickID(t, driver, queryID)
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if len(state.markedSpans) != 2 || doc.Editor.String() != "cat cat\ndog" || doc.Editor.CanUndo() {
@@ -65,7 +65,7 @@ func TestMarkMenuOpensCompactPanelAndRunsActionsWithoutEditing(t *testing.T) {
 	if !state.markBookmarkLine || !state.markPurge {
 		t.Fatal("Mark options did not toggle")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil || state.markDialogOpen || len(state.markedSpans) != 2 {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.markDialogOpen || len(state.markedSpans) != 2 {
 		t.Fatalf("Escape closed marks or left panel: %v, open=%v marks=%+v", err, state.markDialogOpen, state.markedSpans)
 	}
 }

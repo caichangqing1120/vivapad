@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestMatchingBraceCommandsHandleUnicodeAndSelectionEndpoints(t *testing.T) {
@@ -59,7 +59,7 @@ func TestMatchingBraceShortcutsAndCompactMenu(t *testing.T) {
 	if doc.Editor.Caret() != 2 {
 		t.Fatalf("shortcut caret = %d, want 2", doc.Editor.Caret())
 	}
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierAlt, 'b'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierAlt, 'b'); err != nil || !handled {
 		t.Fatalf("select brace shortcut handled=%v err=%v", handled, err)
 	}
 	if doc.Editor.Selection() != (text.Range{Start: 0, End: 3}) {

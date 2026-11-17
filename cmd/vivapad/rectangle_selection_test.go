@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestColumnSelectionMenuAndColumnEditorReplaceSelectedRows(t *testing.T) {
@@ -68,10 +68,10 @@ func TestColumnSelectionAltShiftNavigationAndSplitIsolation(t *testing.T) {
 	clickID(t, driver, rightEditorID)
 	right.Editor.MoveTo(0, false)
 	state.command("Begin/End Select in Column Mode")
-	if err := driver.Key(ui.KeyDown, ui.ModifierAlt|ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyDown, gfx.ModifierAlt|gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyRight, ui.ModifierAlt|ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyRight, gfx.ModifierAlt|gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	if !state.rectangles[1].active || state.rectangles[0].active || left.Editor.String() != "ab\ncd\nef" {
@@ -92,7 +92,7 @@ func TestColumnSelectionShortcutArmsModeWithoutEditing(t *testing.T) {
 	doc := state.space.Current()
 	doc.Editor.Insert("abc\ndef")
 	doc.Editor.MoveTo(1, false)
-	if handled, err := driver.ShortcutChord(ui.ModifierAlt|ui.ModifierShift, 'b'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(gfx.ModifierAlt|gfx.ModifierShift, 'b'); err != nil || !handled {
 		t.Fatalf("column-mode shortcut handled=%v err=%v", handled, err)
 	}
 	if !state.menuSelected("Begin/End Select in Column Mode") || doc.Editor.String() != "abc\ndef" {
@@ -142,19 +142,19 @@ func TestColumnSelectionAltDragKeepsVirtualColumnsWithoutEditing(t *testing.T) {
 		t.Fatal("caret bounds missing")
 	}
 	pointX, pointY := caret.X+95, caret.Y+caret.Height/2
-	if err := driver.KeyDown(ui.KeyAltLeft, ""); err != nil {
+	if err := driver.KeyDown(gfx.KeyAltLeft, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Press(pointX, pointY, ui.PointerButtonPrimary); err != nil {
+	if err := driver.Press(pointX, pointY, gfx.PointerButtonPrimary); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.Move(pointX, pointY+caret.Height); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Release(pointX, pointY+caret.Height, ui.PointerButtonPrimary); err != nil {
+	if err := driver.Release(pointX, pointY+caret.Height, gfx.PointerButtonPrimary); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.KeyUp(ui.KeyAltLeft, ""); err != nil {
+	if err := driver.KeyUp(gfx.KeyAltLeft, ""); err != nil {
 		t.Fatal(err)
 	}
 	selection := state.rectangles[0]
@@ -213,7 +213,7 @@ func TestColumnSelectionBackspaceDeletesEveryCaret(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyBackspace, 0); err != nil {
+	if err := driver.Key(gfx.KeyBackspace, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.String() != "b\nd" || !state.rectangles[0].active {
@@ -300,7 +300,7 @@ func TestColumnSelectionDeleteAndOrdinaryPointerDismiss(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyDelete, 0); err != nil {
+	if err := driver.Key(gfx.KeyDelete, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.String() != "a\nc" || !state.rectangles[0].active {
@@ -412,7 +412,7 @@ func TestColumnSelectionKeyboardCopyTracksChangedColumns(t *testing.T) {
 	if _, err := driver.ShortcutChord(primary(), 'c'); err != nil || driver.Clipboard() != "" {
 		t.Fatalf("zero-width copy = %q, %v", driver.Clipboard(), err)
 	}
-	if err := driver.Key(ui.KeyRight, ui.ModifierAlt|ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyRight, gfx.ModifierAlt|gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := driver.ShortcutChord(primary(), 'c'); err != nil || driver.Clipboard() != "b\ne\n" {
@@ -452,7 +452,7 @@ func TestColumnSelectionUndoRedoRestoresSuccessiveMultiCarets(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"aXb\ncXd", "aXYb\ncXYd"} {
-		if _, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'z'); err != nil {
+		if _, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'z'); err != nil {
 			t.Fatal(err)
 		}
 		if doc.Editor.String() != want || !state.rectangles[0].active {
@@ -507,7 +507,7 @@ func TestColumnSelectionUndoRedoAcrossMultilinePaste(t *testing.T) {
 	if _, err := driver.ShortcutChord(primary(), 'z'); err != nil || doc.Editor.String() != "ab\ncd" || !state.rectangles[0].active {
 		t.Fatalf("multiline Undo = %q rect=%+v err=%v", doc.Editor.String(), state.rectangles[0], err)
 	}
-	if _, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'z'); err != nil || doc.Editor.String() != "aXb\ncYd\n Z" || state.rectangles[0].active {
+	if _, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'z'); err != nil || doc.Editor.String() != "aXb\ncYd\n Z" || state.rectangles[0].active {
 		t.Fatalf("multiline Redo = %q rect=%+v err=%v", doc.Editor.String(), state.rectangles[0], err)
 	}
 }
@@ -573,7 +573,7 @@ func TestColumnSelectionUndoFromSharedCloneRestoresOwningView(t *testing.T) {
 	if !state.rectangles[0].active || state.rectangles[1].active || state.rectangleHistoryIndex[0] != 0 || state.activePane != 1 {
 		t.Fatalf("clone Undo lost selection ownership: left=%+v right=%+v", state.rectangles[0], state.rectangles[1])
 	}
-	if _, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'z'); err != nil || doc.Editor.String() != "aXb\ncXd" {
+	if _, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'z'); err != nil || doc.Editor.String() != "aXb\ncXd" {
 		t.Fatalf("clone Redo = %q, %v", doc.Editor.String(), err)
 	}
 	if !state.rectangles[0].active || state.rectangles[1].active || state.rectangleHistoryIndex[0] != 1 || state.activePane != 1 {

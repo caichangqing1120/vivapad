@@ -6,14 +6,14 @@ import (
 	"runtime"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/printing"
 )
 
 func main() {
 	// Cocoa must start on the process main thread before setup can migrate the goroutine.
 	runtime.LockOSThread()
-	var canvas ui.Canvas
+	var canvas gfx.Canvas
 	sessionPath, err := defaultSessionPath()
 	if err != nil {
 		log.Printf("session storage unavailable: %v", err)

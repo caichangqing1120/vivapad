@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
-func requireEditorCommandFocus(t *testing.T, driver *app.Driver, want ui.ID) {
+func requireEditorCommandFocus(t *testing.T, driver *app.Driver, want gfx.ID) {
 	t.Helper()
 	for range 2 {
 		if err := driver.Pump(); err != nil {
@@ -175,7 +175,7 @@ func TestPendingEditorFocusYieldsToNewDialogOrModelessQuery(t *testing.T) {
 	for _, scenario := range []struct {
 		name    string
 		command string
-		focus   ui.ID
+		focus   gfx.ID
 	}{
 		{"column dialog", "Column Editor...", columnTextID},
 		{"modeless mark", "Mark...", queryID},

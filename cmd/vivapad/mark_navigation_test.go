@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestNavigateFindMarksFollowsSourceBoundariesAndWraps(t *testing.T) {
@@ -91,7 +91,7 @@ func TestCompactSearchMenuFindMarkJumpAndEscape(t *testing.T) {
 	if !state.markJumpMenuOpen || !state.markJumpPrevious {
 		t.Fatal("Jump Up submenu missing")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil || state.markJumpMenuOpen || state.menuOpen != 2 {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.markJumpMenuOpen || state.menuOpen != 2 {
 		t.Fatalf("Escape did not dismiss only nested menu: %v submenu=%v menu=%d", err, state.markJumpMenuOpen, state.menuOpen)
 	}
 }
