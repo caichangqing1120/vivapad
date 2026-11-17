@@ -197,3 +197,15 @@ func (tracker *Tracker) NextDelete(position int) int {
 	}
 	return next
 }
+
+func (tracker *Tracker) clone() *Tracker {
+	if tracker == nil {
+		return nil
+	}
+	cloned := &Tracker{log: tracker.log.clone()}
+	if tracker.reversions != nil {
+		reversions := tracker.reversions.clone()
+		cloned.reversions = &reversions
+	}
+	return cloned
+}

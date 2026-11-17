@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/text"
+	"vivapad/internal/changehistory"
 )
 
 type Document struct {
@@ -34,6 +35,9 @@ type Document struct {
 	eolLabels     []byte
 	eolCache      []string
 	uniformEOL    bool
+	history       *changehistory.Consumer
+	historyEditor *text.Editor
+	historyErr    error
 }
 
 type LineEnding uint8
@@ -45,7 +49,9 @@ const (
 )
 
 func New(name string) *Document {
-	return newDocument(name, text.NewEditor(""))
+	doc := newDocument(name, text.NewEditor(""))
+	doc.bindChangeHistory()
+	return doc
 }
 
 func newDocument(name string, editor *text.Editor) *Document {
@@ -112,6 +118,7 @@ func open(path string, selected *Encoding) (*Document, error) {
 	doc.savedDisk = original
 	doc.savedDigest = digest(original)
 	doc.savedNewline, doc.savedEncoding = newline, encoding
+	doc.bindChangeHistory()
 	return doc, nil
 }
 

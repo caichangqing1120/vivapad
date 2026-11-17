@@ -274,3 +274,20 @@ func (editions *sparseEditions) deleteRange(position, length int) {
 	}
 	editions.shift(index, -length)
 }
+
+func (runs editionRuns) clone() editionRuns {
+	return editionRuns{length: runs.length, runs: slices.Clone(runs.runs)}
+}
+
+func (editions sparseEditions) clone() sparseEditions {
+	cloned := sparseEditions{
+		positions: slices.Clone(editions.positions),
+		values:    make([][]editionCount, len(editions.values)),
+	}
+	for index, value := range editions.values {
+		if value != nil {
+			cloned.values[index] = slices.Clone(value)
+		}
+	}
+	return cloned
+}

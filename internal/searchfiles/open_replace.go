@@ -47,9 +47,7 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 		}
 		seen[doc], editors[doc.Editor] = true, doc
 		before := doc.Editor.String()
-		candidate := document.New(doc.Name)
-		candidate.Editor.Insert(before)
-		candidate.Editor.ClearHistory()
+		candidate := document.NewDraft(doc.Name, text.NewEditor(before))
 		candidate.Editor.SetSavePoint()
 		candidate.SetEncoding(doc.Encoding())
 		if err := candidate.RestoreLineEndings(doc.LineEnding(), doc.EOLSequence()); err != nil {
