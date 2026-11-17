@@ -55,6 +55,107 @@ func TestOpenBufferReplacementSupportsRegexCaptures(t *testing.T) {
 	}
 }
 
+func TestOpenBufferPreviewSkipsWholeDocumentEqualResults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mixed.txt")
+	original := []byte("cat\r\ncat\n")
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []struct {
+		name, query, replacement string
+		options                  document.SearchOptions
+	}{
+		{name: "literal", query: "cat", replacement: "cat"},
+		{name: "regex", query: `(cat)`, replacement: `$1`, options: document.SearchOptions{Regex: true}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			doc, err := document.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, selection := doc.Editor.String(), doc.Editor.Selection()
+			plan, err := PreviewOpenReplace([]*document.Document{doc, doc}, scenario.query, scenario.replacement, scenario.options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.Changes) != 0 || plan.Replacements != 0 {
+				t.Fatalf("equal-result document entered replacement plan: %+v", plan)
+			}
+			if err := plan.Apply([]*document.Document{doc, doc}); err != nil {
+				t.Fatal(err)
+			}
+			if doc.Editor.String() != before || doc.Editor.Selection() != selection || doc.Dirty() || doc.Editor.CanUndo() {
+				t.Fatalf("equal-result preview changed saved document: text=%q dirty=%t undo=%t", doc.Editor.String(), doc.Dirty(), doc.Editor.CanUndo())
+			}
+			if disk, err := os.ReadFile(path); err != nil || string(disk) != string(original) {
+				t.Fatalf("equal-result preview changed mixed-EOL disk: %q, %v", disk, err)
+			}
+		})
+	}
+}
+
+func TestOpenBufferPreviewSkipsRestrictedEqualResultButKeepsChangedTargets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "unchanged.txt")
+	if err := os.WriteFile(path, []byte("cat"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := document.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unchanged.Editor.Restrict(func(rune) bool { return true }, 1)
+	changed := document.New("changed")
+	changed.Editor.Insert("cat dog")
+	changed.Editor.SetSavePoint()
+	plan, err := PreviewOpenReplace([]*document.Document{unchanged, changed, unchanged},
+		`(cat|dog)`, "cat", document.SearchOptions{Regex: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Changes) != 1 || plan.Changes[0].Doc != changed || plan.Changes[0].Count != 2 ||
+		len(plan.Changes[0].Edits) != 2 || plan.Replacements != 2 {
+		t.Fatalf("preview lost changed targets or kept restricted equal result: %+v", plan)
+	}
+	if err := plan.Apply([]*document.Document{unchanged, changed, unchanged}); err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.Editor.String() != "cat" || unchanged.Dirty() || unchanged.Editor.CanUndo() ||
+		changed.Editor.String() != "cat cat" || !changed.Dirty() {
+		t.Fatalf("mixed apply changed untouched source or lost target edit: unchanged=%q changed=%q", unchanged.Editor.String(), changed.Editor.String())
+	}
+	if !changed.Editor.Undo() || changed.Editor.String() != "cat dog" || !changed.Editor.Redo() || changed.Editor.String() != "cat cat" {
+		t.Fatalf("changed document did not retain one target batch: %q", changed.Editor.String())
+	}
+	if disk, err := os.ReadFile(path); err != nil || string(disk) != "cat" {
+		t.Fatalf("mixed apply wrote skipped disk: %q, %v", disk, err)
+	}
+}
+
+func TestOpenBufferPreviewStillRefusesChangedRestrictedSourceAtomically(t *testing.T) {
+	unchanged, changed := document.New("unchanged"), document.New("changed")
+	unchanged.Editor.Insert("cat")
+	changed.Editor.Insert("cat dog")
+	unchanged.Editor.SetSavePoint()
+	changed.Editor.SetSavePoint()
+	unchangedDirty, changedDirty := unchanged.Dirty(), changed.Dirty()
+	unchangedUndo, changedUndo := unchanged.Editor.CanUndo(), changed.Editor.CanUndo()
+	plan, err := PreviewOpenReplace([]*document.Document{unchanged, changed},
+		`(cat|dog)`, "cat", document.SearchOptions{Regex: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed.Editor.Restrict(func(rune) bool { return true }, 1)
+	if err := plan.Apply([]*document.Document{unchanged, changed}); err == nil {
+		t.Fatal("changed restricted source was applied")
+	}
+	if len(plan.Changes) != 1 || plan.Changes[0].Doc != changed ||
+		unchanged.Editor.String() != "cat" || changed.Editor.String() != "cat dog" ||
+		unchanged.Dirty() != unchangedDirty || changed.Dirty() != changedDirty ||
+		unchanged.Editor.CanUndo() != unchangedUndo || changed.Editor.CanUndo() != changedUndo {
+		t.Fatalf("refused mixed plan changed a source: plan=%+v unchanged=%q changed=%q", plan, unchanged.Editor.String(), changed.Editor.String())
+	}
+}
+
 func TestOpenBufferPreviewRejectsUnmappableAndInvalidPatterns(t *testing.T) {
 	first := document.New("new 1")
 	first.Editor.Insert("café")
