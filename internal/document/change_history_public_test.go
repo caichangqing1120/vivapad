@@ -8,6 +8,44 @@ import (
 	"github.com/vivaui/viva/text"
 )
 
+func TestChangeHistorySyncDuringTentativePreeditKeepsSourceAvailable(t *testing.T) {
+	doc := New("compose")
+	consumer, err := doc.ChangeHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !doc.Editor.EnableTentativeComposition() {
+		t.Fatal("cannot enable tagged composition")
+	}
+	if !doc.Editor.ApplyComposition(text.CompositionEvent{Phase: text.CompositionUpdate, Text: "に"}) {
+		t.Fatal("preedit update rejected")
+	}
+	if current, err := doc.ChangeHistory(); err != nil || current != consumer {
+		t.Fatalf("provisional paint invalidated the source: consumer=%p err=%v", current, err)
+	}
+	if mask, err := consumer.LineMask(0, len(doc.Editor.String()), len(doc.Editor.String())); err != nil || mask&4 == 0 {
+		t.Fatalf("tentative producer frame lost its modified edition: mask=%d err=%v", mask, err)
+	}
+	if !doc.Editor.ApplyComposition(text.CompositionEvent{Phase: text.CompositionCancel}) {
+		t.Fatal("preedit cancellation rejected")
+	}
+	if current, err := doc.ChangeHistory(); err != nil || current != consumer {
+		t.Fatalf("cancel did not preserve the source: consumer=%p err=%v", current, err)
+	}
+	if mask, err := consumer.LineMask(0, len(doc.Editor.String()), len(doc.Editor.String())); err != nil || mask != 0 {
+		t.Fatalf("cancellation left a change marker: mask=%d err=%v", mask, err)
+	}
+	if !doc.Editor.ApplyComposition(text.CompositionEvent{Phase: text.CompositionResult, Text: "中"}) {
+		t.Fatal("result rejected")
+	}
+	if current, err := doc.ChangeHistory(); err != nil || current != consumer {
+		t.Fatalf("result did not reach the source: consumer=%p err=%v", current, err)
+	}
+	if mask, err := consumer.LineMask(0, len(doc.Editor.String()), len(doc.Editor.String())); err != nil || mask == 0 {
+		t.Fatalf("committed result has no change metadata: mask=%d err=%v", mask, err)
+	}
+}
+
 func TestDocumentBindsChangeHistoryBeforeFirstEdit(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "history.txt")
 	if err := os.WriteFile(path, []byte("a\r\nb"), 0600); err != nil {
