@@ -2479,6 +2479,8 @@ func (state *model) cancelClose() {
 	state.closingDocs, state.closingActive = nil, nil
 	state.closingOwners, state.closingPaneDocs = nil, [2]*document.Document{}
 	state.closingSplit = false
+	state.focusViewRequested, state.focusViewArmed = true, false
+	state.invalidator.Invalidate()
 }
 
 func (state *model) persistSession() {
