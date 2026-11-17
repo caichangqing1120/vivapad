@@ -6,7 +6,7 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 type cacheKey struct {
@@ -71,18 +71,18 @@ func (highlighter *Highlighter) Highlight(language, line string, dst []component
 	return append(dst, runs...)
 }
 
-func tokenColor(kind chroma.TokenType) (ui.Color, bool) {
+func tokenColor(kind chroma.TokenType) (gfx.Color, bool) {
 	switch {
 	case kind.InCategory(chroma.Comment):
-		return ui.RGB(92, 125, 87), true
+		return gfx.RGB(92, 125, 87), true
 	case kind.InCategory(chroma.Keyword), kind.InSubCategory(chroma.NameTag):
-		return ui.RGB(49, 92, 167), true
+		return gfx.RGB(49, 92, 167), true
 	case kind.InCategory(chroma.LiteralString):
-		return ui.RGB(172, 77, 64), true
+		return gfx.RGB(172, 77, 64), true
 	case kind.InCategory(chroma.LiteralNumber):
-		return ui.RGB(139, 75, 147), true
+		return gfx.RGB(139, 75, 147), true
 	case kind.InSubCategory(chroma.NameFunction), kind.InSubCategory(chroma.NameClass):
-		return ui.RGB(113, 76, 144), true
+		return gfx.RGB(113, 76, 144), true
 	}
-	return ui.Color{}, false
+	return gfx.Color{}, false
 }

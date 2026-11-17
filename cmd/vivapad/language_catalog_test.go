@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 	"vivapad/internal/recovery"
 	"vivapad/internal/session"
@@ -18,7 +18,7 @@ func clickLanguage(t *testing.T, driver *app.Driver, label string) {
 	for _, direction := range []string{"Next languages", "Previous languages"} {
 		for range len(syntax.Languages()) {
 			for _, hit := range driver.Snapshot().Hits {
-				if hit.Label == label && hit.Role == ui.RoleMenuItem {
+				if hit.Label == label && hit.Role == gfx.RoleMenuItem {
 					clickID(t, driver, hit.ID)
 					return
 				}
@@ -66,13 +66,13 @@ func TestLanguageMenuReachesRegisteredLexersAndPreservesSplitText(t *testing.T) 
 	}
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == menuItemScope.At(0) {
-			if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
 				t.Fatal(err)
 			}
 			if state.languageOffset == 0 {
 				t.Fatal("Language menu did not respond to wheel input")
 			}
-			if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: -120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: -120}); err != nil {
 				t.Fatal(err)
 			}
 			break
@@ -238,7 +238,7 @@ func TestLanguageMenuEscapeKeepsDirtyDocumentAndYAMLAliasChecked(t *testing.T) {
 	if !found || !checked {
 		t.Fatal("automatic .yml mode did not check YAML")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.menuOpen != -1 || state.space.Current().Editor.String() != "enabled: true\nnew: true" || !state.space.Current().Dirty() {

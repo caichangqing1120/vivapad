@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/session"
 )
@@ -255,7 +255,7 @@ func TestMonitoringBackgroundLegacyReloadAndDecodeFailure(t *testing.T) {
 	if len(state.monitors) != 0 || state.isReadOnly(previous) {
 		t.Fatal("closing the window retained monitoring state")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 }

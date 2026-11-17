@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/runcommand"
 )
 
@@ -225,13 +225,13 @@ func TestRunDialogEscapeAndDuplicateNameLeavePriorSaveUntouched(t *testing.T) {
 	if !state.runDialogOpen || state.runDialogError == "" || len(state.namedRuns) != 1 {
 		t.Fatal("duplicate Run name replaced an existing command")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if !state.runDialogOpen || state.runSaveMode {
 		t.Fatal("Escape did not return from named-command form")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.runDialogOpen {

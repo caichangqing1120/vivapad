@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -67,7 +67,7 @@ func TestSummaryModalUsesActiveSplitViewAndPreservesEditingState(t *testing.T) {
 			t.Fatalf("summary close control clipped: %+v", hit.Bounds)
 		}
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil || state.summaryOpen {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.summaryOpen {
 		t.Fatalf("Escape did not dismiss summary: %v", err)
 	}
 	state.command("Summary...")

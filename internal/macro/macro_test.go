@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -219,11 +220,11 @@ func TestPrivateMacroRoundTripAndInvalidStorage(t *testing.T) {
 		t.Fatalf("saved macro = %+v, %v", got, err)
 	}
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || !privateMode(info.Mode()) {
 		t.Fatalf("macro file mode = %+v, %v", info, err)
 	}
 	info, err = os.Stat(filepath.Dir(path))
-	if err != nil || info.Mode().Perm() != 0700 {
+	if err != nil || !privateDirMode(info.Mode()) {
 		t.Fatalf("macro directory mode = %+v, %v", info, err)
 	}
 	if err := os.WriteFile(path, []byte(`{"version":2,"steps":[]}`), 0600); err != nil {
@@ -232,4 +233,24 @@ func TestPrivateMacroRoundTripAndInvalidStorage(t *testing.T) {
 	if _, err := Load(path); err == nil {
 		t.Fatal("future macro format accepted")
 	}
+}
+
+// privateMode reports whether mode carries the private-file metadata this
+// platform supports: POSIX 0600 on macOS and Linux, or a writable regular file
+// on Windows, where Go reports synthetic permission bits and VivaPad keeps the
+// privacy of its stores in the profile directory ACL (a separate gate).
+func privateMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsRegular() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0600
+}
+
+// privateDirMode reports whether mode carries a private directory's metadata:
+// POSIX 0700 on macOS and Linux, or a writable directory on Windows.
+func privateDirMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsDir() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0700
 }

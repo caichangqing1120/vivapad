@@ -87,15 +87,56 @@ func (doc *Document) sortLinesLocaleKeys(keys localeKeys, ascending bool) (bool,
 	return true, nil
 }
 
-func (doc *Document) RandomizeLines(random *rand.Rand) bool {
-	if random == nil {
-		return false
-	}
-	block := doc.sourceOrderBlock()
+// randomizeBlock is the line block RandomizeLines replaces: the source
+// selection without sourceOrderBlock's synthetic trailing empty line, so a
+// single-line document has nothing to permute.
+func (doc *Document) randomizeBlock() lineBlock {
+	return doc.selectedLineBlock()
+}
+
+// RandomizeLineTarget reports the inclusive line range that RandomizeLines
+// would replace when the operation is applicable. It lets callers apply a
+// target-scoped marker policy when a shuffle happens to reproduce the source
+// order (no edit is recorded, so no edit-driven marker mapping happens).
+func (doc *Document) RandomizeLineTarget() (start, end int, ok bool) {
+	block := doc.randomizeBlock()
 	if len(block.lines) < 2 {
-		return false
+		return 0, 0, false
+	}
+	value := doc.Editor.String()
+	if block.start < 0 || block.start > len(value) {
+		return 0, 0, false
+	}
+	start = strings.Count(value[:block.start], "\n")
+	end = start + len(block.lines) - 1
+	if total := strings.Count(value, "\n"); end > total {
+		end = total
+	}
+	return start, end, true
+}
+
+// RandomizeLinesOutcome reports whether the randomize changed the text, whether
+// it was applicable at all, and the refusal cause. applicable is true exactly
+// when an eligible block was replaced, even if the shuffle reproduced the order;
+// a refused edit returns applicable=false with the error.
+func (doc *Document) RandomizeLinesOutcome(random *rand.Rand) (changed, applicable bool, err error) {
+	if random == nil {
+		return false, false, nil
+	}
+	block := doc.randomizeBlock()
+	if len(block.lines) < 2 {
+		return false, false, nil
 	}
 	lines := append([]string(nil), block.lines...)
 	random.Shuffle(len(lines), func(first, second int) { lines[first], lines[second] = lines[second], lines[first] })
-	return doc.replaceSortedLineBlock(block, lines)
+	changed, err = doc.replaceSortedLineBlockOutcome(block, lines)
+	if err != nil {
+		return false, false, err
+	}
+	return changed, true, nil
+}
+
+func (doc *Document) RandomizeLines(random *rand.Rand) bool {
+	changed, _, _ := doc.RandomizeLinesOutcome(random)
+	return changed
 }

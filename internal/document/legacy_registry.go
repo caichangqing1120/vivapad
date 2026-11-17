@@ -1,7 +1,6 @@
 package document
 
 import (
-	"fmt"
 	"strings"
 
 	"golang.org/x/text/encoding"
@@ -89,11 +88,7 @@ func (format Encoding) EncodedLength(value string) (int, error) {
 	if format <= UTF16BE {
 		return len(value), nil
 	}
-	codec := legacyCodec(format)
-	if codec == nil {
-		return 0, fmt.Errorf("unsupported text encoding %d", format)
-	}
-	data, err := codec.NewEncoder().Bytes([]byte(value))
+	data, err := encodeLegacy(value, format)
 	return len(data), err
 }
 

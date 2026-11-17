@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/session"
 )
@@ -103,7 +103,7 @@ func TestDocumentListCoexistsWithOtherDocksAndMapAtCompactSize(t *testing.T) {
 	if err := driver.Resize(640, 400); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []ui.ID{leftDockDocumentsID, leftDockWorkspaceID, leftDockFunctionsID, documentMapID} {
+	for _, id := range []gfx.ID{leftDockDocumentsID, leftDockWorkspaceID, leftDockFunctionsID, documentMapID} {
 		found := false
 		for _, hit := range driver.Snapshot().Hits {
 			found = found || hit.ID == id
@@ -172,7 +172,7 @@ func TestDocumentListLongListScrollAndLiveStatus(t *testing.T) {
 	}
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID.Scope() == documentListRowScope {
-			if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 10, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 10, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
 				t.Fatal(err)
 			}
 			break

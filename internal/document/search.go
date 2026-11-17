@@ -1,7 +1,9 @@
 package document
 
 import (
+	"context"
 	"regexp"
+	"regexp/syntax"
 	"unicode"
 	"unicode/utf8"
 
@@ -155,6 +157,187 @@ func (doc *Document) MatchesWith(query string, options SearchOptions) ([]text.Sp
 		spans = append(spans, text.Span{Start: match[0], End: match[1]})
 	}
 	return spans, nil
+}
+
+// MatchesWithLimit collects up to limit matches and reports whether more exist.
+// Literal searches and regexes safe to bound stop at the first extra match.
+// Other regexes retain the full matching path so zero-width and context-
+// sensitive anchors keep their existing semantics.
+func (doc *Document) MatchesWithLimit(query string, options SearchOptions, limit int) ([]text.Span, bool, error) {
+	return doc.MatchesWithLimitContext(context.Background(), query, options, limit)
+}
+
+// MatchesWithLimitContext also checks cancellation while scanning rejected
+// literal candidates, which is important for directory searches with no hits.
+func (doc *Document) MatchesWithLimitContext(ctx context.Context, query string, options SearchOptions, limit int) ([]text.Span, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	expression, err := compileSearch(query, options)
+	if err != nil || expression == nil {
+		return nil, false, err
+	}
+	if options.Regex {
+		if !options.WholeWord && regexAlwaysConsumes(expression) {
+			matches := expression.FindAllStringIndex(doc.Editor.String(), limit+1)
+			if err := ctx.Err(); err != nil {
+				return nil, false, err
+			}
+			truncated := len(matches) > limit
+			spans := make([]text.Span, 0, min(len(matches), limit))
+			for index, match := range matches {
+				if index == limit {
+					break
+				}
+				spans = append(spans, text.Span{Start: match[0], End: match[1]})
+			}
+			return spans, truncated, nil
+		}
+		if !options.WholeWord || !regexCanResumeOnSuffix(expression) {
+			spans, err := doc.MatchesWith(query, options)
+			if canceled := ctx.Err(); canceled != nil {
+				return nil, false, canceled
+			}
+			if err != nil || len(spans) <= limit {
+				return spans, false, err
+			}
+			return spans[:limit], true, nil
+		}
+	}
+	value := doc.Editor.String()
+	spans := make([]text.Span, 0, min(limit, 64))
+	inspected := 0
+	collect := func(start, end int) (bool, error) {
+		inspected++
+		if inspected%1024 == 0 {
+			if err := ctx.Err(); err != nil {
+				return false, err
+			}
+		}
+		if options.WholeWord {
+			before, after := rune(0), rune(0)
+			if start > 0 {
+				before, _ = utf8.DecodeLastRuneInString(value[:start])
+			}
+			if end < len(value) {
+				after, _ = utf8.DecodeRuneInString(value[end:])
+			}
+			if wordRune(before) || wordRune(after) {
+				return false, nil
+			}
+		}
+		if len(spans) == limit {
+			return true, nil
+		}
+		spans = append(spans, text.Span{Start: start, End: end})
+		return false, nil
+	}
+	for pos := 0; pos < len(value); {
+		if options.Regex {
+			const batchSize = 256
+			matches := expression.FindAllStringIndex(value[pos:], batchSize)
+			if len(matches) == 0 {
+				break
+			}
+			origin := pos
+			for _, match := range matches {
+				truncated, err := collect(origin+match[0], origin+match[1])
+				if err != nil {
+					return nil, false, err
+				}
+				if truncated {
+					return spans, true, nil
+				}
+			}
+			pos = origin + matches[len(matches)-1][1]
+			continue
+		}
+		match := expression.FindStringIndex(value[pos:])
+		if match == nil {
+			break
+		}
+		start, end := pos+match[0], pos+match[1]
+		pos = end
+		truncated, err := collect(start, end)
+		if err != nil {
+			return nil, false, err
+		}
+		if truncated {
+			return spans, true, nil
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	return spans, false, nil
+}
+
+// A minimum positive width proves that FindAll's first limit+1 raw matches
+// are also its first limit+1 nonempty results. Unknown syntax stays on the
+// original full search path.
+func regexAlwaysConsumes(expression *regexp.Regexp) bool {
+	parsed, err := syntax.Parse(expression.String(), syntax.Perl)
+	if err != nil {
+		return false
+	}
+	var consumes func(*syntax.Regexp) bool
+	consumes = func(node *syntax.Regexp) bool {
+		switch node.Op {
+		case syntax.OpLiteral:
+			return len(node.Rune) > 0
+		case syntax.OpCharClass, syntax.OpAnyChar, syntax.OpAnyCharNotNL:
+			return true
+		case syntax.OpCapture, syntax.OpPlus:
+			return len(node.Sub) == 1 && consumes(node.Sub[0])
+		case syntax.OpRepeat:
+			return node.Min > 0 && len(node.Sub) == 1 && consumes(node.Sub[0])
+		case syntax.OpConcat:
+			for _, child := range node.Sub {
+				if consumes(child) {
+					return true
+				}
+			}
+		case syntax.OpAlternate:
+			if len(node.Sub) == 0 {
+				return false
+			}
+			for _, child := range node.Sub {
+				if !consumes(child) {
+					return false
+				}
+			}
+			return true
+		}
+		return false
+	}
+	return consumes(parsed)
+}
+
+// A suffix is equivalent to a search from that byte offset in the original
+// input only when the regex never inspects its surrounding text.
+func regexCanResumeOnSuffix(expression *regexp.Regexp) bool {
+	if !regexAlwaysConsumes(expression) {
+		return false
+	}
+	parsed, err := syntax.Parse(expression.String(), syntax.Perl)
+	if err != nil {
+		return false
+	}
+	var independent func(*syntax.Regexp) bool
+	independent = func(node *syntax.Regexp) bool {
+		switch node.Op {
+		case syntax.OpBeginLine, syntax.OpEndLine, syntax.OpBeginText, syntax.OpEndText,
+			syntax.OpWordBoundary, syntax.OpNoWordBoundary:
+			return false
+		}
+		for _, child := range node.Sub {
+			if !independent(child) {
+				return false
+			}
+		}
+		return true
+	}
+	return independent(parsed)
 }
 
 func (doc *Document) ReplaceCurrentWith(query, replacement string, options SearchOptions) (bool, error) {

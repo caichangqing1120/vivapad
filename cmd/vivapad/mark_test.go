@@ -20,7 +20,7 @@ func TestMarkAllPersistsAfterFindBarClosesAndCanClear(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(10))
+	clickID(t, driver, searchCommandID(t, "Mark..."))
 	if !state.markDialogOpen || len(state.markedSpans) != 0 {
 		t.Fatal("Mark menu should open without marking")
 	}
@@ -42,7 +42,7 @@ func TestMarkAllPersistsAfterFindBarClosesAndCanClear(t *testing.T) {
 		t.Fatal("changing the query erased stored marks")
 	}
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(11))
+	clickID(t, driver, searchCommandID(t, "Clear Marks"))
 	if state.markedDocument != nil || len(state.markedSpans) != 0 {
 		t.Fatal("Clear Marks left persistent highlights")
 	}

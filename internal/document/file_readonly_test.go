@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -40,7 +41,14 @@ func TestToggleFileReadOnlyPreservesOtherPermissionsAndSaveSafety(t *testing.T) 
 		t.Fatalf("clear read-only = %v, %v", readonly, err)
 	}
 	info, err = os.Stat(path)
-	if err != nil || info.Mode().Perm()&0222 != 0200 {
+	// Posix clears and then restores only owner-write. Windows clears the
+	// read-only attribute instead, and Go reports the resulting 0666 there, so
+	// the platform property to pin is the attribute, not the mode bits.
+	if runtime.GOOS == "windows" {
+		if err != nil || info.Mode().Perm()&0200 == 0 {
+			t.Fatalf("file attribute after clearing read-only = %v, %v", info.Mode(), err)
+		}
+	} else if err != nil || info.Mode().Perm()&0222 != 0200 {
 		t.Fatalf("file mode after clearing read-only = %v, %v", info.Mode(), err)
 	}
 	if err := doc.Save(""); err != nil {

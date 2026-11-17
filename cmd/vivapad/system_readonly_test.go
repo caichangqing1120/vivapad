@@ -63,6 +63,40 @@ func TestExistingFileAttributeProtectsNativeInputAndDirtySave(t *testing.T) {
 	}
 }
 
+func TestFailedSaveShowsPermissionCauseInCompactStatus(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "read-only-notes.txt")
+	if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{path})
+	doc := state.space.Current()
+	doc.Editor.Insert("draft ")
+	if err := os.Chmod(path, 0400); err != nil {
+		t.Fatal(err)
+	}
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer driver.Close()
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	state.command("Save")
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if state.notice != "Save failed: permission denied" {
+		t.Fatalf("compact Save notice hides the cause: %q", state.notice)
+	}
+	if doc.Editor.String() != "draft before" || !doc.Dirty() || !doc.Editor.CanUndo() {
+		t.Fatal("failed Save changed the dirty buffer or Undo history")
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "before" {
+		t.Fatalf("failed Save overwrote disk: %q, %v", data, err)
+	}
+}
+
 func TestOpeningReadOnlyFileKeepsInternalFlagSeparate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "already-readonly.txt")
 	if err := os.WriteFile(path, []byte("before"), 0400); err != nil {

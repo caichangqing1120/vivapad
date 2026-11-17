@@ -116,6 +116,10 @@ func (space *Workspace) AddOpened(doc *document.Document) error {
 	return nil
 }
 
+// Reload replaces the tab's document with a freshly opened one. The replacement
+// carries its own document identity, editor and change-history source; the
+// returned retired document keeps its own history and never transfers it to the
+// replacement (H03 document lifecycle).
 func (space *Workspace) Reload(index int) (*document.Document, error) {
 	return space.reload(index, false)
 }

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -39,8 +39,8 @@ func TestViewSymbolMenuFitsCompactAndDoesNotEdit(t *testing.T) {
 	if !state.showWhitespace || doc.Editor.String() != before || doc.Editor.CanUndo() || !state.isReadOnly(doc) {
 		t.Fatalf("space/tab toggle changed document: %q", doc.Editor.String())
 	}
-	var canvas ui.Canvas
-	state.paint(&canvas, ui.Size{Width: 640, Height: 400})
+	var canvas gfx.Canvas
+	state.paint(&canvas, gfx.Size{Width: 640, Height: 400})
 	marks := 0
 	for _, rectangle := range canvas.Rectangles() {
 		if rectangle.Color == symbolColor {
@@ -65,7 +65,7 @@ func TestViewSymbolMenuFitsCompactAndDoesNotEdit(t *testing.T) {
 	}
 	doc.SetLineEnding(document.CRLF)
 	canvas.Reset()
-	state.paint(&canvas, ui.Size{Width: 640, Height: 400})
+	state.paint(&canvas, gfx.Size{Width: 640, Height: 400})
 	seenCRLF := false
 	for _, label := range canvas.Texts() {
 		seenCRLF = seenCRLF || label.Value == "CRLF"
@@ -101,7 +101,7 @@ func TestSymbolSettingsPersistAndApplyToBothSplitViews(t *testing.T) {
 	if count != 2 || restored.space.Current().Editor.String() != "a\nb" {
 		t.Fatalf("two-view EOL labels=%d text=%q", count, restored.space.Current().Editor.String())
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 }

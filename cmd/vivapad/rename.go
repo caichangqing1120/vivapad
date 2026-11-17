@@ -7,8 +7,8 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -110,21 +110,21 @@ func (state *model) cancelRename() {
 	state.renameFocus = false
 }
 
-func (state *model) paintRenameDialog(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintRenameDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.SetEscapeTarget(renameCancelID)
 	canvas.PushLayer(3)
-	canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.RGBA(0, 0, 0, 0.25))
-	canvas.HitWithOptions(dialogBackdropID, ui.Rect{Width: size.Width, Height: size.Height}, "Rename dialog", ui.HitOptions{Role: ui.RoleButton, SkipFocus: true})
+	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
+	canvas.HitWithOptions(dialogBackdropID, gfx.Rect{Width: size.Width, Height: size.Height}, "Rename dialog", gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true})
 	canvas.PushLayer(4)
 	width := min(float32(388), size.Width-32)
 	x, y := (size.Width-width)/2, (size.Height-158)/2
-	canvas.RoundedBorder(ui.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.white)
 	if state.renameDoc != nil {
-		smallLabel(canvas, "Rename Current Tab", ui.Rect{X: x + 20, Y: y + 16, Width: width - 40, Height: 30}, palette.text, 15)
-		theme := ui.LightTheme()
+		smallLabel(canvas, "Rename Current Tab", gfx.Rect{X: x + 20, Y: y + 16, Width: width - 40, Height: 30}, palette.text, 15)
+		theme := gfx.LightTheme()
 		theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 28, 12, 2
 		theme.Border, theme.Ring = palette.border, palette.blue
-		components.PaintInput(canvas, theme, ui.Rect{X: x + 20, Y: y + 55, Width: width - 40, Height: 28}, components.InputSnapshot{
+		components.PaintInput(canvas, theme, gfx.Rect{X: x + 20, Y: y + 55, Width: width - 40, Height: 28}, components.InputSnapshot{
 			ID: renameFieldID, Label: "New tab name", Value: state.renameField.String(), PlatformEditing: canvas.Focused() == renameFieldID,
 		})
 		if state.renameFocus {
@@ -132,14 +132,14 @@ func (state *model) paintRenameDialog(canvas *ui.Canvas, size ui.Size) {
 			state.renameFocus = false
 		}
 	} else {
-		smallLabel(canvas, "Replace existing file?", ui.Rect{X: x + 20, Y: y + 16, Width: width - 40, Height: 30}, palette.text, 15)
-		name := canvas.FitLine(filepath.Base(state.renamePlan.Target), 13, ui.WeightRegular, width-40)
-		smallLabel(canvas, name, ui.Rect{X: x + 20, Y: y + 50, Width: width - 40, Height: 24}, palette.text, 13)
-		directory := canvas.FitLine(filepath.Dir(state.renamePlan.Target), 10, ui.WeightRegular, width-40)
-		smallLabel(canvas, directory, ui.Rect{X: x + 20, Y: y + 75, Width: width - 40, Height: 20}, palette.muted, 10)
+		smallLabel(canvas, "Replace existing file?", gfx.Rect{X: x + 20, Y: y + 16, Width: width - 40, Height: 30}, palette.text, 15)
+		name := canvas.FitLine(filepath.Base(state.renamePlan.Target), 13, gfx.WeightRegular, width-40)
+		smallLabel(canvas, name, gfx.Rect{X: x + 20, Y: y + 50, Width: width - 40, Height: 24}, palette.text, 13)
+		directory := canvas.FitLine(filepath.Dir(state.renamePlan.Target), 10, gfx.WeightRegular, width-40)
+		smallLabel(canvas, directory, gfx.Rect{X: x + 20, Y: y + 75, Width: width - 40, Height: 20}, palette.muted, 10)
 	}
 	buttons := []struct {
-		id    ui.ID
+		id    gfx.ID
 		label string
 		x     float32
 	}{
@@ -148,15 +148,15 @@ func (state *model) paintRenameDialog(canvas *ui.Canvas, size ui.Size) {
 	}
 	if state.renamePlan != nil {
 		buttons[1] = struct {
-			id    ui.ID
+			id    gfx.ID
 			label string
 			x     float32
 		}{renameConfirmID, "Replace", x + width - 196}
 	}
 	for _, button := range buttons {
-		bounds := ui.Rect{X: button.x, Y: y + 105, Width: 80, Height: 30}
+		bounds := gfx.Rect{X: button.x, Y: y + 105, Width: 80, Height: 30}
 		canvas.Border(bounds, 1, palette.border, palette.toolbar)
-		canvas.LabelCenter(button.label, bounds, ui.TextStyle{Size: 12, Color: palette.text})
+		canvas.LabelCenter(button.label, bounds, gfx.TextStyle{Size: 12, Color: palette.text})
 		if hitButton(canvas, button.id, bounds, button.label) {
 			switch button.id {
 			case renameCancelID:

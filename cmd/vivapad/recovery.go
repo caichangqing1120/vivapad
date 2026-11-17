@@ -24,6 +24,7 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 		return
 	}
 	var recoveredActive *document.Document
+	var historyErr error
 	for index, tab := range stored.Tabs {
 		var doc *document.Document
 		if tab.Path != "" {
@@ -52,15 +53,12 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 		doc.Editor.Insert(tab.Content)
 		doc.Editor.SetSelection(text.Range{Start: tab.SelectionStart, End: tab.SelectionEnd})
 		doc.SetEncoding(tab.Encoding)
-		doc.SetLineEnding(tab.LineEnding)
+		if err := doc.RestoreLineEndings(tab.LineEnding, tab.LineEndings); err != nil {
+			state.notice = "Recovery EOL unavailable: " + err.Error()
+		}
 		if tab.LanguageSelected {
 			state.languages[doc] = tab.Language
 			state.configureCode(doc)
-		}
-		if tab.LineEndings != "" {
-			if err := doc.RestoreEOLSequence(tab.LineEndings); err != nil {
-				state.notice = "Recovery EOL unavailable: " + err.Error()
-			}
 		}
 		doc.MarkRecovered()
 		if err := state.applyFoldHeaders(doc, tab.FoldedHeaders); err != nil {
@@ -72,6 +70,11 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 			state.tabColors[doc] = tab.TabColor
 		}
 		state.paneOwner[doc] = tab.Pane
+		// The restore edits are real undoable edits on the document's bound
+		// source; consume them once and keep the explicit unavailable error.
+		if _, err := doc.ChangeHistory(); err != nil && historyErr == nil {
+			historyErr = err
+		}
 		if index == stored.Active {
 			recoveredActive = doc
 		}
@@ -112,6 +115,9 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 	}
 	if len(stored.Tabs) != 0 {
 		state.notice = fmt.Sprintf("Recovered %d unsaved document(s)", len(stored.Tabs))
+	}
+	if historyErr != nil {
+		state.notice += "; " + historyErr.Error()
 	}
 }
 

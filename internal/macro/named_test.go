@@ -37,7 +37,7 @@ func TestNamedMacrosRoundTripAndRejectInvalidWithoutOverwriting(t *testing.T) {
 			t.Fatalf("invalid save changed store: %q, %v", data, err)
 		}
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0600 {
+	if info, err := os.Stat(path); err != nil || !privateMode(info.Mode()) {
 		t.Fatalf("named store permissions = %+v, %v", info, err)
 	}
 }

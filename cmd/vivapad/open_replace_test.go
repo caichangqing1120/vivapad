@@ -68,7 +68,7 @@ func TestReplaceAllOpenDocumentsFailsBeforeAnyTabWhenLegacyCannotEncode(t *testi
 	state.query.Insert("cat")
 	state.replacement.Insert("中文")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(9))
+	clickID(t, driver, searchCommandID(t, "Replace All in Open Documents"))
 	if first.Editor.String() != "cat" || second.Editor.String() != "cat" || first.Dirty() || second.Dirty() ||
 		!strings.Contains(state.notice, "cannot be saved") {
 		t.Fatalf("unsafe batch partially changed tabs: first:%q second:%q notice:%q", first.Editor.String(), second.Editor.String(), state.notice)
@@ -84,12 +84,12 @@ func TestReplaceAllOpenDocumentsInvalidatesOldFindResults(t *testing.T) {
 	state.query.Insert("cat")
 	state.replacement.Insert("dog")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(8))
+	clickID(t, driver, searchCommandID(t, "Find All in Open Documents"))
 	if !state.resultsOpen || !state.resultOpenDocuments {
 		t.Fatal("missing prior search results")
 	}
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(9))
+	clickID(t, driver, searchCommandID(t, "Replace All in Open Documents"))
 	if state.resultsOpen || state.resultOpenDocuments || len(state.resultDocuments) != 0 || state.space.Current().Editor.String() != "dog dog" {
 		t.Fatalf("replace left stale results: open=%v sources=%d text=%q", state.resultsOpen, len(state.resultDocuments), state.space.Current().Editor.String())
 	}

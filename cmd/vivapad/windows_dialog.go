@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -137,24 +137,24 @@ func (state *model) applyWindowsDialogSort() {
 	state.refreshWindowsRows()
 }
 
-func (state *model) scrollWindowsDialog(event ui.ScrollEvent) ui.EventResult {
+func (state *model) scrollWindowsDialog(event gfx.ScrollEvent) gfx.EventResult {
 	step := 1
 	if event.StepY(23) < 0 {
 		step = -1
 	}
 	state.windowsOffset = min(max(0, state.windowsOffset+step), max(0, len(state.windowsRows)-state.windowsVisible))
-	return ui.EventResult{Handled: true, Repaint: true}
+	return gfx.EventResult{Handled: true, Repaint: true}
 }
 
-func (state *model) windowsDialogKey(event ui.KeyEvent) ui.EventResult {
+func (state *model) windowsDialogKey(event gfx.KeyEvent) gfx.EventResult {
 	switch event.Key {
-	case ui.KeyEscape:
+	case gfx.KeyEscape:
 		state.closeWindowsDialog()
-	case ui.KeyEnter:
+	case gfx.KeyEnter:
 		state.activateWindowsDialogDocument()
-	case ui.KeyDown, ui.KeyUp:
+	case gfx.KeyDown, gfx.KeyUp:
 		index := slices.Index(state.windowsRows, state.windowsFocused)
-		if event.Key == ui.KeyDown {
+		if event.Key == gfx.KeyDown {
 			index++
 		} else {
 			index--
@@ -169,63 +169,63 @@ func (state *model) windowsDialogKey(event ui.KeyEvent) ui.EventResult {
 			}
 		}
 	}
-	return ui.EventResult{Handled: true, Repaint: true}
+	return gfx.EventResult{Handled: true, Repaint: true}
 }
 
 func windowDialogColumns(width float32) [5]float32 {
 	return [5]float32{width * 0.25, width * 0.34, width * 0.17, width * 0.11, width * 0.13}
 }
 
-func (state *model) paintWindowsDialog(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 	state.refreshWindowsRows()
 	canvas.SetEscapeTarget(windowsOKID)
 	canvas.PushLayer(3)
-	canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.RGBA(0, 0, 0, 0.25))
-	canvas.HitWithOptions(dialogBackdropID, ui.Rect{Width: size.Width, Height: size.Height}, "Windows dialog", ui.HitOptions{Role: ui.RoleButton, SkipFocus: true})
+	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
+	canvas.HitWithOptions(dialogBackdropID, gfx.Rect{Width: size.Width, Height: size.Height}, "Windows dialog", gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true})
 	canvas.PushLayer(4)
 	width, height := min(float32(620), size.Width-24), min(float32(360), max(260, float32(len(state.windowsRows))*23+150), size.Height-28)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(ui.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
 	title := "Windows - " + strconv.Itoa(len(state.windowsRows)) + " documents"
-	smallLabel(canvas, title, ui.Rect{X: x + 14, Y: y + 10, Width: width - 28, Height: 27}, palette.text, 15)
-	list := ui.Rect{X: x + 12, Y: y + 45, Width: width - 143, Height: height - 83}
+	smallLabel(canvas, title, gfx.Rect{X: x + 14, Y: y + 10, Width: width - 28, Height: 27}, palette.text, 15)
+	list := gfx.Rect{X: x + 12, Y: y + 45, Width: width - 143, Height: height - 83}
 	canvas.Border(list, 1, palette.border, palette.white)
 	columns := windowDialogColumns(list.Width)
 	columnX := list.X
 	for index, label := range windowsColumns {
-		bounds := ui.Rect{X: columnX, Y: list.Y + 1, Width: columns[index], Height: 24}
+		bounds := gfx.Rect{X: columnX, Y: list.Y + 1, Width: columns[index], Height: 24}
 		id := windowsHeaderScope.At(index)
 		if canvas.Hovered() == id {
 			canvas.Fill(bounds, palette.hover)
 		}
-		short := canvas.FitLine(label, 10, ui.WeightRegular, bounds.Width-8)
-		smallLabel(canvas, short, ui.Rect{X: bounds.X + 4, Y: bounds.Y, Width: bounds.Width - 8, Height: bounds.Height}, palette.text, 10)
-		canvas.HitWithOptions(id, bounds, "Sort by "+label, ui.HitOptions{Role: ui.RoleButton})
+		short := canvas.FitLine(label, 10, gfx.WeightRegular, bounds.Width-8)
+		smallLabel(canvas, short, gfx.Rect{X: bounds.X + 4, Y: bounds.Y, Width: bounds.Width - 8, Height: bounds.Height}, palette.text, 10)
+		canvas.HitWithOptions(id, bounds, "Sort by "+label, gfx.HitOptions{Role: gfx.RoleButton})
 		if canvas.Clicked(id) {
 			state.sortWindowsDialogBy(index)
 		}
 		columnX += columns[index]
 	}
-	canvas.Fill(ui.Rect{X: list.X, Y: list.Y + 25, Width: list.Width, Height: 1}, palette.border)
-	rowArea := ui.Rect{X: list.X + 1, Y: list.Y + 26, Width: list.Width - 2, Height: list.Height - 54}
+	canvas.Fill(gfx.Rect{X: list.X, Y: list.Y + 25, Width: list.Width, Height: 1}, palette.border)
+	rowArea := gfx.Rect{X: list.X + 1, Y: list.Y + 26, Width: list.Width - 2, Height: list.Height - 54}
 	state.windowsVisible = max(1, int(rowArea.Height/23))
 	state.windowsOffset = min(max(0, state.windowsOffset), max(0, len(state.windowsRows)-state.windowsVisible))
-	canvas.HitWithOptions(windowsPanelID, rowArea, "Open windows", ui.HitOptions{Role: ui.RoleGroup})
+	canvas.HitWithOptions(windowsPanelID, rowArea, "Open windows", gfx.HitOptions{Role: gfx.RoleGroup})
 	canvas.Clip(rowArea)
 	for index := state.windowsOffset; index < len(state.windowsRows) && index-state.windowsOffset < state.windowsVisible; index++ {
 		doc := state.windowsRows[index]
-		item := ui.Rect{X: rowArea.X, Y: rowArea.Y + float32(index-state.windowsOffset)*23, Width: rowArea.Width, Height: 23}
+		item := gfx.Rect{X: rowArea.X, Y: rowArea.Y + float32(index-state.windowsOffset)*23, Width: rowArea.Width, Height: 23}
 		id := windowsRowScope.At(index)
 		selected := state.windowsSelected[doc]
 		if selected || canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		} else if doc == state.windowsFocused {
-			canvas.Fill(item, ui.RGB(242, 243, 245))
+			canvas.Fill(item, gfx.RGB(242, 243, 245))
 		}
-		box := ui.Rect{X: item.X + 4, Y: item.Y + 5, Width: 13, Height: 13}
+		box := gfx.Rect{X: item.X + 4, Y: item.Y + 5, Width: 13, Height: 13}
 		canvas.Border(box, 1, palette.border, palette.white)
 		if selected {
-			canvas.DrawIcon(checkIcon, box.Inset(ui.All(1)), palette.blue)
+			canvas.DrawIcon(checkIcon, box.Inset(gfx.All(1)), palette.blue)
 		}
 		path := doc.Path
 		if path == "" {
@@ -244,11 +244,11 @@ func (state *model) paintWindowsDialog(canvas *ui.Canvas, size ui.Size) {
 			if column == 0 {
 				indent = 22
 			}
-			fit := canvas.FitLine(content, 10, ui.WeightRegular, columns[column]-indent-4)
-			smallLabel(canvas, fit, ui.Rect{X: cellX + indent, Y: item.Y, Width: columns[column] - indent - 4, Height: item.Height}, palette.text, 10)
+			fit := canvas.FitLine(content, 10, gfx.WeightRegular, columns[column]-indent-4)
+			smallLabel(canvas, fit, gfx.Rect{X: cellX + indent, Y: item.Y, Width: columns[column] - indent - 4, Height: item.Height}, palette.text, 10)
 			cellX += columns[column]
 		}
-		canvas.HitWithOptions(id, item, "Select "+doc.Name, ui.HitOptions{Role: ui.RoleCheckbox, Checked: selected, Hint: path})
+		canvas.HitWithOptions(id, item, "Select "+doc.Name, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: selected, Hint: path})
 		if canvas.Clicked(id) {
 			if selected {
 				delete(state.windowsSelected, doc)
@@ -260,8 +260,8 @@ func (state *model) paintWindowsDialog(canvas *ui.Canvas, size ui.Size) {
 	}
 	canvas.Unclip()
 	for _, button := range []struct {
-		id    ui.ID
-		icon  ui.Icon
+		id    gfx.ID
+		icon  gfx.Icon
 		label string
 		x     float32
 		step  int
@@ -269,18 +269,18 @@ func (state *model) paintWindowsDialog(canvas *ui.Canvas, size ui.Size) {
 		{windowsPreviousID, upIcon, "Previous windows", list.X + 3, -1},
 		{windowsNextID, downIcon, "Next windows", list.X + list.Width - 27, 1},
 	} {
-		bounds := ui.Rect{X: button.x, Y: list.Y + list.Height - 25, Width: 24, Height: 22}
-		canvas.DrawIcon(button.icon, bounds.Inset(ui.All(4)), palette.muted)
+		bounds := gfx.Rect{X: button.x, Y: list.Y + list.Height - 25, Width: 24, Height: 22}
+		canvas.DrawIcon(button.icon, bounds.Inset(gfx.All(4)), palette.muted)
 		if hitButton(canvas, button.id, bounds, button.label) {
 			state.windowsOffset = min(max(0, state.windowsOffset+button.step), max(0, len(state.windowsRows)-state.windowsVisible))
 		}
 	}
 	if state.windowsMessage != "" {
-		message := canvas.FitLine(state.windowsMessage, 10, ui.WeightRegular, list.Width-62)
-		smallLabel(canvas, message, ui.Rect{X: list.X + 31, Y: list.Y + list.Height - 25, Width: list.Width - 62, Height: 22}, palette.muted, 10)
+		message := canvas.FitLine(state.windowsMessage, 10, gfx.WeightRegular, list.Width-62)
+		smallLabel(canvas, message, gfx.Rect{X: list.X + 31, Y: list.Y + list.Height - 25, Width: list.Width - 62, Height: 22}, palette.muted, 10)
 	}
 	for index, button := range []struct {
-		id    ui.ID
+		id    gfx.ID
 		label string
 	}{
 		{windowsActivateID, "Activate"},
@@ -289,10 +289,10 @@ func (state *model) paintWindowsDialog(canvas *ui.Canvas, size ui.Size) {
 		{windowsSortTabsID, "Sort tabs"},
 		{windowsOKID, "OK"},
 	} {
-		bounds := ui.Rect{X: x + width - 117, Y: y + 47 + float32(index)*40, Width: 102, Height: 29}
+		bounds := gfx.Rect{X: x + width - 117, Y: y + 47 + float32(index)*40, Width: 102, Height: 29}
 		canvas.Border(bounds, 1, palette.border, palette.toolbar)
-		label := canvas.FitLine(button.label, 11, ui.WeightRegular, bounds.Width-12)
-		canvas.LabelCenter(label, bounds, ui.TextStyle{Size: 11, Color: palette.text})
+		label := canvas.FitLine(button.label, 11, gfx.WeightRegular, bounds.Width-12)
+		canvas.LabelCenter(label, bounds, gfx.TextStyle{Size: 11, Color: palette.text})
 		if hitButton(canvas, button.id, bounds, button.label) {
 			switch button.id {
 			case windowsActivateID:

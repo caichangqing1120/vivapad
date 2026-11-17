@@ -3,9 +3,10 @@ package printing
 import (
 	"bytes"
 	"os"
+	"strings"
 	"testing"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestPDFRendererUsesEmbeddedFontMetricsAndPrinterPage(t *testing.T) {
@@ -34,7 +35,7 @@ func TestPDFRendererUsesEmbeddedFontMetricsAndPrinterPage(t *testing.T) {
 	if err != nil || len(pages) != 1 {
 		t.Fatalf("PDF pagination = %d pages, %v", len(pages), err)
 	}
-	pages[0].Styles = [][]ColorRun{{{StartByte: 0, EndByte: 5, Color: ui.RGB(64, 102, 191)}}, nil}
+	pages[0].Styles = [][]ColorRun{{{StartByte: 0, EndByte: 5, Color: gfx.RGB(64, 102, 191)}}, nil}
 	output, err := renderer.Render(job, pages, device)
 	if err != nil || len(output) < 1000 || !bytes.HasPrefix(output, []byte("%PDF-")) {
 		t.Fatalf("rendered PDF = %d bytes, %v", len(output), err)
@@ -77,6 +78,68 @@ func TestPDFRendererRejectsInvalidFontAndPage(t *testing.T) {
 	}
 	if _, err := renderer.Render(Job{Text: "🙂"}, []Page{{Number: 1, Rows: []Row{{StartByte: 0, EndByte: len("🙂"), Text: "🙂"}}}}, DeviceMetrics{PaperWidth: 595, PaperHeight: 842}); err == nil {
 		t.Fatal("missing font glyph was silently omitted")
+	}
+}
+
+func TestPDFRendererUsesCoveredFallbackForStyledMusicAndBand(t *testing.T) {
+	primary, err := os.ReadFile("fonts/NotoSansSC.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	music, err := os.ReadFile("fonts/NotoMusic-Regular.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const value = "alpha \U0001d11e \u4f60\u597d\nendPRINTJOB"
+	job := Job{Title: "music.txt", Text: value, Settings: DefaultSettings()}
+	job.Settings.Header = TextBand{Left: "Score \U0001d11e"}
+	device := DeviceMetrics{PaperWidth: 595.28, PaperHeight: 841.89,
+		PhysicalMargins: Insets{Left: 18, Top: 18, Right: 18, Bottom: 18}}
+
+	old, err := newPDFRenderer(primary, 13, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	device.HeaderLineHeight = old.BandHeight(job.Settings.HeaderFont)
+	device.FooterLineHeight = old.BandHeight(job.Settings.FooterFont)
+	pages, err := Paginate(job, device, old.Metrics(), PageVariables{})
+	if err != nil || len(pages) != 1 {
+		t.Fatalf("old pagination = %d pages, %v", len(pages), err)
+	}
+	if _, err := old.Render(job, pages, device); err == nil || !strings.Contains(err.Error(), "U+1D11E") {
+		t.Fatalf("precondition: primary font unexpectedly printed the missing glyph: %v", err)
+	}
+
+	renderer, err := newPDFRendererWithFallback(primary, 13, 4, music)
+	if err != nil {
+		t.Fatalf("prepare licensed fallback: %v", err)
+	}
+	if renderer.Metrics().Advance("\U0001d11e") <= 0 ||
+		renderer.Metrics().Advance("A\U0001d11e") <= renderer.Metrics().Advance("A") {
+		t.Fatal("fallback glyph did not contribute to pagination width")
+	}
+	device.HeaderLineHeight = renderer.BandHeight(job.Settings.HeaderFont)
+	device.FooterLineHeight = renderer.BandHeight(job.Settings.FooterFont)
+	pages, err = Paginate(job, device, renderer.Metrics(), PageVariables{})
+	if err != nil || len(pages) != 1 || len(pages[0].Rows) != 2 {
+		t.Fatalf("fallback pagination = %+v, %v", pages, err)
+	}
+	start := strings.Index(value, "\U0001d11e")
+	pages[0].Styles = make([][]ColorRun, len(pages[0].Rows))
+	pages[0].Styles[0] = []ColorRun{{StartByte: start, EndByte: start + len("\U0001d11e"), Color: gfx.RGB(64, 102, 191)}}
+	output, err := renderer.Render(job, pages, device)
+	if err != nil || len(output) < 1000 || !bytes.HasPrefix(output, []byte("%PDF-")) {
+		t.Fatalf("fallback PDF = %d bytes, %v", len(output), err)
+	}
+	if path := os.Getenv("VIVAPAD_MUSIC_PDF_PREVIEW_OUTPUT"); path != "" {
+		if err := os.WriteFile(path, output, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job.Text = "\U0001f642"
+	if _, err := renderer.Render(job, []Page{{Number: 1, Bounds: pages[0].Bounds,
+		TextBounds: pages[0].TextBounds, Rows: []Row{{StartByte: 0, EndByte: len(job.Text), Text: job.Text}}}}, device); err == nil || !strings.Contains(err.Error(), "U+1F642") {
+		t.Fatalf("unsupported glyph was accepted or silently omitted: %v", err)
 	}
 }
 

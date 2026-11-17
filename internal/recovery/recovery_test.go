@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -12,8 +13,11 @@ import (
 
 func TestSaveLoadPrivateDirtyBuffers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "VivaPad", "recovery.json")
+	// A saved-path tab keeps a platform-absolute path: "/tmp/example.go" is not
+	// absolute on Windows, where Save rejects it.
+	saved := filepath.Join(t.TempDir(), "example.go")
 	want := State{Active: 0, Tabs: []Tab{{
-		Path: "/tmp/example.go", Name: "example.go", Content: "猫\ntext",
+		Path: saved, Name: "example.go", Content: "猫\ntext",
 		Encoding: document.UTF8, LineEnding: document.LF,
 		DiskDigest: strings.Repeat("a", 64), SelectionStart: 1, SelectionEnd: 1, ReadOnly: true, Pinned: true,
 	}}}
@@ -25,11 +29,11 @@ func TestSaveLoadPrivateDirtyBuffers(t *testing.T) {
 		t.Fatalf("loaded=%+v err=%v, want %+v", got, err, want)
 	}
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || !privateMode(info.Mode()) {
 		t.Fatalf("backup file permissions = %+v, %v", info, err)
 	}
 	directory, err := os.Stat(filepath.Dir(path))
-	if err != nil || directory.Mode().Perm()&0077 != 0 {
+	if err != nil || !privateDirMode(directory.Mode()) {
 		t.Fatalf("backup directory permissions = %+v, %v", directory, err)
 	}
 	if err := Clear(path); err != nil {
@@ -245,4 +249,24 @@ func TestRecoveryFoldHeadersRoundTripAndRejectUnsafeLines(t *testing.T) {
 	if err := Save(path, want); err == nil {
 		t.Fatal("out-of-range recovery fold accepted")
 	}
+}
+
+// privateMode reports whether mode carries the private-file metadata this
+// platform supports: POSIX 0600 on macOS and Linux, or a writable regular file
+// on Windows, where Go reports synthetic permission bits and VivaPad keeps the
+// privacy of its stores in the profile directory ACL (a separate gate).
+func privateMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsRegular() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0600
+}
+
+// privateDirMode reports whether mode carries a private directory's metadata:
+// POSIX 0700 on macOS and Linux, or a writable directory on Windows.
+func privateDirMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsDir() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0700
 }

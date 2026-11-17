@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestIndentGuideMenuPaintsBothViewsWithoutEditingAndPersists(t *testing.T) {
@@ -52,8 +52,8 @@ func TestIndentGuideMenuPaintsBothViewsWithoutEditingAndPersists(t *testing.T) {
 	guide := symbolColor
 	guide.Alpha *= 0.5
 	count := func() int {
-		var canvas ui.Canvas
-		state.paint(&canvas, ui.Size{Width: 640, Height: 400})
+		var canvas gfx.Canvas
+		state.paint(&canvas, gfx.Size{Width: 640, Height: 400})
 		marks := 0
 		for _, rectangle := range canvas.Rectangles() {
 			if rectangle.Color == guide {
@@ -113,10 +113,10 @@ func TestCaptureIndentGuideMenuWhenRequested(t *testing.T) {
 		if err := session.Screenshot(filepath.Join(output, "indent-guide-menu-"+size.name+".png")); err != nil {
 			t.Fatal(err)
 		}
-		if err := session.Driver().Key(ui.KeyEscape, 0); err != nil {
+		if err := session.Driver().Key(gfx.KeyEscape, 0); err != nil {
 			t.Fatal(err)
 		}
-		if err := session.Driver().Key(ui.KeyEscape, 0); err != nil {
+		if err := session.Driver().Key(gfx.KeyEscape, 0); err != nil {
 			t.Fatal(err)
 		}
 	}

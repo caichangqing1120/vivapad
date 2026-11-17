@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestCompactViewMenuScrollReachesEveryCommandAtReadableHeight(t *testing.T) {
@@ -35,7 +35,7 @@ func TestCompactViewMenuScrollReachesEveryCommandAtReadableHeight(t *testing.T) 
 		}
 		if step == 0 {
 			bounds := syncScrollHit(t, driver, menuItemScope.At(1))
-			if err := driver.Scroll(ui.ScrollEvent{X: bounds.X + 20, Y: bounds.Y + 8, DeltaY: 120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: bounds.X + 20, Y: bounds.Y + 8, DeltaY: 120}); err != nil {
 				t.Fatal(err)
 			}
 			if state.viewMenuOffset == 0 {

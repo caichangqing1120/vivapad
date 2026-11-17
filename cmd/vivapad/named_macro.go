@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/macro"
 )
 
@@ -115,7 +115,7 @@ func (state *model) applyMacroDialog() {
 	state.closeMacroDialog()
 }
 
-func (state *model) paintSavedMacroMenu(canvas *ui.Canvas, size ui.Size, parentRight float32) {
+func (state *model) paintSavedMacroMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
 	width := min(float32(260), size.Width-8)
 	x := parentRight
 	if x+width > size.Width-4 {
@@ -135,13 +135,13 @@ func (state *model) paintSavedMacroMenu(canvas *ui.Canvas, size ui.Size, parentR
 	height := float32(visible)*rowHeight + controls + 8
 	y := max(menuHeight, min(menuHeight+4+7*27, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	panel := ui.Rect{X: x, Y: y, Width: width, Height: height}
+	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
 	canvas.Border(panel, 1, palette.border, palette.white)
-	canvas.HitWithOptions(savedMacroPanelID, panel, "Saved macros", ui.HitOptions{Role: ui.RoleMenu})
+	canvas.HitWithOptions(savedMacroPanelID, panel, "Saved macros", gfx.HitOptions{Role: gfx.RoleMenu})
 	if scrolling {
 		for _, control := range []struct {
-			id    ui.ID
-			icon  ui.Icon
+			id    gfx.ID
+			icon  gfx.Icon
 			label string
 			y     float32
 			step  int
@@ -149,9 +149,9 @@ func (state *model) paintSavedMacroMenu(canvas *ui.Canvas, size ui.Size, parentR
 			{savedMacroPrevID, upIcon, "Previous saved macros", y + 4, -1},
 			{savedMacroNextID, downIcon, "Next saved macros", y + height - 26, 1},
 		} {
-			bounds := ui.Rect{X: x + 4, Y: control.y, Width: width - 8, Height: 22}
-			canvas.DrawIcon(control.icon, ui.Rect{X: bounds.X + bounds.Width/2 - 8, Y: bounds.Y + 3, Width: 16, Height: 16}, palette.muted)
-			canvas.HitWithOptions(control.id, bounds, control.label, ui.HitOptions{Role: ui.RoleMenuItem})
+			bounds := gfx.Rect{X: x + 4, Y: control.y, Width: width - 8, Height: 22}
+			canvas.DrawIcon(control.icon, gfx.Rect{X: bounds.X + bounds.Width/2 - 8, Y: bounds.Y + 3, Width: 16, Height: 16}, palette.muted)
+			canvas.HitWithOptions(control.id, bounds, control.label, gfx.HitOptions{Role: gfx.RoleMenuItem})
 			if canvas.Clicked(control.id) {
 				state.savedMacroOffset = min(max(0, state.savedMacroOffset+control.step), len(state.namedMacros)-visible)
 			}
@@ -159,19 +159,19 @@ func (state *model) paintSavedMacroMenu(canvas *ui.Canvas, size ui.Size, parentR
 	}
 	selected := -1
 	if len(state.namedMacros) == 0 {
-		smallLabel(canvas, "No saved macros", ui.Rect{X: x + 12, Y: y + 4, Width: width - 24, Height: 24}, palette.muted, 11)
+		smallLabel(canvas, "No saved macros", gfx.Rect{X: x + 12, Y: y + 4, Width: width - 24, Height: 24}, palette.muted, 11)
 	}
 	for row := 0; row < visible && row+state.savedMacroOffset < len(state.namedMacros); row++ {
 		index := state.savedMacroOffset + row
 		name := state.namedMacros[index].Name
-		item := ui.Rect{X: x + 4, Y: y + 4 + controls/2 + float32(row)*rowHeight, Width: width - 8, Height: rowHeight}
+		item := gfx.Rect{X: x + 4, Y: y + 4 + controls/2 + float32(row)*rowHeight, Width: width - 8, Height: rowHeight}
 		id := savedMacroScope.At(index)
 		if canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
-		label := canvas.FitLine(name, 11, ui.WeightRegular, item.Width-18)
-		smallLabel(canvas, label, ui.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, palette.text, 11)
-		canvas.HitWithOptions(id, item, name, ui.HitOptions{Role: ui.RoleMenuItem})
+		label := canvas.FitLine(name, 11, gfx.WeightRegular, item.Width-18)
+		smallLabel(canvas, label, gfx.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, palette.text, 11)
+		canvas.HitWithOptions(id, item, name, gfx.HitOptions{Role: gfx.RoleMenuItem})
 		if canvas.Clicked(id) {
 			selected = index
 		}
@@ -183,11 +183,11 @@ func (state *model) paintSavedMacroMenu(canvas *ui.Canvas, size ui.Size, parentR
 	}
 }
 
-func (state *model) paintMacroDialog(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintMacroDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.SetEscapeTarget(macroCancelID)
 	canvas.PushLayer(3)
-	canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.RGBA(0, 0, 0, 0.25))
-	canvas.HitWithOptions(dialogBackdropID, ui.Rect{Width: size.Width, Height: size.Height}, "Macro dialog", ui.HitOptions{Role: ui.RoleButton, SkipFocus: true})
+	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
+	canvas.HitWithOptions(dialogBackdropID, gfx.Rect{Width: size.Width, Height: size.Height}, "Macro dialog", gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true})
 	canvas.PushLayer(4)
 	width := min(float32(420), size.Width-32)
 	height := float32(170)
@@ -195,37 +195,37 @@ func (state *model) paintMacroDialog(canvas *ui.Canvas, size ui.Size) {
 		height = 260
 	}
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(ui.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
-	theme := ui.LightTheme()
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	theme := gfx.LightTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 30, 12, 2
 	theme.Border, theme.Ring = palette.border, palette.blue
 	if state.macroSaveOpen {
-		smallLabel(canvas, "Save Current Recorded Macro", ui.Rect{X: x + 20, Y: y + 14, Width: width - 40, Height: 26}, palette.text, 15)
-		components.PaintInput(canvas, theme, ui.Rect{X: x + 20, Y: y + 50, Width: width - 40, Height: 30}, components.InputSnapshot{
+		smallLabel(canvas, "Save Current Recorded Macro", gfx.Rect{X: x + 20, Y: y + 14, Width: width - 40, Height: 26}, palette.text, 15)
+		components.PaintInput(canvas, theme, gfx.Rect{X: x + 20, Y: y + 50, Width: width - 40, Height: 30}, components.InputSnapshot{
 			ID: macroNameID, Label: "Macro name", Value: state.macroName.String(), PlatformEditing: canvas.Focused() == macroNameID,
 		})
 	} else {
-		smallLabel(canvas, "Run a Macro Multiple Times", ui.Rect{X: x + 20, Y: y + 14, Width: width - 40, Height: 26}, palette.text, 15)
+		smallLabel(canvas, "Run a Macro Multiple Times", gfx.Rect{X: x + 20, Y: y + 14, Width: width - 40, Height: 26}, palette.text, 15)
 		sourceName := "Current recorded macro"
 		if state.macroRunIndex >= 0 && state.macroRunIndex < len(state.namedMacros) {
 			sourceName = state.namedMacros[state.macroRunIndex].Name
 		}
-		source := ui.Rect{X: x + 20, Y: y + 46, Width: width - 40, Height: 30}
+		source := gfx.Rect{X: x + 20, Y: y + 46, Width: width - 40, Height: 30}
 		canvas.Border(source, 1, palette.border, palette.white)
-		label := canvas.FitLine(sourceName, 12, ui.WeightRegular, source.Width-48)
-		smallLabel(canvas, label, ui.Rect{X: source.X + 10, Y: source.Y, Width: source.Width - 42, Height: 30}, palette.text, 12)
-		canvas.DrawIcon(downIcon, ui.Rect{X: source.X + source.Width - 27, Y: source.Y + 7, Width: 16, Height: 16}, palette.muted)
-		canvas.HitWithOptions(macroSourceID, source, "Macro to run", ui.HitOptions{Role: ui.RoleButton, Expanded: state.macroSourceOpen})
+		label := canvas.FitLine(sourceName, 12, gfx.WeightRegular, source.Width-48)
+		smallLabel(canvas, label, gfx.Rect{X: source.X + 10, Y: source.Y, Width: source.Width - 42, Height: 30}, palette.text, 12)
+		canvas.DrawIcon(downIcon, gfx.Rect{X: source.X + source.Width - 27, Y: source.Y + 7, Width: 16, Height: 16}, palette.muted)
+		canvas.HitWithOptions(macroSourceID, source, "Macro to run", gfx.HitOptions{Role: gfx.RoleButton, Expanded: state.macroSourceOpen})
 		if canvas.Clicked(macroSourceID) {
 			state.macroSourceOpen = !state.macroSourceOpen
 			state.macroSourceOffset = 0
 		}
-		state.macroRadio(canvas, macroCountModeID, ui.Rect{X: x + 20, Y: y + 101, Width: 70, Height: 26}, "Run", !state.macroUntilEOF)
-		components.PaintInput(canvas, theme, ui.Rect{X: x + 99, Y: y + 98, Width: 85, Height: 30}, components.InputSnapshot{
+		state.macroRadio(canvas, macroCountModeID, gfx.Rect{X: x + 20, Y: y + 101, Width: 70, Height: 26}, "Run", !state.macroUntilEOF)
+		components.PaintInput(canvas, theme, gfx.Rect{X: x + 99, Y: y + 98, Width: 85, Height: 30}, components.InputSnapshot{
 			ID: macroCountID, Label: "Repeat count", Value: state.macroCount.String(), PlatformEditing: canvas.Focused() == macroCountID,
 		})
-		smallLabel(canvas, "times", ui.Rect{X: x + 193, Y: y + 101, Width: 70, Height: 26}, palette.text, 12)
-		state.macroRadio(canvas, macroEOFModeID, ui.Rect{X: x + 20, Y: y + 142, Width: width - 40, Height: 26}, "Run until end of file", state.macroUntilEOF)
+		smallLabel(canvas, "times", gfx.Rect{X: x + 193, Y: y + 101, Width: 70, Height: 26}, palette.text, 12)
+		state.macroRadio(canvas, macroEOFModeID, gfx.Rect{X: x + 20, Y: y + 142, Width: width - 40, Height: 26}, "Run until end of file", state.macroUntilEOF)
 	}
 	if state.macroDialogFocus {
 		focus := macroNameID
@@ -240,12 +240,12 @@ func (state *model) paintMacroDialog(canvas *ui.Canvas, size ui.Size) {
 		if state.macroRunOpen {
 			errorY = y + 181
 		}
-		message := canvas.FitLine(state.macroDialogError, 11, ui.WeightRegular, width-40)
-		smallLabel(canvas, message, ui.Rect{X: x + 20, Y: errorY, Width: width - 40, Height: 21}, palette.blue, 11)
+		message := canvas.FitLine(state.macroDialogError, 11, gfx.WeightRegular, width-40)
+		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: errorY, Width: width - 40, Height: 21}, palette.blue, 11)
 	}
 	buttonY := y + height - 48
 	for _, button := range []struct {
-		id    ui.ID
+		id    gfx.ID
 		label string
 		x     float32
 	}{
@@ -255,9 +255,9 @@ func (state *model) paintMacroDialog(canvas *ui.Canvas, size ui.Size) {
 		if state.macroSaveOpen && button.id == macroRunID {
 			button.id, button.label = macroSaveID, "Save macro"
 		}
-		bounds := ui.Rect{X: button.x, Y: buttonY, Width: 80, Height: 30}
+		bounds := gfx.Rect{X: button.x, Y: buttonY, Width: 80, Height: 30}
 		canvas.Border(bounds, 1, palette.border, palette.toolbar)
-		canvas.LabelCenter(button.label, bounds, ui.TextStyle{Size: 12, Color: palette.text})
+		canvas.LabelCenter(button.label, bounds, gfx.TextStyle{Size: 12, Color: palette.text})
 		if hitButton(canvas, button.id, bounds, button.label) {
 			if button.id == macroCancelID {
 				state.closeMacroDialog()
@@ -273,24 +273,24 @@ func (state *model) paintMacroDialog(canvas *ui.Canvas, size ui.Size) {
 	canvas.PopLayer()
 }
 
-func sourceRect(x, y, width float32) ui.Rect {
-	return ui.Rect{X: x + 20, Y: y + 78, Width: width - 40}
+func sourceRect(x, y, width float32) gfx.Rect {
+	return gfx.Rect{X: x + 20, Y: y + 78, Width: width - 40}
 }
 
-func (state *model) macroRadio(canvas *ui.Canvas, id ui.ID, bounds ui.Rect, label string, checked bool) {
-	box := ui.Rect{X: bounds.X, Y: bounds.Y + 4, Width: 16, Height: 16}
+func (state *model) macroRadio(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, label string, checked bool) {
+	box := gfx.Rect{X: bounds.X, Y: bounds.Y + 4, Width: 16, Height: 16}
 	canvas.RoundedBorder(box, 8, 1, palette.border, palette.white)
 	if checked {
-		canvas.RoundedBorder(box.Inset(ui.All(4)), 4, 0, palette.blue, palette.blue)
+		canvas.RoundedBorder(box.Inset(gfx.All(4)), 4, 0, palette.blue, palette.blue)
 	}
-	smallLabel(canvas, label, ui.Rect{X: bounds.X + 24, Y: bounds.Y, Width: bounds.Width - 24, Height: bounds.Height}, palette.text, 12)
-	canvas.HitWithOptions(id, bounds, label, ui.HitOptions{Role: ui.RoleRadio, Checked: checked})
+	smallLabel(canvas, label, gfx.Rect{X: bounds.X + 24, Y: bounds.Y, Width: bounds.Width - 24, Height: bounds.Height}, palette.text, 12)
+	canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{Role: gfx.RoleRadio, Checked: checked})
 	if canvas.Clicked(id) {
 		state.macroUntilEOF = id == macroEOFModeID
 	}
 }
 
-func (state *model) paintMacroSources(canvas *ui.Canvas, origin ui.Rect, viewportHeight float32) {
+func (state *model) paintMacroSources(canvas *gfx.Canvas, origin gfx.Rect, viewportHeight float32) {
 	count := state.macroSourceCount()
 	visible := min(6, count)
 	scrolling := count > visible
@@ -303,11 +303,11 @@ func (state *model) paintMacroSources(canvas *ui.Canvas, origin ui.Rect, viewpor
 	height := float32(visible)*24 + controls + 8
 	y := min(origin.Y, viewportHeight-statusHeight-height-4)
 	canvas.PushLayer(5)
-	canvas.Border(ui.Rect{X: origin.X, Y: y, Width: origin.Width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: origin.X, Y: y, Width: origin.Width, Height: height}, 1, palette.border, palette.white)
 	if scrolling {
 		for _, control := range []struct {
-			id    ui.ID
-			icon  ui.Icon
+			id    gfx.ID
+			icon  gfx.Icon
 			label string
 			y     float32
 			step  int
@@ -315,9 +315,9 @@ func (state *model) paintMacroSources(canvas *ui.Canvas, origin ui.Rect, viewpor
 			{macroSourcePrevID, upIcon, "Previous macros", y + 4, -1},
 			{macroSourceNextID, downIcon, "Next macros", y + height - 26, 1},
 		} {
-			bounds := ui.Rect{X: origin.X + 4, Y: control.y, Width: origin.Width - 8, Height: 22}
-			canvas.DrawIcon(control.icon, ui.Rect{X: bounds.X + bounds.Width/2 - 8, Y: bounds.Y + 3, Width: 16, Height: 16}, palette.muted)
-			canvas.HitWithOptions(control.id, bounds, control.label, ui.HitOptions{Role: ui.RoleMenuItem})
+			bounds := gfx.Rect{X: origin.X + 4, Y: control.y, Width: origin.Width - 8, Height: 22}
+			canvas.DrawIcon(control.icon, gfx.Rect{X: bounds.X + bounds.Width/2 - 8, Y: bounds.Y + 3, Width: 16, Height: 16}, palette.muted)
+			canvas.HitWithOptions(control.id, bounds, control.label, gfx.HitOptions{Role: gfx.RoleMenuItem})
 			if canvas.Clicked(control.id) {
 				state.macroSourceOffset = min(max(0, state.macroSourceOffset+control.step), count-visible)
 			}
@@ -326,11 +326,11 @@ func (state *model) paintMacroSources(canvas *ui.Canvas, origin ui.Rect, viewpor
 	for row := range visible {
 		index := state.macroSourceOffset + row
 		name, selectedIndex := state.macroSourceAt(index)
-		item := ui.Rect{X: origin.X + 4, Y: y + 4 + controls/2 + float32(row)*24, Width: origin.Width - 8, Height: 24}
+		item := gfx.Rect{X: origin.X + 4, Y: y + 4 + controls/2 + float32(row)*24, Width: origin.Width - 8, Height: 24}
 		id := macroSourceScope.At(index)
-		label := canvas.FitLine(name, 11, ui.WeightRegular, item.Width-18)
-		smallLabel(canvas, label, ui.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, palette.text, 11)
-		canvas.HitWithOptions(id, item, name, ui.HitOptions{Role: ui.RoleMenuItem, Checked: state.macroRunIndex == selectedIndex})
+		label := canvas.FitLine(name, 11, gfx.WeightRegular, item.Width-18)
+		smallLabel(canvas, label, gfx.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, palette.text, 11)
+		canvas.HitWithOptions(id, item, name, gfx.HitOptions{Role: gfx.RoleMenuItem, Checked: state.macroRunIndex == selectedIndex})
 		if canvas.Clicked(id) {
 			state.macroRunIndex = selectedIndex
 			state.macroSourceOpen = false

@@ -10,7 +10,7 @@ import (
 
 func (state *model) moveLinesWithBookmarks(doc *document.Document, up bool) {
 	before := doc.Editor.String()
-	selection, caret := doc.Editor.Selection(), doc.Editor.Caret()
+	selection := doc.Editor.Selection()
 	start := strings.LastIndexByte(before[:doc.Editor.ByteOffset(selection.Start)], '\n') + 1
 	end := doc.Editor.ByteOffset(selection.End)
 	endLineStart := strings.LastIndexByte(before[:end], '\n') + 1
@@ -29,29 +29,24 @@ func (state *model) moveLinesWithBookmarks(doc *document.Document, up bool) {
 		return
 	}
 	line := strings.Count(before[:start], "\n")
-	delta, shift := 1, 0
+	originalLabels, err := doc.CaptureMovedLineEndings()
+	if err != nil {
+		state.notice = err.Error()
+		return
+	}
+	delta := 1
 	if up {
 		delta = -1
-		previous := strings.LastIndexByte(before[:max(0, start-1)], '\n') + 1
-		shift = -utf8.RuneCountInString(before[previous:start])
-	} else {
-		nextEnd := len(before)
-		if newline := strings.IndexByte(before[end:], '\n'); newline >= 0 {
-			nextEnd = end + newline
-		}
-		shift = utf8.RuneCountInString(before[end:nextEnd]) + 1
-	}
-	anchor := selection.Start
-	if caret == selection.Start {
-		anchor = selection.End
 	}
 	state.editWithBookmarkAnchor(doc, func() {
+		movedBreaks, targetLine := 0, 0
 		err := doc.Editor.Transact(func(draft *text.Editor) error {
 			if !up && end == lastLineStart {
 				draft.ReplaceRange(text.Range{Start: draft.RuneIndex(end - 1), End: draft.RuneIndex(end)}, "")
 				end--
 			}
 			selected := before[start:end]
+			movedBreaks = strings.Count(selected, "\n")
 			deleteStart := start
 			if appendEOL {
 				deleteStart--
@@ -71,17 +66,21 @@ func (state *model) moveLinesWithBookmarks(doc *document.Document, up bool) {
 				}
 				position += newline + 1
 			}
+			targetLine = strings.Count(value[:position], "\n")
 			at := draft.RuneIndex(position)
 			draft.ReplaceRange(text.Range{Start: at, End: at}, selected)
+			selectedRunes := utf8.RuneCountInString(selected)
 			if appendEOL {
-				at = draft.RuneIndex(position + len(selected))
-				draft.ReplaceRange(text.Range{Start: at, End: at}, "\n")
+				end := draft.RuneIndex(position + len(selected))
+				draft.ReplaceRange(text.Range{Start: end, End: end}, "\n")
+				selectedRunes++
 			}
-			draft.MoveTo(anchor+shift, false)
-			draft.MoveTo(caret+shift, true)
+			draft.SetSelection(text.Range{Start: at + selectedRunes, End: at})
 			return nil
 		})
 		if err != nil {
+			state.notice = err.Error()
+		} else if err := doc.PreserveMovedLineEndings(originalLabels, line, targetLine, movedBreaks); err != nil {
 			state.notice = err.Error()
 		}
 	})

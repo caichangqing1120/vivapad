@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 	"vivapad/internal/recent"
 )
@@ -118,7 +118,7 @@ func TestBatchCloseOrderAndRecentSubmenuRestoreShortcut(t *testing.T) {
 	if filepath.Base(state.space.Current().Path) != "second.txt" || len(state.closedHistory) != 1 {
 		t.Fatalf("submenu restore = %+v history=%+v", state.space.Current(), state.closedHistory)
 	}
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierShift, 't'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 't'); err != nil || !handled {
 		t.Fatalf("restore shortcut handled=%v, %v", handled, err)
 	}
 	if filepath.Base(state.space.Current().Path) != "first.txt" || len(state.closedHistory) != 0 {

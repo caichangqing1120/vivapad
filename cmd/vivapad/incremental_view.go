@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func (state *model) incrementalHeight(width float32) float32 {
@@ -12,38 +12,38 @@ func (state *model) incrementalHeight(width float32) float32 {
 	return 36
 }
 
-func (state *model) paintIncrementalSearch(canvas *ui.Canvas, width, y float32) {
+func (state *model) paintIncrementalSearch(canvas *gfx.Canvas, width, y float32) {
 	height := state.incrementalHeight(width)
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: height}, palette.chrome)
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: 1}, palette.border)
-	closeBounds := ui.Rect{X: 8, Y: y + 7, Width: 22, Height: 22}
-	canvas.DrawIcon(closeIcon, closeBounds.Inset(ui.All(4)), palette.muted)
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: height}, palette.chrome)
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.border)
+	closeBounds := gfx.Rect{X: 8, Y: y + 7, Width: 22, Height: 22}
+	canvas.DrawIcon(closeIcon, closeBounds.Inset(gfx.All(4)), palette.muted)
 	if hitButton(canvas, incrementCloseID, closeBounds, "Close incremental search") {
 		state.closeIncrementalSearch()
 		state.incrementReturnFocusRequested = true
 		state.incrementReturnFocusArmed = false
 	}
-	smallLabel(canvas, "Find:", ui.Rect{X: 35, Y: y + 5, Width: 30, Height: 26}, palette.text, 11)
+	smallLabel(canvas, "Find:", gfx.Rect{X: 35, Y: y + 5, Width: 30, Height: 26}, palette.text, 11)
 	fieldWidth := min(float32(330), max(160, width*0.26))
 	if width < 900 {
 		fieldWidth = min(280, max(120, width-230))
 	}
-	theme := ui.LightTheme()
+	theme := gfx.LightTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 25, 11, 2
 	theme.Border, theme.Ring = palette.border, palette.blue
 	theme.Background, theme.Foreground = palette.white, palette.text
 	if state.incrementStatus == "Phrase not found" {
-		theme.Background = ui.RGB(255, 234, 237)
+		theme.Background = gfx.RGB(255, 234, 237)
 	}
-	components.PaintInput(canvas, theme, ui.Rect{X: 66, Y: y + 5, Width: fieldWidth, Height: 25}, components.InputSnapshot{
+	components.PaintInput(canvas, theme, gfx.Rect{X: 66, Y: y + 5, Width: fieldWidth, Height: 25}, components.InputSnapshot{
 		ID: incrementQueryID, Label: "Incremental find", Value: state.incrementQuery.String(), PlatformEditing: canvas.Focused() == incrementQueryID,
 	})
-	previous := ui.Rect{X: 72 + fieldWidth, Y: y + 6, Width: 23, Height: 23}
-	next := ui.Rect{X: 99 + fieldWidth, Y: y + 6, Width: 23, Height: 23}
+	previous := gfx.Rect{X: 72 + fieldWidth, Y: y + 6, Width: 23, Height: 23}
+	next := gfx.Rect{X: 99 + fieldWidth, Y: y + 6, Width: 23, Height: 23}
 	for _, button := range []struct {
-		id     ui.ID
-		bounds ui.Rect
-		icon   ui.Icon
+		id     gfx.ID
+		bounds gfx.Rect
+		icon   gfx.Icon
 		label  string
 	}{
 		{incrementPreviousID, previous, leftIcon, "Previous incremental match"},
@@ -54,7 +54,7 @@ func (state *model) paintIncrementalSearch(canvas *ui.Canvas, width, y float32) 
 			background = palette.hover
 		}
 		canvas.Border(button.bounds, 1, palette.border, background)
-		canvas.DrawIcon(button.icon, button.bounds.Inset(ui.All(4)), palette.text)
+		canvas.DrawIcon(button.icon, button.bounds.Inset(gfx.All(4)), palette.text)
 		if hitButton(canvas, button.id, button.bounds, button.label) {
 			state.findIncremental(button.id == incrementPreviousID, true)
 		}
@@ -64,7 +64,7 @@ func (state *model) paintIncrementalSearch(canvas *ui.Canvas, width, y float32) 
 		toggleY, toggleX = y+35, 12
 	}
 	toggles := []struct {
-		id      ui.ID
+		id      gfx.ID
 		label   string
 		checked *bool
 		width   float32
@@ -74,14 +74,14 @@ func (state *model) paintIncrementalSearch(canvas *ui.Canvas, width, y float32) 
 		{incrementCountID, "Count", &state.incrementCount, 70},
 	}
 	for _, option := range toggles {
-		bounds := ui.Rect{X: toggleX, Y: toggleY, Width: option.width, Height: 22}
-		box := ui.Rect{X: toggleX, Y: toggleY + 4, Width: 14, Height: 14}
+		bounds := gfx.Rect{X: toggleX, Y: toggleY, Width: option.width, Height: 22}
+		box := gfx.Rect{X: toggleX, Y: toggleY + 4, Width: 14, Height: 14}
 		canvas.Border(box, 1, palette.border, palette.white)
 		if *option.checked {
-			canvas.Fill(box.Inset(ui.All(3)), palette.blue)
+			canvas.Fill(box.Inset(gfx.All(3)), palette.blue)
 		}
-		smallLabel(canvas, option.label, ui.Rect{X: toggleX + 19, Y: toggleY, Width: option.width - 20, Height: 22}, palette.text, 11)
-		canvas.HitWithOptions(option.id, bounds, option.label, ui.HitOptions{Role: ui.RoleCheckbox, Checked: *option.checked})
+		smallLabel(canvas, option.label, gfx.Rect{X: toggleX + 19, Y: toggleY, Width: option.width - 20, Height: 22}, palette.text, 11)
+		canvas.HitWithOptions(option.id, bounds, option.label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: *option.checked})
 		if canvas.Clicked(option.id) {
 			*option.checked = !*option.checked
 			switch option.id {
@@ -102,12 +102,12 @@ func (state *model) paintIncrementalSearch(canvas *ui.Canvas, width, y float32) 
 		}
 		toggleX += option.width + 8
 	}
-	status := ui.Rect{X: toggleX + 5, Y: toggleY, Width: max(20, width-toggleX-13), Height: 22}
+	status := gfx.Rect{X: toggleX + 5, Y: toggleY, Width: max(20, width-toggleX-13), Height: 22}
 	color := palette.muted
 	if state.incrementStatus == "Phrase not found" {
 		color = palette.blue
 	}
-	smallLabel(canvas, canvas.FitLine(state.incrementStatus, 11, ui.WeightRegular, status.Width), status, color, 11)
+	smallLabel(canvas, canvas.FitLine(state.incrementStatus, 11, gfx.WeightRegular, status.Width), status, color, 11)
 	if state.incrementOpen && state.incrementFocusPending {
 		canvas.RequestFocus(incrementQueryID)
 		state.incrementFocusPending = false

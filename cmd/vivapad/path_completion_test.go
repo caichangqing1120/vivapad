@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestPathCompletionMenuQuotesAndUndo(t *testing.T) {
@@ -78,7 +78,7 @@ func TestPathCompletionShortcutFiltersAndAcceptsWithNativeEnter(t *testing.T) {
 	if err := driver.Type("src/ma"); err != nil {
 		t.Fatal(err)
 	}
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierShift, ' '); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, ' '); err != nil || !handled {
 		t.Fatalf("path shortcut handled=%v err=%v", handled, err)
 	}
 	if current := state.wordCompletion; current == nil || current.kind != completionPath || len(current.items) != 2 {
@@ -90,7 +90,7 @@ func TestPathCompletionShortcutFiltersAndAcceptsWithNativeEnter(t *testing.T) {
 	if current := state.wordCompletion; current == nil || len(current.items) != 1 || current.items[0] != "src/main.go" {
 		t.Fatalf("path filtering = %+v", current)
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := state.space.Current().Editor.String(); got != "src/main.go" || state.wordCompletion != nil {
@@ -108,13 +108,16 @@ func TestPathCompletionDirectoryReadonlyAndMissingParent(t *testing.T) {
 	state := newModel()
 	doc := state.space.Current()
 	doc.Editor.Insert("./s")
+	// A directory candidate gains the platform's path separator, so the
+	// expectation is "./src/" on macOS and Linux and "./src\\" on Windows.
+	wanted := "./src" + string(filepath.Separator)
 	state.command("Path Completion")
-	if current := state.wordCompletion; current == nil || len(current.items) != 1 || current.items[0] != "./src/" {
+	if current := state.wordCompletion; current == nil || len(current.items) != 1 || current.items[0] != wanted {
 		t.Fatalf("directory suffix popup = %+v, notice=%q", current, state.notice)
 	}
 	state.acceptWordCompletion(0)
-	if doc.Editor.String() != "./src/" {
-		t.Fatalf("directory path insertion = %q", doc.Editor.String())
+	if got := doc.Editor.String(); got != wanted {
+		t.Fatalf("directory path insertion = %q, want %q", got, wanted)
 	}
 	state.command("Read-Only on Current Document")
 	state.command("Path Completion")
@@ -151,7 +154,7 @@ func TestPathCompletionRespectsActiveSplitPane(t *testing.T) {
 	}
 	clickID(t, driver, rightEditorID)
 	right.Editor.MoveTo(right.Editor.RuneCount(), false)
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierShift, ' '); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, ' '); err != nil || !handled {
 		t.Fatalf("split shortcut handled=%v err=%v", handled, err)
 	}
 	if current := state.wordCompletion; current == nil || current.doc != right || current.pane != 1 || left.Editor.String() != "" {

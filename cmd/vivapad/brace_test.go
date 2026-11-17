@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestMatchingBraceCommandsHandleUnicodeAndSelectionEndpoints(t *testing.T) {
@@ -59,7 +59,7 @@ func TestMatchingBraceShortcutsAndCompactMenu(t *testing.T) {
 	if doc.Editor.Caret() != 2 {
 		t.Fatalf("shortcut caret = %d, want 2", doc.Editor.Caret())
 	}
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierAlt, 'b'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierAlt, 'b'); err != nil || !handled {
 		t.Fatalf("select brace shortcut handled=%v err=%v", handled, err)
 	}
 	if doc.Editor.Selection() != (text.Range{Start: 0, End: 3}) {
@@ -70,15 +70,17 @@ func TestMatchingBraceShortcutsAndCompactMenu(t *testing.T) {
 	}
 	doc.Editor.MoveTo(1, false)
 	clickID(t, driver, menuScope.At(2))
-	for _, index := range []int{13, 14} {
+	for _, command := range []string{"Go to Matching Brace", "Select All In-between {} [] or ()"} {
+		index := searchCommandIndex(t, command)
 		bounds := revealSearchMenuItem(t, driver, index)
 		if bounds.Y+bounds.Height > 400-statusHeight {
 			t.Fatalf("brace menu item %d is clipped: %+v", index, bounds)
 		}
 	}
-	clickID(t, driver, menuItemScope.At(13))
+	before := doc.Editor.Caret()
+	clickID(t, driver, searchCommandID(t, "Go to Matching Brace"))
 	if doc.Editor.Caret() != 2 {
-		t.Fatalf("menu go-to caret = %d", doc.Editor.Caret())
+		t.Fatalf("menu go-to caret = %d, before %d, selection=%+v notice=%q", doc.Editor.Caret(), before, doc.Editor.Selection(), state.notice)
 	}
 }
 

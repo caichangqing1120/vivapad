@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -21,8 +21,39 @@ func (state *model) requestReload() {
 	state.reloadDocument(index, false)
 }
 
+func (state *model) cancelReload() {
+	state.pendingReload = -1
+	state.focusViewRequested, state.focusViewArmed = true, false
+	state.invalidator.Invalidate()
+}
+
+// reloadedNotice composes the reload notice from the replacement name and the
+// change-history observation it already produced. The error is carried verbatim
+// so it is never lost behind a bare success message.
+func reloadedNotice(name string, historyErr error) string {
+	notice := "Reloaded " + name
+	if historyErr != nil {
+		notice += "; " + historyErr.Error()
+	}
+	return notice
+}
+
+// reloadDocument reloads one tab and reports an unavailable replacement history
+// through state.notice. It returns the replacement document, or nil when the
+// reload failed.
 func (state *model) reloadDocument(index int, discard bool) *document.Document {
+	doc, _ := state.reloadDocumentWithHistory(index, discard)
+	return doc
+}
+
+// reloadDocumentWithHistory is reloadDocument plus the replacement source's
+// explicit change-history error. Callers that compose their own notice (the file
+// monitor) must carry this returned error instead of re-deriving it: the
+// consumer is stateful, so a second ChangeHistory call would sync again rather
+// than report the same lifecycle observation.
+func (state *model) reloadDocumentWithHistory(index int, discard bool) (*document.Document, error) {
 	previous := state.space.Documents[index]
+	state.cancelDocumentComposition(previous)
 	previousValue := previous.Editor.String()
 	previousRectangles := state.rectangles
 	readOnly := state.readOnly[previous]
@@ -36,7 +67,7 @@ func (state *model) reloadDocument(index int, discard bool) *document.Document {
 	}
 	if oldErr != nil {
 		state.notice = "Reload failed: " + oldErr.Error()
-		return nil
+		return nil, nil
 	}
 	current := state.space.Documents[index]
 	state.rebindBookmarksOnReload(previous, current)
@@ -79,43 +110,50 @@ func (state *model) reloadDocument(index int, discard bool) *document.Document {
 	if selected {
 		state.languages[current] = language
 	}
-	state.notice = "Reloaded " + current.Name
-	return current
+	// The replacement is a new bound source; consume it once so a constructor
+	// failure surfaces here instead of as an empty marker history. The error is
+	// both composed into this notice and returned for callers that compose their
+	// own notice.
+	_, historyErr := current.ChangeHistory()
+	state.notice = reloadedNotice(current.Name, historyErr)
+	return current, historyErr
 }
 
-func (state *model) paintReloadDialog(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintReloadDialog(canvas *gfx.Canvas, size gfx.Size) {
 	if state.pendingReload >= len(state.space.Documents) {
 		state.pendingReload = -1
 		return
 	}
 	canvas.SetEscapeTarget(reloadCancelID)
 	canvas.PushLayer(3)
-	canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.RGBA(0, 0, 0, 0.25))
-	canvas.HitWithOptions(dialogBackdropID, ui.Rect{Width: size.Width, Height: size.Height}, "Reload confirmation", ui.HitOptions{Role: ui.RoleButton, SkipFocus: true})
+	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
+	canvas.HitWithOptions(dialogBackdropID, gfx.Rect{Width: size.Width, Height: size.Height}, "Reload confirmation", gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true})
 	canvas.PushLayer(4)
 	width := float32(388)
 	x, y := (size.Width-width)/2, (size.Height-158)/2
-	canvas.RoundedBorder(ui.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.white)
 	name := state.space.Documents[state.pendingReload].Name
-	title := canvas.FitLine(fmt.Sprintf("Reload %s from disk?", name), 15, ui.WeightRegular, width-40)
-	smallLabel(canvas, title, ui.Rect{X: x + 20, Y: y + 18, Width: width - 40, Height: 30}, palette.text, 15)
-	smallLabel(canvas, "Unsaved changes in this tab will be discarded.", ui.Rect{X: x + 20, Y: y + 56, Width: width - 40, Height: 25}, palette.muted, 12)
+	title := canvas.FitLine(fmt.Sprintf("Reload %s from disk?", name), 15, gfx.WeightRegular, width-40)
+	smallLabel(canvas, title, gfx.Rect{X: x + 20, Y: y + 18, Width: width - 40, Height: 30}, palette.text, 15)
+	smallLabel(canvas, "Unsaved changes in this tab will be discarded.", gfx.Rect{X: x + 20, Y: y + 56, Width: width - 40, Height: 25}, palette.muted, 12)
 	for _, item := range []struct {
-		id    ui.ID
+		id    gfx.ID
 		label string
 		x     float32
 	}{
 		{reloadConfirmID, "Reload", x + 188},
 		{reloadCancelID, "Cancel", x + 284},
 	} {
-		bounds := ui.Rect{X: item.x, Y: y + 105, Width: 80, Height: 30}
+		bounds := gfx.Rect{X: item.x, Y: y + 105, Width: 80, Height: 30}
 		canvas.Border(bounds, 1, palette.border, palette.toolbar)
-		canvas.LabelCenter(item.label, bounds, ui.TextStyle{Size: 12, Color: palette.text})
+		canvas.LabelCenter(item.label, bounds, gfx.TextStyle{Size: 12, Color: palette.text})
 		if hitButton(canvas, item.id, bounds, item.label) {
 			index := state.pendingReload
-			state.pendingReload = -1
 			if item.id == reloadConfirmID {
+				state.pendingReload = -1
 				state.reloadDocument(index, true)
+			} else {
+				state.cancelReload()
 			}
 		}
 	}

@@ -1,0 +1,263 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"unsafe"
+
+	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/text"
+	"vivapad/internal/document"
+	"vivapad/internal/searchfiles"
+)
+
+func collectFinderSnapshot(t *testing.T, state *model, route, root string) {
+	t.Helper()
+	switch route {
+	case "current":
+		state.findAllCurrent()
+	case "all-open":
+		state.findAllOpenDocuments()
+	case "directory":
+		result, err := searchfiles.Find(context.Background(), root, state.query.String(), state.searchOptions, searchfiles.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		state.fileResults, state.resultsOpen, state.resultSelected = result, true, -1
+	default:
+		t.Fatalf("unknown collection route %q", route)
+	}
+	state.invalidator.Invalidate()
+}
+
+func TestFinderSourceSnapshotRejectsRepeatedText(t *testing.T) {
+	t.Logf("Match footprint: %d bytes", unsafe.Sizeof(searchfiles.Match{}))
+	for _, size := range [][2]int{{1280, 800}, {640, 400}} {
+		for _, route := range []string{"current", "all-open", "directory"} {
+			for _, action := range []string{"pointer", "F4", "Enter"} {
+				for _, word := range []string{"cat", "\u732b"} {
+					t.Run(fmt.Sprintf("%dx%d/%s/%s/%s", size[0], size[1], route, action, word), func(t *testing.T) {
+						root := t.TempDir()
+						path := filepath.Join(root, "source.txt")
+						source := word + " " + word
+						state, driver := startDriver(t)
+						if err := driver.Resize(size[0], size[1]); err != nil {
+							t.Fatal(err)
+						}
+						doc := state.space.Current()
+						doc.Editor.Insert(source)
+						if err := doc.Save(path); err != nil {
+							t.Fatal(err)
+						}
+						state.query.Insert(word)
+						collectFinderSnapshot(t, state, route, root)
+						if err := driver.Pump(); err != nil {
+							t.Fatal(err)
+						}
+						if len(state.fileResults.Matches) != 2 {
+							t.Fatalf("fixture matches = %d", len(state.fileResults.Matches))
+						}
+						clickID(t, driver, resultScope.At(0))
+						if state.resultSelected != 0 {
+							t.Fatal("unchanged first result was not navigable")
+						}
+						clickID(t, driver, editorID)
+						doc.Editor.MoveTo(0, false)
+						doc.Editor.Insert(word + " ")
+						doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneCount(), End: doc.Editor.RuneCount() - 1})
+						if action == "Enter" {
+							if err := driver.Key(gfx.KeyF7, 0); err != nil {
+								t.Fatal(err)
+							}
+							if err := driver.Key(gfx.KeyDown, 0); err != nil {
+								t.Fatal(err)
+							}
+							if driver.Snapshot().Focused != resultsPaneID || state.resultSelected != 1 {
+								t.Fatal("Enter fixture did not focus the second result")
+							}
+						}
+						before, caret, selected := doc.Editor.Selection(), doc.Editor.Caret(), state.resultSelected
+						state.invalidator.Invalidate()
+						if err := driver.Pump(); err != nil {
+							t.Fatal(err)
+						}
+						switch action {
+						case "pointer":
+							clickID(t, driver, resultScope.At(1))
+						case "F4":
+							if err := driver.Key(gfx.KeyF4, 0); err != nil {
+								t.Fatal(err)
+							}
+						case "Enter":
+							if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+								t.Fatal(err)
+							}
+						}
+						if state.space.Current() != doc || len(state.space.Documents) != 1 || state.resultSelected != selected ||
+							doc.Editor.Selection() != before || doc.Editor.Caret() != caret ||
+							doc.Editor.String() != word+" "+source || !doc.Dirty() || !doc.Editor.CanUndo() ||
+							!strings.Contains(state.notice, "changed") {
+							t.Fatalf("stale result changed its source: result=%d/%d selection=%+v/%+v caret=%d/%d notice=%q", state.resultSelected, selected, doc.Editor.Selection(), before, doc.Editor.Caret(), caret, state.notice)
+						}
+						if action == "Enter" && driver.Snapshot().Focused != resultsPaneID {
+							t.Fatal("refused Enter moved focus out of the results pane")
+						}
+						if data, err := os.ReadFile(path); err != nil || string(data) != source {
+							t.Fatalf("result navigation changed disk: %q, %v", data, err)
+						}
+						if !doc.Editor.Undo() || doc.Editor.String() != source || doc.Dirty() {
+							t.Fatal("refusal did not preserve the saved Undo boundary")
+						}
+						if !state.openFileResult(1) || state.resultSelected != 1 || doc.Editor.Selection().End != doc.Editor.RuneCount() {
+							t.Fatal("exact Undo-restored source was not navigable")
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestFinderSourceSnapshotFreshSearchAndIndependentSources(t *testing.T) {
+	state, driver := startDriver(t)
+	first := state.space.Current()
+	first.Editor.Insert("cat cat")
+	second := state.space.NewDocument()
+	second.Editor.Insert("cat second")
+	state.showInActivePane(second)
+	state.query.Insert("cat")
+	state.findAllOpenDocuments()
+	first.Editor.MoveTo(0, false)
+	first.Editor.Insert("cat ")
+	if !state.openFileResult(2) || state.space.Current() != second || second.Editor.Selection() != (text.Range{Start: 0, End: 3}) {
+		t.Fatal("editing one source invalidated another source's results")
+	}
+	state.findAllOpenDocuments()
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, resultScope.At(2))
+	if state.space.Current() != first || first.Editor.Selection() != (text.Range{Start: 8, End: 11}) || state.resultSelected != 2 {
+		t.Fatal("fresh search did not bind the changed source's new third occurrence")
+	}
+}
+
+func TestFinderSourceSnapshotPreservesSplitOwnershipOnRefusal(t *testing.T) {
+	for _, route := range []string{"current", "directory"} {
+		t.Run(route, func(t *testing.T) {
+			root := t.TempDir()
+			state, driver := startDriver(t)
+			first := state.space.Current()
+			first.Editor.Insert("cat cat")
+			if err := first.Save(filepath.Join(root, "source.txt")); err != nil {
+				t.Fatal(err)
+			}
+			second := state.space.NewDocument()
+			second.Editor.Insert("other")
+			state.showInActivePane(second)
+			state.toggleSplit()
+			state.paneDocs = [2]*document.Document{first, second}
+			state.paneOwner[first], state.paneOwner[second] = 0, 1
+			state.activePane = 0
+			state.space.Select(state.documentIndex(first))
+			state.query.Insert("cat")
+			collectFinderSnapshot(t, state, route, root)
+			first.Editor.MoveTo(0, false)
+			first.Editor.Insert("cat ")
+			state.activePane = 1
+			state.space.Select(state.documentIndex(second))
+			before, caret := second.Editor.Selection(), second.Editor.Caret()
+			recents := slices.Clone(state.recentEntries)
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, resultScope.At(1))
+			if state.space.Current() != second || state.activePane != 1 || state.paneDocs != ([2]*document.Document{first, second}) ||
+				state.paneOwner[first] != 0 || state.paneOwner[second] != 1 || second.Editor.Selection() != before ||
+				second.Editor.Caret() != caret || state.resultSelected != -1 || !slices.Equal(state.recentEntries, recents) ||
+				!strings.Contains(state.notice, "changed") {
+				t.Fatal("stale result transferred split ownership or changed active editor/recent history")
+			}
+			if !first.Editor.Undo() || !state.openFileResult(1) || state.space.Current() != first || state.activePane != 0 ||
+				state.paneDocs != ([2]*document.Document{first, second}) || state.paneOwner[first] != 0 || state.paneOwner[second] != 1 {
+				t.Fatal("valid restored result transferred its document to the wrong pane")
+			}
+		})
+	}
+}
+
+func TestFinderSourceSnapshotUnopenedDirectoryRefusalIsAtomic(t *testing.T) {
+	for _, dirty := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dirty=%v", dirty), func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "source.txt")
+			if err := os.WriteFile(path, []byte("cat cat"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			if dirty {
+				doc.Editor.Insert("private unsaved")
+			}
+			state.query.Insert("cat")
+			collectFinderSnapshot(t, state, "directory", root)
+			if err := os.WriteFile(path, []byte("cat cat cat"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			before, caret := doc.Editor.Selection(), doc.Editor.Caret()
+			value := doc.Editor.String()
+			panes, owners, recents := state.paneDocs, len(state.paneOwner), slices.Clone(state.recentEntries)
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, resultScope.At(1))
+			if state.space.Current() != doc || len(state.space.Documents) != 1 || state.paneDocs != panes || len(state.paneOwner) != owners ||
+				doc.Editor.String() != value || doc.Editor.Selection() != before || doc.Editor.Caret() != caret || doc.Dirty() != dirty ||
+				state.resultSelected != -1 || !slices.Equal(state.recentEntries, recents) || !strings.Contains(state.notice, "changed") {
+				t.Fatal("stale unopened result changed tabs, source, selection or recent history")
+			}
+			if err := os.WriteFile(path, []byte("cat cat"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if !state.openFileResult(1) || state.space.Current().Path != state.fileResults.Matches[1].Path || state.resultSelected != 1 ||
+				state.space.Current().Editor.Selection() != (text.Range{Start: 4, End: 7}) {
+				t.Fatal("valid detached source was not adopted after validation")
+			}
+			if dirty && (len(state.space.Documents) != 2 || doc.Editor.String() != "private unsaved" || !doc.Dirty()) {
+				t.Fatal("valid directory open discarded the existing unsaved source")
+			}
+		})
+	}
+}
+
+func TestFinderSourceSnapshotDirectoryKeepsEncodingMismatchRefusal(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	state, _ := startDriver(t)
+	doc := state.space.Current()
+	doc.Editor.Insert("cat cat")
+	if err := doc.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	other := state.space.NewDocument()
+	other.Editor.Insert("private unsaved")
+	state.showInActivePane(other)
+	result, err := searchfiles.Find(context.Background(), root, "cat", document.SearchOptions{}, searchfiles.Options{Encoding: document.Windows1252})
+	if err != nil || len(result.Matches) != 2 {
+		t.Fatalf("legacy directory fixture: %+v, %v", result, err)
+	}
+	state.fileResults, state.resultsOpen = result, true
+	before, caret, recents := other.Editor.Selection(), other.Editor.Caret(), slices.Clone(state.recentEntries)
+	if state.openFileResult(1) || state.space.Current() != other || len(state.space.Documents) != 2 ||
+		other.Editor.Selection() != before || other.Editor.Caret() != caret || !other.Dirty() ||
+		state.resultSelected != -1 || !slices.Equal(state.recentEntries, recents) || !strings.Contains(state.notice, "already open as") {
+		t.Fatal("directory result lost the existing explicit-encoding refusal")
+	}
+}

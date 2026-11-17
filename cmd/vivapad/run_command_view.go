@@ -2,11 +2,11 @@ package main
 
 import (
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
-func (state *model) paintRunMenu(canvas *ui.Canvas, size ui.Size, origin float32) {
+func (state *model) paintRunMenu(canvas *gfx.Canvas, size gfx.Size, origin float32) {
 	count := len(state.namedRuns) + 2
 	width := min(float32(290), size.Width-8)
 	x := min(origin, size.Width-width-2)
@@ -21,14 +21,14 @@ func (state *model) paintRunMenu(canvas *ui.Canvas, size ui.Size, origin float32
 	height := float32(visible)*rowHeight + controls + 8
 	y := menuHeight
 	canvas.PushLayer(2)
-	canvas.PushOverlayClip(ui.Rect{Width: size.Width, Height: size.Height})
-	panel := ui.Rect{X: x, Y: y, Width: width, Height: height}
+	canvas.PushOverlayClip(gfx.Rect{Width: size.Width, Height: size.Height})
+	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
 	canvas.Border(panel, 1, palette.border, palette.white)
-	canvas.HitWithOptions(runMenuPanelID, panel, "Run menu", ui.HitOptions{Role: ui.RoleMenu})
+	canvas.HitWithOptions(runMenuPanelID, panel, "Run menu", gfx.HitOptions{Role: gfx.RoleMenu})
 	if controls > 0 {
 		for _, control := range []struct {
-			id    ui.ID
-			icon  ui.Icon
+			id    gfx.ID
+			icon  gfx.Icon
 			label string
 			y     float32
 			step  int
@@ -36,19 +36,19 @@ func (state *model) paintRunMenu(canvas *ui.Canvas, size ui.Size, origin float32
 			{runMenuPreviousID, upIcon, "Previous Run commands", y + 4, -1},
 			{runMenuNextID, downIcon, "Next Run commands", y + height - 26, 1},
 		} {
-			bounds := ui.Rect{X: x + 4, Y: control.y, Width: width - 8, Height: 22}
-			canvas.DrawIcon(control.icon, ui.Rect{X: bounds.X + bounds.Width/2 - 8, Y: bounds.Y + 3, Width: 16, Height: 16}, palette.muted)
+			bounds := gfx.Rect{X: x + 4, Y: control.y, Width: width - 8, Height: 22}
+			canvas.DrawIcon(control.icon, gfx.Rect{X: bounds.X + bounds.Width/2 - 8, Y: bounds.Y + 3, Width: 16, Height: 16}, palette.muted)
 			if hitButton(canvas, control.id, bounds, control.label) {
 				state.runMenuOffset = min(max(0, state.runMenuOffset+control.step), count-visible)
 			}
 		}
 	}
-	rows := ui.Rect{X: x + 4, Y: y + 4 + controls/2, Width: width - 8, Height: float32(visible) * rowHeight}
+	rows := gfx.Rect{X: x + 4, Y: y + 4 + controls/2, Width: width - 8, Height: float32(visible) * rowHeight}
 	canvas.Clip(rows)
 	chosen := -1
 	for row := 0; row < visible; row++ {
 		index := state.runMenuOffset + row
-		item := ui.Rect{X: rows.X, Y: rows.Y + float32(row)*rowHeight, Width: rows.Width, Height: rowHeight}
+		item := gfx.Rect{X: rows.X, Y: rows.Y + float32(row)*rowHeight, Width: rows.Width, Height: rowHeight}
 		id, label, disabled := runOpenID, "Run...", false
 		switch {
 		case index == count-1:
@@ -62,8 +62,8 @@ func (state *model) paintRunMenu(canvas *ui.Canvas, size ui.Size, origin float32
 		} else if canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
-		smallLabel(canvas, canvas.FitLine(label, 11, ui.WeightRegular, item.Width-18), ui.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, color, 11)
-		canvas.HitWithOptions(id, item, label, ui.HitOptions{Role: ui.RoleMenuItem, Disabled: disabled})
+		smallLabel(canvas, canvas.FitLine(label, 11, gfx.WeightRegular, item.Width-18), gfx.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, color, 11)
+		canvas.HitWithOptions(id, item, label, gfx.HitOptions{Role: gfx.RoleMenuItem, Disabled: disabled})
 		if !disabled && canvas.Clicked(id) {
 			chosen = index
 		}
@@ -81,45 +81,45 @@ func (state *model) paintRunMenu(canvas *ui.Canvas, size ui.Size, origin float32
 	}
 }
 
-func (state *model) paintRunDialog(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintRunDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.SetEscapeTarget(runDialogCancelID)
 	canvas.PushLayer(3)
-	canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.RGBA(0, 0, 0, 0.25))
-	canvas.HitWithOptions(dialogBackdropID, ui.Rect{Width: size.Width, Height: size.Height}, "Run dialog", ui.HitOptions{Role: ui.RoleButton, SkipFocus: true})
+	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
+	canvas.HitWithOptions(dialogBackdropID, gfx.Rect{Width: size.Width, Height: size.Height}, "Run dialog", gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true})
 	canvas.PushLayer(4)
 	width, height := min(float32(480), size.Width-32), float32(210)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(ui.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
 	title := "Run..."
 	if state.runSaveMode {
 		title = "Save Run Command"
 	}
-	smallLabel(canvas, title, ui.Rect{X: x + 20, Y: y + 14, Width: width - 40, Height: 27}, palette.text, 15)
-	theme := ui.LightTheme()
+	smallLabel(canvas, title, gfx.Rect{X: x + 20, Y: y + 14, Width: width - 40, Height: 27}, palette.text, 15)
+	theme := gfx.LightTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 30, 12, 2
 	theme.Border, theme.Ring = palette.border, palette.blue
 	if state.runSaveMode {
-		components.PaintInput(canvas, theme, ui.Rect{X: x + 20, Y: y + 55, Width: width - 40, Height: 30}, components.InputSnapshot{
+		components.PaintInput(canvas, theme, gfx.Rect{X: x + 20, Y: y + 55, Width: width - 40, Height: 30}, components.InputSnapshot{
 			ID: runDialogNameID, Label: "Run command name", Value: state.runName.String(), PlatformEditing: canvas.Focused() == runDialogNameID,
 		})
-		label := canvas.FitLine(state.runInput.String(), 11, ui.WeightRegular, width-40)
-		smallLabel(canvas, label, ui.Rect{X: x + 20, Y: y + 101, Width: width - 40, Height: 22}, palette.muted, 11)
+		label := canvas.FitLine(state.runInput.String(), 11, gfx.WeightRegular, width-40)
+		smallLabel(canvas, label, gfx.Rect{X: x + 20, Y: y + 101, Width: width - 40, Height: 22}, palette.muted, 11)
 	} else {
-		components.PaintInput(canvas, theme, ui.Rect{X: x + 20, Y: y + 55, Width: width - 112, Height: 30}, components.InputSnapshot{
+		components.PaintInput(canvas, theme, gfx.Rect{X: x + 20, Y: y + 55, Width: width - 112, Height: 30}, components.InputSnapshot{
 			ID: runDialogInputID, Label: "Program to Run", Value: state.runInput.String(), PlatformEditing: canvas.Focused() == runDialogInputID,
 		})
 		for _, button := range []struct {
-			id    ui.ID
-			icon  ui.Icon
+			id    gfx.ID
+			icon  gfx.Icon
 			label string
 			x     float32
 		}{
 			{runDialogBrowseID, openIcon, "Choose program", x + width - 86},
 			{runDialogVariablesID, newAccentIcon, "Insert variable", x + width - 53},
 		} {
-			bounds := ui.Rect{X: button.x, Y: y + 56, Width: 27, Height: 28}
+			bounds := gfx.Rect{X: button.x, Y: y + 56, Width: 27, Height: 28}
 			canvas.Border(bounds, 1, palette.border, palette.toolbar)
-			canvas.DrawIcon(button.icon, bounds.Inset(ui.All(5)), palette.text)
+			canvas.DrawIcon(button.icon, bounds.Inset(gfx.All(5)), palette.text)
 			if hitButton(canvas, button.id, bounds, button.label) {
 				if button.id == runDialogBrowseID {
 					state.browseRunExecutable()
@@ -138,10 +138,10 @@ func (state *model) paintRunDialog(canvas *ui.Canvas, size ui.Size) {
 		state.runDialogFocus = false
 	}
 	if state.runDialogError != "" {
-		smallLabel(canvas, canvas.FitLine(state.runDialogError, 11, ui.WeightRegular, width-40), ui.Rect{X: x + 20, Y: y + 129, Width: width - 40, Height: 20}, palette.blue, 11)
+		smallLabel(canvas, canvas.FitLine(state.runDialogError, 11, gfx.WeightRegular, width-40), gfx.Rect{X: x + 20, Y: y + 129, Width: width - 40, Height: 20}, palette.blue, 11)
 	}
 	buttons := []struct {
-		id    ui.ID
+		id    gfx.ID
 		label string
 		x     float32
 	}{
@@ -154,9 +154,9 @@ func (state *model) paintRunDialog(canvas *ui.Canvas, size ui.Size) {
 		buttons[0].label, buttons[1].label = "Save", "Back"
 	}
 	for _, button := range buttons {
-		bounds := ui.Rect{X: button.x, Y: y + height - 45, Width: 80, Height: 28}
+		bounds := gfx.Rect{X: button.x, Y: y + height - 45, Width: 80, Height: 28}
 		canvas.Border(bounds, 1, palette.border, palette.toolbar)
-		canvas.LabelCenter(button.label, bounds, ui.TextStyle{Size: 12, Color: palette.text})
+		canvas.LabelCenter(button.label, bounds, gfx.TextStyle{Size: 12, Color: palette.text})
 		if hitButton(canvas, button.id, bounds, button.label) {
 			switch button.id {
 			case runDialogCancelID:
@@ -180,23 +180,23 @@ func (state *model) paintRunDialog(canvas *ui.Canvas, size ui.Size) {
 	canvas.PopLayer()
 }
 
-func (state *model) paintRunVariables(canvas *ui.Canvas, size ui.Size, x, y, width float32) {
+func (state *model) paintRunVariables(canvas *gfx.Canvas, size gfx.Size, x, y, width float32) {
 	menuWidth := min(float32(225), size.Width-16)
 	popupHeight := float32(len(runVariableNames))*22 + 8
 	menuX := min(x+width-menuWidth, size.Width-menuWidth-4)
 	menuY := min(y+93, size.Height-statusHeight-popupHeight-4)
 	menuY = max(menuHeight, menuY)
 	canvas.PushLayer(5)
-	canvas.PushOverlayClip(ui.Rect{Width: size.Width, Height: size.Height})
-	canvas.Border(ui.Rect{X: menuX, Y: menuY, Width: menuWidth, Height: popupHeight}, 1, palette.border, palette.white)
+	canvas.PushOverlayClip(gfx.Rect{Width: size.Width, Height: size.Height})
+	canvas.Border(gfx.Rect{X: menuX, Y: menuY, Width: menuWidth, Height: popupHeight}, 1, palette.border, palette.white)
 	for index, name := range runVariableNames {
-		item := ui.Rect{X: menuX + 4, Y: menuY + 4 + float32(index)*22, Width: menuWidth - 8, Height: 22}
+		item := gfx.Rect{X: menuX + 4, Y: menuY + 4 + float32(index)*22, Width: menuWidth - 8, Height: 22}
 		id := runVariableScope.At(index)
 		if canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
-		smallLabel(canvas, name, ui.Rect{X: item.X + 8, Y: item.Y, Width: item.Width - 16, Height: item.Height}, palette.text, 10)
-		canvas.HitWithOptions(id, item, "Insert "+name, ui.HitOptions{Role: ui.RoleMenuItem})
+		smallLabel(canvas, name, gfx.Rect{X: item.X + 8, Y: item.Y, Width: item.Width - 16, Height: item.Height}, palette.text, 10)
+		canvas.HitWithOptions(id, item, "Insert "+name, gfx.HitOptions{Role: gfx.RoleMenuItem})
 		if canvas.Clicked(id) {
 			state.runInput.Insert("$(" + name + ")")
 			state.runVariablesOpen, state.runDialogFocus, state.runDialogError = false, true, ""

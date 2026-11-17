@@ -1,30 +1,30 @@
 package main
 
 import (
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
-func (state *model) paintSplitTabs(canvas *ui.Canvas, width, origin float32) {
+func (state *model) paintSplitTabs(canvas *gfx.Canvas, width, origin float32) {
 	position := state.splitPosition(width)
 	y := menuHeight + toolbarHeight
 	if state.fullscreen {
 		y = 0
 	}
-	state.paintPaneTabs(canvas, 0, ui.Rect{X: origin, Y: y, Width: position, Height: tabHeight})
-	divider := ui.Rect{X: origin + position, Y: y, Width: 8, Height: tabHeight}
+	state.paintPaneTabs(canvas, 0, gfx.Rect{X: origin, Y: y, Width: position, Height: tabHeight})
+	divider := gfx.Rect{X: origin + position, Y: y, Width: 8, Height: tabHeight}
 	canvas.Fill(divider, palette.tabs)
-	canvas.Fill(ui.Rect{X: divider.X + 3, Y: y, Width: 1, Height: tabHeight}, palette.border)
+	canvas.Fill(gfx.Rect{X: divider.X + 3, Y: y, Width: 1, Height: tabHeight}, palette.border)
 	rightWidth := width - position - 8
 	if state.fullscreen {
 		rightWidth -= 30
 	}
-	state.paintPaneTabs(canvas, 1, ui.Rect{X: origin + position + 8, Y: y, Width: rightWidth, Height: tabHeight})
+	state.paintPaneTabs(canvas, 1, gfx.Rect{X: origin + position + 8, Y: y, Width: rightWidth, Height: tabHeight})
 }
 
-func (state *model) paintPaneTabs(canvas *ui.Canvas, pane int, bounds ui.Rect) {
+func (state *model) paintPaneTabs(canvas *gfx.Canvas, pane int, bounds gfx.Rect) {
 	canvas.Fill(bounds, palette.tabs)
-	canvas.Fill(ui.Rect{X: bounds.X, Y: bounds.Y + bounds.Height - 1, Width: bounds.Width, Height: 1}, palette.border)
+	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y + bounds.Height - 1, Width: bounds.Width, Height: 1}, palette.border)
 	paneID := leftPaneID
 	tabScope, closeScope := leftTabScope, leftCloseScope
 	backID, nextID := leftTabsBackID, leftTabsNextID
@@ -34,7 +34,7 @@ func (state *model) paintPaneTabs(canvas *ui.Canvas, pane int, bounds ui.Rect) {
 		backID, nextID = rightTabsBackID, rightTabsNextID
 		pinScope = rightPinScope
 	}
-	canvas.HitWithOptions(paneID, bounds, "Activate editor view", ui.HitOptions{Role: ui.RoleGroup})
+	canvas.HitWithOptions(paneID, bounds, "Activate editor view", gfx.HitOptions{Role: gfx.RoleGroup})
 	if canvas.Clicked(paneID) {
 		state.activatePane(pane)
 	}
@@ -73,36 +73,36 @@ func (state *model) paintPaneTabs(canvas *ui.Canvas, pane int, bounds ui.Rect) {
 			continue
 		}
 		x := bounds.X + 7 + float32(local-state.paneTabOffset[pane])*(tabWidth+4)
-		rect := ui.Rect{X: x, Y: bounds.Y + 2, Width: tabWidth, Height: tabHeight - 2}
+		rect := gfx.Rect{X: x, Y: bounds.Y + 2, Width: tabWidth, Height: tabHeight - 2}
 		background, accent := state.tabColorPaint(doc, doc == selected)
 		canvas.Border(rect, 1, palette.border, background)
 		if doc == selected && pane == state.activePane {
-			canvas.Fill(ui.Rect{X: x + 1, Y: bounds.Y + 1, Width: tabWidth - 2, Height: 2}, accent)
+			canvas.Fill(gfx.Rect{X: x + 1, Y: bounds.Y + 1, Width: tabWidth - 2, Height: 2}, accent)
 		}
 		name := doc.Name
 		if doc.Dirty() {
 			name = "* " + name
 		}
-		name = canvas.FitLine(name, 11, ui.WeightRegular, tabWidth-56)
-		smallLabel(canvas, name, ui.Rect{X: x + 10, Y: bounds.Y + 2, Width: tabWidth - 56, Height: 24}, palette.text, 11)
+		name = canvas.FitLine(name, 11, gfx.WeightRegular, tabWidth-56)
+		smallLabel(canvas, name, gfx.Rect{X: x + 10, Y: bounds.Y + 2, Width: tabWidth - 56, Height: 24}, palette.text, 11)
 		id := tabScope.At(global)
-		canvas.HitWithOptions(id, rect, doc.Name, ui.HitOptions{Role: ui.RoleTab, Selected: doc == selected})
+		canvas.HitWithOptions(id, rect, doc.Name, gfx.HitOptions{Role: gfx.RoleTab, Selected: doc == selected})
 		if canvas.Clicked(id) {
 			chosen = global
 		}
-		pinRect := ui.Rect{X: x + tabWidth - 42, Y: bounds.Y + 5, Width: 17, Height: 18}
+		pinRect := gfx.Rect{X: x + tabWidth - 42, Y: bounds.Y + 5, Width: 17, Height: 18}
 		if canvas.Hovered() == pinScope.At(global) {
 			canvas.Fill(pinRect, palette.hover)
 		}
 		pinColor, pinLabel := palette.muted, "Pin "+doc.Name
 		if state.isPinned(doc) {
-			pinColor, pinLabel = ui.RGB(8, 105, 87), "Unpin "+doc.Name
+			pinColor, pinLabel = gfx.RGB(8, 105, 87), "Unpin "+doc.Name
 		}
 		canvas.DrawIcon(pinIcon, controlIconBounds(pinRect), pinColor)
 		if hitButton(canvas, pinScope.At(global), pinRect, pinLabel) {
 			pinning = doc
 		}
-		closeRect := ui.Rect{X: x + tabWidth - 22, Y: bounds.Y + 5, Width: 17, Height: 18}
+		closeRect := gfx.Rect{X: x + tabWidth - 22, Y: bounds.Y + 5, Width: 17, Height: 18}
 		if canvas.Hovered() == closeScope.At(global) {
 			canvas.Fill(closeRect, palette.hover)
 		}
@@ -123,8 +123,8 @@ func (state *model) paintPaneTabs(canvas *ui.Canvas, pane int, bounds ui.Rect) {
 		state.togglePinned(pinning, pane)
 	}
 	if overflow {
-		left := ui.Rect{X: bounds.X + bounds.Width - 49, Y: bounds.Y + 3, Width: 22, Height: 22}
-		right := ui.Rect{X: bounds.X + bounds.Width - 25, Y: bounds.Y + 3, Width: 22, Height: 22}
+		left := gfx.Rect{X: bounds.X + bounds.Width - 49, Y: bounds.Y + 3, Width: 22, Height: 22}
+		right := gfx.Rect{X: bounds.X + bounds.Width - 25, Y: bounds.Y + 3, Width: 22, Height: 22}
 		canvas.Border(left, 1, palette.border, palette.toolbar)
 		canvas.Border(right, 1, palette.border, palette.toolbar)
 		canvas.DrawIcon(leftIcon, controlIconBounds(left), palette.text)

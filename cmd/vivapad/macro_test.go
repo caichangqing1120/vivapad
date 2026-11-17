@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/macro"
 )
 
@@ -31,7 +31,7 @@ func TestMacroRecordsCommittedIMEAndCodeTabThenReplaysAtCaret(t *testing.T) {
 	if err := driver.Type("中"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyTab, 0); err != nil {
+	if err := driver.Key(gfx.KeyTab, 0); err != nil {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(8))
@@ -64,13 +64,13 @@ func TestMacroRecordsCommittedIMEAndCodeTabThenReplaysAtCaret(t *testing.T) {
 func TestMacroShortcutAndEmptyRecordingPreserveLastMacro(t *testing.T) {
 	state, driver := startDriver(t)
 	clickID(t, driver, editorID)
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'r'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'r'); err != nil || !handled {
 		t.Fatalf("start recording handled=%v, %v", handled, err)
 	}
 	if err := driver.Type("x"); err != nil {
 		t.Fatal(err)
 	}
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'r'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'r'); err != nil || !handled {
 		t.Fatalf("stop recording handled=%v, %v", handled, err)
 	}
 	if len(state.macroLast) != 1 {
@@ -81,7 +81,7 @@ func TestMacroShortcutAndEmptyRecordingPreserveLastMacro(t *testing.T) {
 	if len(state.macroLast) != 1 {
 		t.Fatal("empty recording replaced the last macro")
 	}
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'p'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'p'); err != nil || !handled {
 		t.Fatalf("playback handled=%v, %v", handled, err)
 	}
 	if got := state.space.Current().Editor.String(); got != "xx" {
@@ -109,7 +109,7 @@ func TestMacroCancelsOnUnrecordedCaretNavigation(t *testing.T) {
 	if err := driver.Type("first\nsecond"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyUp, 0); err != nil {
+	if err := driver.Key(gfx.KeyUp, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.macroRecording || len(state.macroLast) != 0 || !strings.Contains(state.notice, "movement") {

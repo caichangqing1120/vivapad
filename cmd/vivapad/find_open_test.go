@@ -25,7 +25,7 @@ func TestFindAllOpenDocumentsIncludesUnsavedBuffers(t *testing.T) {
 	second := state.space.Current()
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(8))
+	clickID(t, driver, searchCommandID(t, "Find All in Open Documents"))
 	if !state.resultsOpen || !state.resultOpenDocuments || state.resultDocument != nil || len(state.fileResults.Matches) != 2 ||
 		len(state.resultDocuments) != 2 || state.resultDocuments[0] != first || state.resultDocuments[1] != second {
 		t.Fatalf("open-buffer results = %+v sources=%+v", state.fileResults, state.resultDocuments)
@@ -60,7 +60,7 @@ func TestFindAllOpenDocumentsPreservesSplitOwnership(t *testing.T) {
 	defer driver.Close()
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(8))
+	clickID(t, driver, searchCommandID(t, "Find All in Open Documents"))
 	clickID(t, driver, resultScope.At(0))
 	if state.activePane != 0 || state.paneDocs[0] != first || state.paneDocs[1] != second || state.paneOwner[first] != 0 || state.paneOwner[second] != 1 {
 		t.Fatalf("open result moved a pane: active=%d panes=%+v owners=%+v", state.activePane, state.paneDocs, state.paneOwner)
@@ -81,7 +81,7 @@ func TestFindAllOpenDocumentsCapsGloballyAndDropsClosedSource(t *testing.T) {
 	defer driver.Close()
 	state.query.Insert("x")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(8))
+	clickID(t, driver, searchCommandID(t, "Find All in Open Documents"))
 	if len(state.fileResults.Matches) != 2000 || !state.fileResults.Truncated || state.resultDocuments[0] != first || state.resultDocuments[1999] != second {
 		t.Fatalf("global result cap = %+v", state.fileResults)
 	}

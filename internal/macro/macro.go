@@ -170,8 +170,9 @@ func play(doc *document.Document, steps []Step, repeats int, untilEnd bool, exec
 		return fmt.Errorf("finish input-method composition before playing a macro")
 	}
 	return doc.Editor.Transact(func(editor *text.Editor) error {
-		lineDoc := document.New("macro")
-		lineDoc.Editor = editor
+		// The transaction draft is a transient editor, not a document: wrap it
+		// without a change-history source instead of replacing a bound editor.
+		lineDoc := document.NewDraft("macro", editor)
 		return playDraft(lineDoc, steps, repeats, untilEnd, execute)
 	})
 }

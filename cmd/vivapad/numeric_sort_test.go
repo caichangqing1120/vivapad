@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestNumericSortSubmenuReachesEveryCommandAtCompactSize(t *testing.T) {
@@ -46,7 +46,7 @@ func TestNumericSortSubmenuReachesEveryCommandAtCompactSize(t *testing.T) {
 	if got := doc.Editor.String(); got != "\nitem1\nitem2\nitem10" {
 		t.Fatalf("integer-aware ascending menu = %q", got)
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -61,7 +61,7 @@ func TestNumericSortWheelAndReadOnlyErrorPreserveDocument(t *testing.T) {
 	doc.Editor.ClearHistory()
 	clickID(t, driver, menuScope.At(1))
 	clickID(t, driver, menuItemScope.At(10))
-	if err := driver.Scroll(ui.ScrollEvent{X: 390, Y: 260, DeltaY: 240}); err != nil {
+	if err := driver.Scroll(gfx.ScrollEvent{X: 390, Y: 260, DeltaY: 240}); err != nil {
 		t.Fatal(err)
 	}
 	if state.lineMenuOffset == 0 {

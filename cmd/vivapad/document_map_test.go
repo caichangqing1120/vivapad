@@ -7,12 +7,12 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 	"vivapad/internal/session"
 )
 
-func documentMapHit(t *testing.T, driver *app.Driver) ui.Rect {
+func documentMapHit(t *testing.T, driver *app.Driver) gfx.Rect {
 	t.Helper()
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == documentMapID {
@@ -20,7 +20,7 @@ func documentMapHit(t *testing.T, driver *app.Driver) ui.Rect {
 		}
 	}
 	t.Fatal("Document Map hit is missing")
-	return ui.Rect{}
+	return gfx.Rect{}
 }
 
 func TestDocumentMapClickDragAndCloseDoNotEditDocument(t *testing.T) {
@@ -46,13 +46,13 @@ func TestDocumentMapClickDragAndCloseDoNotEditDocument(t *testing.T) {
 	if state.codeEditor().ScrollY() <= 0 || doc.Editor.Caret() != 0 || doc.Editor.Selection() != before || doc.Editor.CanUndo() || doc.Editor.String() != value {
 		t.Fatalf("map click changed editor state: scroll=%v caret=%d", state.codeEditor().ScrollY(), doc.Editor.Caret())
 	}
-	if err := driver.Press(mapBounds.X+mapBounds.Width/2, mapBounds.Y+44, ui.PointerButtonPrimary); err != nil {
+	if err := driver.Press(mapBounds.X+mapBounds.Width/2, mapBounds.Y+44, gfx.PointerButtonPrimary); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.Move(mapBounds.X+mapBounds.Width/2, mapBounds.Y+mapBounds.Height-12); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Release(mapBounds.X+mapBounds.Width/2, mapBounds.Y+mapBounds.Height-12, ui.PointerButtonPrimary); err != nil {
+	if err := driver.Release(mapBounds.X+mapBounds.Width/2, mapBounds.Y+mapBounds.Height-12, gfx.PointerButtonPrimary); err != nil {
 		t.Fatal(err)
 	}
 	if state.codeEditor().ScrollY() <= 0 || doc.Editor.Caret() != 0 {
@@ -98,7 +98,7 @@ func TestDocumentMapWheelAndSplitFollowActivePaneAtCompactSize(t *testing.T) {
 	if bounds.X < state.folderPanelWidth(640)+200 || bounds.X+bounds.Width > 640 || bounds.Y+bounds.Height > 400-statusHeight {
 		t.Fatalf("compact split/map/workspace bounds = %+v", bounds)
 	}
-	if err := driver.Scroll(ui.ScrollEvent{X: bounds.X + bounds.Width/2, Y: bounds.Y + 80, DeltaY: 120}); err != nil {
+	if err := driver.Scroll(gfx.ScrollEvent{X: bounds.X + bounds.Width/2, Y: bounds.Y + 80, DeltaY: 120}); err != nil {
 		t.Fatal(err)
 	}
 	if state.codeEditorForPane(1).ScrollY() <= 0 || state.codeEditorForPane(0).ScrollY() != 0 {
@@ -120,7 +120,7 @@ func TestDocumentMapWheelAndSplitFollowActivePaneAtCompactSize(t *testing.T) {
 }
 
 func TestDocumentMapViewportProjectionBounds(t *testing.T) {
-	bounds := ui.Rect{X: 100, Y: 50, Width: 120, Height: 270}
+	bounds := gfx.Rect{X: 100, Y: 50, Width: 120, Height: 270}
 	for _, test := range []struct {
 		scroll, maxScroll, viewHeight float32
 		wantTop, wantHeight           float32
@@ -203,14 +203,14 @@ func TestDocumentMapViewportKeepsMiniatureRowsVisible(t *testing.T) {
 	doc.Editor.Insert(strings.Repeat("source line\n", 200))
 	doc.Editor.MoveTo(0, false)
 	state.documentMapVisible = true
-	var canvas ui.Canvas
-	state.paint(&canvas, ui.Size{Width: 640, Height: 400})
+	var canvas gfx.Canvas
+	state.paint(&canvas, gfx.Size{Width: 640, Height: 400})
 	fillIndex, sampleIndex := -1, -1
 	for index, rectangle := range canvas.Rectangles() {
-		if rectangle.Color == ui.RGB(255, 246, 247) {
+		if rectangle.Color == gfx.RGB(255, 246, 247) {
 			fillIndex = index
 		}
-		if rectangle.Color == ui.RGB(158, 165, 172) && rectangle.Bounds.Y < state.documentMapContent.Y+50 && sampleIndex < 0 {
+		if rectangle.Color == gfx.RGB(158, 165, 172) && rectangle.Bounds.Y < state.documentMapContent.Y+50 && sampleIndex < 0 {
 			sampleIndex = index
 		}
 	}

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 	"vivapad/internal/recent"
 	"vivapad/internal/searchfiles"
@@ -128,7 +128,7 @@ func TestRecentSubmenuClosesWithEscapeWithoutChangingDocument(t *testing.T) {
 	if !state.recentOpen {
 		t.Fatal("recent submenu did not open")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.recentOpen || state.space.Current() != original {
@@ -146,11 +146,11 @@ func TestFileDropAndFindResultUpdateRecentHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, driver := startDriver(t)
-	accepted, err := driver.Drop(ui.FileDropEvent{Phase: ui.FileDropDrop, X: 100, Y: 110, Paths: []string{dropped}})
+	accepted, err := driver.Drop(gfx.FileDropEvent{Phase: gfx.FileDropDrop, X: 100, Y: 110, Paths: []string{dropped}})
 	if err != nil || !accepted || len(state.recentEntries) != 1 || filepath.Base(state.recentEntries[0].Path) != "dropped.txt" {
 		t.Fatalf("drop recent = %+v accepted=%v err=%v", state.recentEntries, accepted, err)
 	}
-	state.fileResults.Matches = []searchfiles.Match{{Path: found, Start: 0, End: 4, Text: "find"}}
+	state.fileResults.Matches = []searchfiles.Match{{Path: found, Source: "find", Start: 0, End: 4, Text: "find"}}
 	state.openFileResult(0)
 	if len(state.recentEntries) != 2 || filepath.Base(state.recentEntries[0].Path) != "found.txt" || state.space.Current().Editor.String() != "find" {
 		t.Fatalf("find result recent = %+v current=%+v", state.recentEntries, state.space.Current())

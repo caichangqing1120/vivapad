@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func (state *model) documentMapWidth(width float32) float32 {
@@ -14,8 +14,8 @@ func (state *model) documentMapWidth(width float32) float32 {
 	return min(160, max(110, width*0.16))
 }
 
-func documentMapViewport(bounds ui.Rect, scroll, maxScroll, viewHeight float32) ui.Rect {
-	result := ui.Rect{X: bounds.X + 1, Y: bounds.Y, Width: max(0, bounds.Width-2), Height: bounds.Height}
+func documentMapViewport(bounds gfx.Rect, scroll, maxScroll, viewHeight float32) gfx.Rect {
+	result := gfx.Rect{X: bounds.X + 1, Y: bounds.Y, Width: max(0, bounds.Width-2), Height: bounds.Height}
 	if bounds.Height <= 0 || maxScroll <= 0 || viewHeight <= 0 {
 		return result
 	}
@@ -52,25 +52,25 @@ func (state *model) scrollFromDocumentMap(y float32) {
 	state.invalidator.Invalidate()
 }
 
-func (state *model) paintDocumentMap(canvas *ui.Canvas, bounds ui.Rect, editorHeight float32) {
-	canvas.Fill(bounds, ui.RGB(247, 248, 249))
-	canvas.Fill(ui.Rect{X: bounds.X, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
-	canvas.Fill(ui.Rect{X: bounds.X, Y: bounds.Y + 30, Width: bounds.Width, Height: 1}, palette.border)
+func (state *model) paintDocumentMap(canvas *gfx.Canvas, bounds gfx.Rect, editorHeight float32) {
+	canvas.Fill(bounds, gfx.RGB(247, 248, 249))
+	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
+	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y + 30, Width: bounds.Width, Height: 1}, palette.border)
 	title := "Document Map"
 	if bounds.Width < 130 {
 		title = "Map"
 	}
-	smallLabel(canvas, title, ui.Rect{X: bounds.X + 10, Y: bounds.Y + 3, Width: bounds.Width - 42, Height: 26}, palette.text, 11)
-	closeBounds := ui.Rect{X: bounds.X + bounds.Width - 26, Y: bounds.Y + 6, Width: 18, Height: 18}
+	smallLabel(canvas, title, gfx.Rect{X: bounds.X + 10, Y: bounds.Y + 3, Width: bounds.Width - 42, Height: 26}, palette.text, 11)
+	closeBounds := gfx.Rect{X: bounds.X + bounds.Width - 26, Y: bounds.Y + 6, Width: 18, Height: 18}
 	if canvas.Hovered() == documentMapCloseID {
 		canvas.Fill(closeBounds, palette.hover)
 	}
-	canvas.DrawIcon(closeIcon, closeBounds.Inset(ui.All(3)), palette.muted)
+	canvas.DrawIcon(closeIcon, closeBounds.Inset(gfx.All(3)), palette.muted)
 	if hitButton(canvas, documentMapCloseID, closeBounds, "Close Document Map") {
 		state.documentMapVisible = false
 		state.documentMapDragging = false
 	}
-	content := ui.Rect{X: bounds.X + 6, Y: bounds.Y + 35, Width: bounds.Width - 12, Height: max(0, bounds.Height-41)}
+	content := gfx.Rect{X: bounds.X + 6, Y: bounds.Y + 35, Width: bounds.Width - 12, Height: max(0, bounds.Height-41)}
 	state.documentMapContent, state.documentMapViewHeight = content, editorHeight
 	editor := state.codeEditor()
 	doc := state.space.Current()
@@ -80,7 +80,7 @@ func (state *model) paintDocumentMap(canvas *ui.Canvas, bounds ui.Rect, editorHe
 	value := doc.Editor.String()
 	canvas.Clip(content)
 	viewport := documentMapViewport(content, editor.ScrollY(), editor.MaxScrollY(), editorHeight)
-	canvas.RoundedBorder(viewport, 2, 1, palette.blue, ui.RGB(255, 246, 247))
+	canvas.RoundedBorder(viewport, 2, 1, palette.blue, gfx.RGB(255, 246, 247))
 	if content.Height > 0 && len(value) != 0 {
 		samples := max(1, int(content.Height/3))
 		step := content.Height / float32(samples)
@@ -108,9 +108,9 @@ func (state *model) paintDocumentMap(canvas *ui.Canvas, bounds ui.Rect, editorHe
 			}
 			x := content.X + 4 + min(float32(indent)*0.8, 18)
 			width := min(max(3, float32(utf8.RuneCountInString(line))*0.85), max(3, content.X+content.Width-x-4))
-			canvas.Fill(ui.Rect{X: x, Y: content.Y + float32(index)*step + 1, Width: width, Height: 1.5}, ui.RGB(158, 165, 172))
+			canvas.Fill(gfx.Rect{X: x, Y: content.Y + float32(index)*step + 1, Width: width, Height: 1.5}, gfx.RGB(158, 165, 172))
 		}
 	}
 	canvas.Unclip()
-	canvas.HitWithOptions(documentMapID, content, "Scroll Document Map", ui.HitOptions{Role: ui.RoleButton, Hint: "Scroll the active editor view"})
+	canvas.HitWithOptions(documentMapID, content, "Scroll Document Map", gfx.HitOptions{Role: gfx.RoleButton, Hint: "Scroll the active editor view"})
 }

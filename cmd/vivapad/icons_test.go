@@ -6,18 +6,18 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestFigmaNavigationArrowsPointInTheirActionDirection(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		icon ui.Icon
-		want []ui.PathCommand
+		icon gfx.Icon
+		want []gfx.PathCommand
 	}{
-		{"left", leftIcon, []ui.PathCommand{ui.MoveTo(10, 4), ui.LineTo(6, 8), ui.LineTo(10, 12)}},
-		{"right", rightIcon, []ui.PathCommand{ui.MoveTo(6, 12), ui.LineTo(10, 8), ui.LineTo(6, 4)}},
+		{"left", leftIcon, []gfx.PathCommand{gfx.MoveTo(10, 4), gfx.LineTo(6, 8), gfx.LineTo(10, 12)}},
+		{"right", rightIcon, []gfx.PathCommand{gfx.MoveTo(6, 12), gfx.LineTo(10, 8), gfx.LineTo(6, 4)}},
 	} {
 		if !reflect.DeepEqual(test.icon.Commands, test.want) {
 			t.Errorf("%s navigation lost its Figma rotation: %+v", test.name, test.icon.Commands)
@@ -74,20 +74,20 @@ func TestFigmaToolbarRetainsEditingCommandsAndFitsCompactWindows(t *testing.T) {
 
 func TestToolbarTintKeepsDisabledCommandsDistinct(t *testing.T) {
 	for _, test := range []struct {
-		id      ui.ID
+		id      gfx.ID
 		canUndo bool
 		canRedo bool
-		want    ui.Color
+		want    gfx.Color
 	}{
-		{id: newID, want: ui.RGB(52, 61, 67)},
-		{id: openID, want: ui.RGB(52, 61, 67)},
-		{id: copyID, want: ui.RGB(52, 61, 67)},
-		{id: pasteID, want: ui.RGB(52, 61, 67)},
-		{id: saveID, want: ui.RGB(52, 61, 67)},
-		{id: undoID, want: ui.RGB(166, 175, 182)},
-		{id: undoID, canUndo: true, want: ui.RGB(52, 61, 67)},
-		{id: redoID, want: ui.RGB(166, 175, 182)},
-		{id: redoID, canRedo: true, want: ui.RGB(52, 61, 67)},
+		{id: newID, want: gfx.RGB(52, 61, 67)},
+		{id: openID, want: gfx.RGB(52, 61, 67)},
+		{id: copyID, want: gfx.RGB(52, 61, 67)},
+		{id: pasteID, want: gfx.RGB(52, 61, 67)},
+		{id: saveID, want: gfx.RGB(52, 61, 67)},
+		{id: undoID, want: gfx.RGB(166, 175, 182)},
+		{id: undoID, canUndo: true, want: gfx.RGB(52, 61, 67)},
+		{id: redoID, want: gfx.RGB(166, 175, 182)},
+		{id: redoID, canRedo: true, want: gfx.RGB(52, 61, 67)},
 	} {
 		if got := toolbarTint(test.id, test.canUndo, test.canRedo); got != test.want {
 			t.Errorf("icon %v tint = %+v, want %+v", test.id, got, test.want)

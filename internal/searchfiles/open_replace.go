@@ -47,8 +47,9 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 		}
 		seen[doc], editors[doc.Editor] = true, doc
 		before := doc.Editor.String()
-		candidate := document.New(doc.Name)
-		candidate.Editor = text.NewEditor(before)
+		// A replacement preview is a transient wrapper, not a document: it must
+		// not bind a history producer to a blank editor it then replaces.
+		candidate := document.NewDraft(doc.Name, text.NewEditor(before))
 		candidate.Editor.SetSavePoint()
 		candidate.SetEncoding(doc.Encoding())
 		candidate.SetLineEnding(doc.LineEnding())

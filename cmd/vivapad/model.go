@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,8 +13,8 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/assets"
 	"vivapad/internal/datetime"
 	"vivapad/internal/document"
@@ -35,7 +34,7 @@ import (
 )
 
 var (
-	tree                       = ui.Tree{}
+	tree                       = gfx.Tree{}
 	page                       = tree.Feature("vivapad")
 	menuScope                  = tree.Sub(page, tree.Name("menus"))
 	menuItemScope              = tree.Sub(page, tree.Name("menu-items"))
@@ -217,6 +216,7 @@ var (
 	hashScope                  = tree.Sub(page, tree.Name("hash-tools"))
 	sessionScope               = tree.Sub(page, tree.Name("session-menu"))
 	bookmarkScope              = tree.Sub(page, tree.Name("bookmark-menu"))
+	changeHistoryScope         = tree.Sub(page, tree.Name("change-history-menu"))
 	markJumpScope              = tree.Sub(page, tree.Name("mark-jump-menu"))
 	styleMenuScope             = tree.Sub(page, tree.Name("style-menu"))
 	closeMultipleScope         = tree.Sub(page, tree.Name("close-multiple-menu"))
@@ -347,6 +347,9 @@ type model struct {
 	focusViewRequested            bool
 	focusViewArmed                bool
 	activePane                    int
+	compositionOwner              compositionOwner
+	provisional                   provisionalComposition
+	compositionFallback           map[*text.Editor]bool
 	splitRatio                    float32
 	splitDragging                 bool
 	splitWidth                    float32
@@ -396,7 +399,7 @@ type model struct {
 	folderVisible                 bool
 	documentMapVisible            bool
 	documentMapDragging           bool
-	documentMapContent            ui.Rect
+	documentMapContent            gfx.Rect
 	documentMapViewHeight         float32
 	syncVertical                  bool
 	syncHorizontal                bool
@@ -546,6 +549,7 @@ type model struct {
 	eolMenuOpen                   bool
 	sessionMenuOpen               bool
 	bookmarkMenuOpen              bool
+	changeHistoryMenuOpen         bool
 	markJumpMenuOpen              bool
 	markJumpPrevious              bool
 	styleMenuMode                 string
@@ -586,7 +590,10 @@ type model struct {
 	renamePlan                    *document.RenamePlan
 	renameFocus                   bool
 	notice                        string
+	noChangeNoticeDoc             *document.Document
+	noChangeNoticeRevision        uint64
 	showLineNumbers               bool
+	changeHistoryView             string
 	showWhitespace                bool
 	showEOL                       bool
 	showIndentGuides              bool
@@ -685,6 +692,9 @@ type model struct {
 	runName                       *text.Editor
 	runMenuOffset                 int
 	runMenuVisible                int
+
+	// changeView caches the change-margin decorations per document.
+	changeView map[*document.Document]*changeViewCache
 }
 
 type searchMarkCache struct {
@@ -717,7 +727,8 @@ func newModel() *model {
 	workingDirectory, _ := os.Getwd()
 	space := workspace.New()
 	return &model{
-		space: space, editors: make(map[*document.Document]*components.CodeEditor),
+		changeView: newChangeViewCache(),
+		space:      space, editors: make(map[*document.Document]*components.CodeEditor),
 		secondEditors: make(map[*document.Document]*components.CodeEditor), paneDocs: [2]*document.Document{space.Current()}, splitRatio: 0.5,
 		paneOwner:      map[*document.Document]int{space.Current(): 0},
 		languages:      make(map[*document.Document]string),
@@ -742,7 +753,7 @@ func newModel() *model {
 		replacement: text.NewEditor(""), goToField: text.NewEditor(""),
 		filesRoot: text.NewEditor(workingDirectory), filesPattern: text.NewEditor("*"),
 		filesRecursive: true, searchReplies: make(chan fileSearchResponse, 16),
-		menuOpen: -1, pendingClose: -1, pendingReload: -1, resultSelected: -1, showLineNumbers: true, showIndentGuides: true, showControls: true, markWrap: true, markMode: "normal", fontSize: 13, subFontSize: 13,
+		menuOpen: -1, pendingClose: -1, pendingReload: -1, resultSelected: -1, showLineNumbers: true, changeHistoryView: "margin", showIndentGuides: true, showControls: true, markWrap: true, markMode: "normal", fontSize: 13, subFontSize: 13,
 		tabWidth: 4, indentMode: "language", autoIndent: true, autoClose: true, npcMode: "abbreviation",
 		printSettings:  printing.DefaultSettings(),
 		dateTimeFormat: datetime.DefaultFormat, clock: time.Now,
@@ -890,6 +901,10 @@ func (state *model) applyPreferences(stored preferences.State) {
 	state.showNonPrinting, state.showControls, state.representationsReady = stored.ShowNonPrinting, stored.ShowControls, false
 	state.npcMode, state.npcIncludeControls = stored.NPCMode, stored.NPCIncludeControls
 	state.printSettings = stored.Print
+	if stored.ChangeHistoryView == "" {
+		stored.ChangeHistoryView = "margin"
+	}
+	state.changeHistoryView = stored.ChangeHistoryView
 }
 
 func (state *model) savePreferences() error {
@@ -905,7 +920,8 @@ func (state *model) savePreferences() error {
 		ShowWhitespace: state.showWhitespace, ShowEOL: state.showEOL, ShowIndentGuides: state.showIndentGuides, ShowWrapSymbol: state.showWrapSymbol,
 		ShowNonPrinting: state.showNonPrinting, ShowControls: state.showControls,
 		NPCMode: state.npcMode, NPCIncludeControls: state.npcIncludeControls,
-		Print: state.printSettings,
+		ChangeHistoryView: state.changeHistoryView,
+		Print:             state.printSettings,
 	}
 	if err := preferences.Save(state.preferencesPath, stored); err != nil {
 		state.notice = "Settings not saved: " + err.Error()
@@ -914,11 +930,11 @@ func (state *model) savePreferences() error {
 	return nil
 }
 
-func primary() ui.Modifiers {
+func primary() gfx.Modifiers {
 	if runtime.GOOS == "darwin" {
-		return ui.ModifierMeta
+		return gfx.ModifierMeta
 	}
-	return ui.ModifierControl
+	return gfx.ModifierControl
 }
 
 func newConfig(state *model) app.Config {
@@ -929,192 +945,82 @@ func newConfig(state *model) app.Config {
 		Icon:        assets.WindowIcon(),
 	}
 	config.Paint = state.paint
+	config.OnActivate = state.invalidator.Invalidate
 	config.OnFullscreen = func(fullscreen bool) {
 		state.fullscreen = fullscreen
 		state.menuOpen, state.menuOverflowOpen = -1, false
 		state.invalidator.Invalidate()
 	}
 	config.TextInput = func(context app.TextInputContext) *app.TextInput {
-		if state.saveSessionOptionsOpen {
-			return nil
-		}
-		if state.byteRangeOpen {
-			if state.byteRangeMode == 2 && context.ID == byteRangeStartID {
-				return &app.TextInput{Editor: state.byteRangeStart}
-			}
-			if state.byteRangeMode == 2 && context.ID == byteRangeEndID {
-				return &app.TextInput{Editor: state.byteRangeEnd}
-			}
-		}
-		if state.columnDialogOpen {
-			switch context.ID {
-			case columnTextID:
-				return &app.TextInput{Editor: state.columnText}
-			case columnInitialID:
-				return &app.TextInput{Editor: state.columnInitial}
-			case columnIncrementID:
-				return &app.TextInput{Editor: state.columnIncrement}
-			case columnRepeatID:
-				return &app.TextInput{Editor: state.columnRepeat}
-			}
-			return nil
-		}
-		if state.preferencesOpen {
-			return state.printPreferenceTextInput(context.ID)
-		}
-		if state.runDialogOpen {
-			if !state.runSaveMode && context.ID == runDialogInputID {
-				return &app.TextInput{Editor: state.runInput}
-			}
-			if state.runSaveMode && context.ID == runDialogNameID {
-				return &app.TextInput{Editor: state.runName}
-			}
-			return nil
-		}
-		if state.summaryOpen {
-			return nil
-		}
-		if state.windowsDialogOpen {
-			return nil
-		}
-		if state.macroSaveOpen || state.macroRunOpen {
-			if state.macroSaveOpen && context.ID == macroNameID {
-				return &app.TextInput{Editor: state.macroName}
-			}
-			if state.macroRunOpen && context.ID == macroCountID {
-				return &app.TextInput{Editor: state.macroCount}
-			}
-			return nil
-		}
-		if state.hashDialogOpen {
-			if state.hashMode == hashFromText && context.ID == hashInputID {
-				return &app.TextInput{Editor: state.hashInput}
-			}
-			return nil
-		}
-		if state.dateTimeDialogOpen {
-			if context.ID == dateTimeFieldID {
-				return &app.TextInput{Editor: state.dateTimeDraft}
-			}
-			return nil
-		}
-		if state.renameDoc != nil {
-			if context.ID == renameFieldID {
-				return &app.TextInput{Editor: state.renameField}
-			}
-			return nil
-		}
-		if state.renamePlan != nil || state.pendingTrash != nil {
-			return nil
-		}
-		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
-			return nil
-		}
-		if state.filesDialogOpen && context.ID != queryID && context.ID != filesRootID && context.ID != filesPatternID {
-			if !state.filesReplaceMode || context.ID != replacementID {
-				return nil
-			}
-		}
-		if state.functionListVisible && state.activeDock() == "functions" && context.ID == functionFilterID {
-			return &app.TextInput{Editor: state.functionFilter}
-		}
-		switch context.ID {
-		case editorID:
-			if state.isReadOnly(state.paneDocument(0)) {
-				return nil
-			}
-			if selection := state.rectangles[0]; selection.active && selection.doc == state.paneDocument(0) {
-				return state.rectangleTextInput(0)
-			}
-			if state.multiSelections[0].active && state.multiSelections[0].doc == state.paneDocument(0) {
-				return state.multiSelectionTextInput(0)
-			}
-			return state.macroTextInput(state.paneDocument(0))
-		case rightEditorID:
-			if state.isReadOnly(state.paneDocument(1)) {
-				return nil
-			}
-			if selection := state.rectangles[1]; selection.active && selection.doc == state.paneDocument(1) {
-				return state.rectangleTextInput(1)
-			}
-			if state.multiSelections[1].active && state.multiSelections[1].doc == state.paneDocument(1) {
-				return state.multiSelectionTextInput(1)
-			}
-			return state.macroTextInput(state.paneDocument(1))
-		case queryID:
-			return &app.TextInput{Editor: state.query}
-		case incrementQueryID:
-			return state.incrementalTextInput()
-		case replacementID:
-			return &app.TextInput{Editor: state.replacement}
-		case goToFieldID:
-			return &app.TextInput{Editor: state.goToField}
-		case filesRootID:
-			return &app.TextInput{Editor: state.filesRoot}
-		case filesPatternID:
-			return &app.TextInput{Editor: state.filesPattern}
-		}
-		return nil
+		input := state.resolveTextInput(context)
+		state.reconcileTextOwner(context.ID, input)
+		return input
 	}
-	config.OnPointer = func(event ui.PointerEvent) ui.EventResult {
-		if event.Kind == ui.PointerDown || event.Kind == ui.PointerUp {
-			state.menuPointerShift = event.Modifiers&ui.ModifierShift != 0
+	config.OnPointer = func(event gfx.PointerEvent) gfx.EventResult {
+		if event.Kind == gfx.PointerDown {
+			state.pointerCompositionAway(event.Target)
 		}
-		if state.rectangleDragging && (event.Kind == ui.PointerMove || event.Kind == ui.PointerUp) {
+		if event.Kind == gfx.PointerDown || event.Kind == gfx.PointerUp {
+			state.menuPointerShift = event.Modifiers&gfx.ModifierShift != 0
+		}
+		if result, handled := state.changeHistoryMenuPointer(event); handled {
+			return result
+		}
+		if state.rectangleDragging && (event.Kind == gfx.PointerMove || event.Kind == gfx.PointerUp) {
 			pane := state.rectangleDragPane
 			doc := state.paneDocument(pane)
 			selection := &state.rectangles[pane]
 			if selection.doc == doc {
-				if offset, virtual, ok := state.codeEditorForPane(pane).OffsetWithVirtualAt(ui.Point{X: event.X, Y: event.Y}); ok {
+				if offset, virtual, ok := state.codeEditorForPane(pane).OffsetWithVirtualAt(gfx.Point{X: event.X, Y: event.Y}); ok {
 					doc.Editor.MoveTo(doc.Editor.RuneIndex(offset), false)
 					selection.caret, selection.caretVirtual = doc.Editor.Caret(), virtual
 					selection.copyValid = false
 				}
 			}
-			if event.Kind == ui.PointerUp {
+			if event.Kind == gfx.PointerUp {
 				state.rectangleDragging = false
 			}
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if event.Kind == ui.PointerDown && (event.Target == editorID || event.Target == rightEditorID) {
+		if event.Kind == gfx.PointerDown && (event.Target == editorID || event.Target == rightEditorID) {
 			pane := paneForTarget(event.Target)
 			state.multiSelections[pane] = multiSelectionState{}
-			if event.Modifiers&ui.ModifierAlt != 0 && event.Button == ui.PointerButtonPrimary {
+			if event.Modifiers&gfx.ModifierAlt != 0 && event.Button == gfx.PointerButtonPrimary {
 				state.activatePane(pane)
 				doc := state.paneDocument(pane)
-				if offset, virtual, ok := state.codeEditorForPane(pane).OffsetWithVirtualAt(ui.Point{X: event.X, Y: event.Y}); ok {
+				if offset, virtual, ok := state.codeEditorForPane(pane).OffsetWithVirtualAt(gfx.Point{X: event.X, Y: event.Y}); ok {
 					doc.Editor.MoveTo(doc.Editor.RuneIndex(offset), false)
 					state.rectangles[pane] = rectangleSelection{doc: doc, anchor: doc.Editor.Caret(), caret: doc.Editor.Caret(), anchorVirtual: virtual, caretVirtual: virtual, value: doc.Editor.String(), active: true}
 					state.selectAnchors[pane] = selectAnchor{}
 					state.rectangleDragging, state.rectangleDragPane = true, pane
-					return ui.EventResult{Handled: true, Repaint: true, Focus: event.Target}
+					return gfx.EventResult{Handled: true, Repaint: true, Focus: event.Target}
 				}
 			}
 			state.rectangles[pane] = rectangleSelection{}
 		}
 		if event.Target.Scope() == wordCompletionScope {
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
-		if event.Kind == ui.PointerDown {
+		if event.Kind == gfx.PointerDown {
 			state.wordCompletion = nil
 		}
 		if state.documentMapDragging {
-			if event.Kind == ui.PointerMove || event.Kind == ui.PointerUp {
+			if event.Kind == gfx.PointerMove || event.Kind == gfx.PointerUp {
 				state.scrollFromDocumentMap(event.Y)
 				state.syncScrollFrom(state.activePane)
-				if event.Kind == ui.PointerUp {
+				if event.Kind == gfx.PointerUp {
 					state.documentMapDragging = false
 				}
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
-		if state.documentMapVisible && event.Target == documentMapID && event.Kind == ui.PointerDown {
+		if state.documentMapVisible && event.Target == documentMapID && event.Kind == gfx.PointerDown {
 			state.documentMapDragging = true
 			state.scrollFromDocumentMap(event.Y)
 			state.syncScrollFrom(state.activePane)
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if event.Kind == ui.PointerDown {
+		if event.Kind == gfx.PointerDown {
 			switch {
 			case event.Target == resultsPaneID || event.Target.Scope() == resultScope:
 				state.resultFocusMode = true
@@ -1123,47 +1029,47 @@ func newConfig(state *model) app.Config {
 				state.resultFocusMode = false
 			}
 		}
-		if state.readOnlyDragDoc != nil && (event.Kind == ui.PointerMove || event.Kind == ui.PointerUp) {
+		if state.readOnlyDragDoc != nil && (event.Kind == gfx.PointerMove || event.Kind == gfx.PointerUp) {
 			doc := state.readOnlyDragDoc
-			if event.Kind == ui.PointerUp || state.documentIndex(doc) < 0 {
+			if event.Kind == gfx.PointerUp || state.documentIndex(doc) < 0 {
 				state.readOnlyDragDoc = nil
-				return ui.EventResult{Handled: true}
+				return gfx.EventResult{Handled: true}
 			}
-			if offset, ok := state.codeEditorForPane(state.readOnlyDragPane).OffsetAt(ui.Point{X: event.X, Y: event.Y}); ok {
+			if offset, ok := state.codeEditorForPane(state.readOnlyDragPane).OffsetAt(gfx.Point{X: event.X, Y: event.Y}); ok {
 				doc.Editor.MoveTo(doc.Editor.RuneIndex(offset), true)
 			}
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if event.Kind == ui.PointerDown && (event.Target == editorID || event.Target == rightEditorID) {
+		if event.Kind == gfx.PointerDown && (event.Target == editorID || event.Target == rightEditorID) {
 			pane := paneForTarget(event.Target)
 			doc := state.paneDocument(pane)
 			if state.isReadOnly(doc) {
 				state.activatePane(pane)
-				if offset, ok := state.codeEditorForPane(pane).OffsetAt(ui.Point{X: event.X, Y: event.Y}); ok {
-					doc.Editor.MoveTo(doc.Editor.RuneIndex(offset), event.Modifiers&ui.ModifierShift != 0)
+				if offset, ok := state.codeEditorForPane(pane).OffsetAt(gfx.Point{X: event.X, Y: event.Y}); ok {
+					doc.Editor.MoveTo(doc.Editor.RuneIndex(offset), event.Modifiers&gfx.ModifierShift != 0)
 					state.readOnlyDragDoc, state.readOnlyDragPane = doc, pane
-					return ui.EventResult{Handled: true, Repaint: true, Focus: event.Target}
+					return gfx.EventResult{Handled: true, Repaint: true, Focus: event.Target}
 				}
 			}
 		}
 		if state.splitEnabled {
-			if event.Kind == ui.PointerDown && event.Target == splitterID {
+			if event.Kind == gfx.PointerDown && event.Target == splitterID {
 				state.splitDragging = true
-				return ui.EventResult{Handled: true}
+				return gfx.EventResult{Handled: true}
 			}
 			if state.splitDragging {
-				if event.Kind == ui.PointerMove {
+				if event.Kind == gfx.PointerMove {
 					width := state.splitWidth
 					minimum := min(200, max(70, (width-8)/2))
 					position := event.X - state.folderPanelWidth(event.Viewport.Width)
 					state.splitRatio = min(max(position, minimum), width-minimum-8) / width
-					return ui.EventResult{Handled: true, Repaint: true}
+					return gfx.EventResult{Handled: true, Repaint: true}
 				}
 				state.splitDragging = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if pane := paneForTarget(event.Target); pane >= 0 {
-				if event.Kind == ui.PointerDown {
+				if event.Kind == gfx.PointerDown {
 					state.activatePane(pane)
 				}
 				result := state.codeEditorForPane(pane).Pointer(event)
@@ -1173,21 +1079,21 @@ func newConfig(state *model) app.Config {
 		}
 		return state.codeEditor().Pointer(event)
 	}
-	config.OnScroll = func(event ui.ScrollEvent) ui.EventResult {
+	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult {
 		if state.saveSessionOptionsOpen {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.byteRangeOpen && (event.Target == byteRangePanelID || event.Target.Scope() == byteRangeModeScope || event.Target == byteRangeStartID || event.Target == byteRangeEndID) {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.columnDialogOpen {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.preferencesOpen {
 			if state.printPreferenceField(event.Target) {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.menuOpen == 0 && (event.Target == fileMenuPanelID || event.Target == fileMenuPreviousID || event.Target == fileMenuNextID || event.Target.Scope() == menuItemScope) {
 			step := 1
@@ -1195,7 +1101,7 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.fileMenuOffset = min(max(0, state.fileMenuOffset+step), max(0, fileMenuCount()-state.fileMenuVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.menuOpen == 9 && (event.Target == runMenuPanelID || event.Target == runMenuPreviousID || event.Target == runMenuNextID || event.Target.Scope() == runNamedScope) {
 			step := 1
@@ -1203,7 +1109,7 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.runMenuOffset = min(max(0, state.runMenuOffset+step), max(0, len(state.namedRuns)+2-state.runMenuVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.menuOpen == 1 && (event.Target == editMenuPanelID || event.Target == editMenuPreviousID || event.Target == editMenuNextID || event.Target.Scope() == menuItemScope) {
 			step := 1
@@ -1211,7 +1117,7 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.editMenuOffset = min(max(0, state.editMenuOffset+step), max(0, len(menuCommands[1])-state.editMenuVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.menuOpen == 2 && (event.Target == searchMenuPanelID || event.Target == searchMenuPreviousID || event.Target == searchMenuNextID || event.Target.Scope() == menuItemScope) {
 			step := 1
@@ -1219,13 +1125,14 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.searchMenuOffset = min(max(0, state.searchMenuOffset+step), max(0, len(menuCommands[2])-state.searchMenuVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			state.closeSearchSubmenus()
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: searchMenuPanelID}
 		}
 		if state.markJumpMenuOpen && event.Target.Scope() == markJumpScope {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.styleMenuMode != "" && event.Target.Scope() == styleMenuScope {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.menuOpen == 3 && (event.Target == viewMenuPanelID || event.Target == viewMenuPreviousID || event.Target == viewMenuNextID || event.Target.Scope() == menuItemScope) {
 			step := 1
@@ -1233,10 +1140,10 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.viewMenuOffset = min(max(0, state.viewMenuOffset+step), max(0, len(menuCommands[3])-state.viewMenuVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.summaryOpen {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.documentListVisible && state.activeDock() == "documents" &&
 			(event.Target == documentListPanelID || event.Target.Scope() == documentListRowScope || event.Target.Scope() == documentListRowCloseScope) {
@@ -1245,7 +1152,7 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.documentListOffset = min(max(0, state.documentListOffset+step), max(0, len(state.documentListRows)-state.documentListVisibleRows))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.menuOpen == 11 && (event.Target == windowRecentPanelID || event.Target == windowRecentPreviousID || event.Target == windowRecentNextID || event.Target.Scope() == windowRecentScope) {
 			step := 1
@@ -1253,13 +1160,13 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.windowRecentOffset = min(max(0, state.windowRecentOffset+step), max(0, min(40, len(state.activeViewTabs()))-state.windowRecentVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.windowsDialogOpen {
 			if event.Target == windowsPanelID || event.Target.Scope() == windowsRowScope {
 				return state.scrollWindowsDialog(event)
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.functionListVisible && state.activeDock() == "functions" &&
 			(event.Target == functionPanelID || event.Target.Scope() == functionSymbolScope) {
@@ -1277,7 +1184,7 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.languageOffset = min(max(0, state.languageOffset+step), max(0, len(syntax.Languages())-state.languageVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.macroRunOpen && state.macroSourceOpen &&
 			(event.Target == macroSourcePrevID || event.Target == macroSourceNextID || event.Target.Scope() == macroSourceScope) {
@@ -1286,10 +1193,10 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.macroSourceOffset = min(max(0, state.macroSourceOffset+step), max(0, state.macroSourceCount()-state.macroSourceVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.hashDialogOpen {
 			if event.Target == hashInputID && state.hashMode == hashFromText {
@@ -1297,7 +1204,7 @@ func newConfig(state *model) app.Config {
 			} else if event.Target == hashResultID {
 				state.hashResultLayout.ScrollBy(event.DeltaY)
 			}
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.lineMenuOpen && state.menuOpen == 1 &&
 			(event.Target == linePanelID || event.Target == linePrevID || event.Target == lineNextID || event.Target.Scope() == lineScope) {
@@ -1306,7 +1213,7 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.lineMenuOffset = min(max(0, state.lineMenuOffset+step), max(0, len(lineCommands)-state.lineMenuVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.charsetMenuOpen && (state.menuOpen == 0 || state.menuOpen == 4) &&
 			(event.Target == charsetPanelID || event.Target == charsetPrevID || event.Target == charsetNextID || event.Target.Scope() == charsetScope) {
@@ -1315,7 +1222,7 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.charsetOffset = min(max(0, state.charsetOffset+step), max(0, len(document.LegacyEncodings())-state.charsetVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.savedMacroMenuOpen && state.menuOpen == 8 &&
 			(event.Target == savedMacroPanelID || event.Target == savedMacroPrevID || event.Target == savedMacroNextID || event.Target.Scope() == savedMacroScope) {
@@ -1324,7 +1231,7 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.savedMacroOffset = min(max(0, state.savedMacroOffset+step), max(0, len(state.namedMacros)-state.savedMacroVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.viewTabMenuOpen && state.menuOpen == 3 &&
 			(event.Target == viewTabPanelID || event.Target == viewTabPreviousID || event.Target == viewTabNextID || event.Target.Scope() == viewTabScope) {
@@ -1333,7 +1240,7 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			state.viewTabOffset = min(max(0, state.viewTabOffset+step), max(0, len(viewTabCommands)-state.viewTabVisible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.folderVisible && (event.Target == folderPanelID || event.Target.Scope() == folderRowScope) {
 			step := 1
@@ -1342,7 +1249,7 @@ func newConfig(state *model) app.Config {
 			}
 			visible := max(1, int((event.Viewport.Height-menuHeight-toolbarHeight-tabHeight-statusHeight-36)/22))
 			state.folderOffset = min(max(0, state.folderOffset+step), max(0, len(state.folderRows())-visible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if event.Target == resultsPaneID || event.Target.Scope() == resultScope {
 			step := 1
@@ -1351,21 +1258,21 @@ func newConfig(state *model) app.Config {
 			}
 			visible := max(1, int((resultPaneHeight(event.Viewport.Height)-30)/22))
 			state.resultOffset = min(max(0, state.resultOffset+step), max(0, len(state.fileResults.Matches)-visible))
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		pane := paneForTarget(event.Target)
 		if pane < 0 || pane == 1 && !state.splitEnabled {
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
 		result := state.codeEditorForPane(pane).Scroll(event)
 		state.syncScrollFrom(pane)
 		return result
 	}
-	config.OnFileDrop = func(event ui.FileDropEvent) ui.EventResult {
+	config.OnFileDrop = func(event gfx.FileDropEvent) gfx.EventResult {
 		if state.saveSessionOptionsOpen || state.columnDialogOpen || state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen || state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil || state.dateTimeDialogOpen || state.hashDialogOpen || state.windowsDialogOpen {
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
-		if event.Phase == ui.FileDropDrop {
+		if event.Phase == gfx.FileDropDrop {
 			if pane := paneForTarget(event.Target); pane >= 0 {
 				state.activatePane(pane)
 			}
@@ -1378,68 +1285,68 @@ func newConfig(state *model) app.Config {
 				}
 			}
 		}
-		return ui.EventResult{Handled: true, Repaint: event.Phase == ui.FileDropDrop}
+		return gfx.EventResult{Handled: true, Repaint: event.Phase == gfx.FileDropDrop}
 	}
-	config.OnShortcut = func(event ui.KeyEvent) ui.EventResult {
+	config.OnShortcut = func(event gfx.KeyEvent) gfx.EventResult {
 		if state.saveSessionOptionsOpen {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.byteRangeOpen && event.Target == byteRangePanelID {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.columnDialogOpen {
 			if state.columnField(event.Target) {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.preferencesOpen {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.runDialogOpen {
 			if event.Target == runDialogInputID || event.Target == runDialogNameID {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.summaryOpen {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.windowsDialogOpen {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.functionListVisible && state.activeDock() == "functions" && event.Target == functionFilterID {
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
 		if state.macroSaveOpen || state.macroRunOpen {
 			if event.Target == macroNameID || event.Target == macroCountID {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.hashDialogOpen {
 			if state.hashMode == hashFromText && event.Target == hashInputID {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.dateTimeDialogOpen {
 			if event.Target == dateTimeFieldID {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.renameDoc != nil {
 			if event.Target == renameFieldID {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.renamePlan != nil || state.pendingTrash != nil {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) &&
 			state.isReadOnly(state.paneDocument(pane)) && event.Modifiers == primary() {
@@ -1447,38 +1354,38 @@ func newConfig(state *model) app.Config {
 			case "c":
 				state.activatePane(pane)
 				state.command("Copy")
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			case "x":
 				state.notice = "Read-only document"
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
-		if event.Modifiers == ui.ModifierAlt|ui.ModifierShift && strings.EqualFold(event.Text, "b") {
+		if event.Modifiers == gfx.ModifierAlt|gfx.ModifierShift && strings.EqualFold(event.Text, "b") {
 			state.command("Begin/End Select in Column Mode")
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if event.Modifiers&primary() == 0 {
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
-		if strings.ToLower(event.Text) == "i" && event.Modifiers == primary()|ui.ModifierAlt {
+		if strings.ToLower(event.Text) == "i" && event.Modifiers == primary()|gfx.ModifierAlt {
 			state.openIncrementalSearch(state.incrementOpen && event.Target == incrementQueryID)
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if (event.Key == ui.KeySpace || event.Text == " ") && event.Modifiers == primary()|ui.ModifierShift {
+		if (event.Key == gfx.KeySpace || event.Text == " ") && event.Modifiers == primary()|gfx.ModifierShift {
 			if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) {
 				state.activatePane(pane)
 				state.command("Path Completion")
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
-		if event.Key == ui.KeyEnter && event.Modifiers == primary() {
+		if event.Key == gfx.KeyEnter && event.Modifiers == primary() {
 			if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) {
 				state.activatePane(pane)
 				state.command("Word Completion")
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
-		if event.Modifiers&ui.ModifierShift != 0 {
+		if event.Modifiers&gfx.ModifierShift != 0 {
 			switch strings.ToLower(event.Text) {
 			case "r":
 				if state.macroRecording {
@@ -1486,13 +1393,13 @@ func newConfig(state *model) app.Config {
 				} else {
 					state.command("Record Macro")
 				}
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			case "p":
 				state.command("Playback Macro")
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			case "t":
 				state.restoreClosed()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
 		if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) {
@@ -1500,22 +1407,22 @@ func newConfig(state *model) app.Config {
 			if command, ok := components.CodeEditorCommandForKey(event); ok {
 				if command == components.CodeEditorToggleComment {
 					state.command("Toggle Single Line Comment")
-					return ui.EventResult{Handled: true, Repaint: true}
+					return gfx.EventResult{Handled: true, Repaint: true}
 				}
 				if state.isReadOnly(state.paneDocument(pane)) {
 					state.notice = "Read-only document"
-					return ui.EventResult{Handled: true, Repaint: true}
+					return gfx.EventResult{Handled: true, Repaint: true}
 				}
 				state.applyCodeCommand(state.paneDocument(pane), command)
 				state.recordMacro(state.paneDocument(pane), macro.Step{Kind: macro.CodeStep, Code: command})
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
 		switch strings.ToLower(event.Text) {
 		case "b":
-			if event.Modifiers&ui.ModifierShift != 0 {
+			if event.Modifiers&gfx.ModifierShift != 0 {
 				state.command("Begin/End Select")
-			} else if event.Modifiers&ui.ModifierAlt != 0 {
+			} else if event.Modifiers&gfx.ModifierAlt != 0 {
 				state.command("Select All In-between {} [] or ()")
 			} else {
 				state.command("Go to Matching Brace")
@@ -1525,25 +1432,37 @@ func newConfig(state *model) app.Config {
 			state.showInActivePane(state.space.NewDocument())
 		case "o":
 			state.cancelMacroForCommand()
-			state.openFiles()
+			if state.menuOpen >= 0 {
+				state.command("Open...")
+			} else {
+				state.openFiles()
+			}
 		case "s":
 			state.cancelMacroForCommand()
-			state.save(state.space.Active, event.Modifiers&ui.ModifierShift != 0)
+			if state.menuOpen >= 0 {
+				if event.Modifiers&gfx.ModifierShift != 0 {
+					state.command("Save As...")
+				} else {
+					state.command("Save")
+				}
+			} else {
+				state.save(state.space.Active, event.Modifiers&gfx.ModifierShift != 0)
+			}
 		case "f", "h":
 			state.cancelMacroForCommand()
 			state.closeIncrementalSearch()
 			state.markDialogOpen = false
-			if event.Text == "f" && event.Modifiers&ui.ModifierShift != 0 {
+			if event.Text == "f" && event.Modifiers&gfx.ModifierShift != 0 {
 				state.openFilesDialog()
-				return ui.EventResult{Handled: true, Repaint: true, Focus: queryID}
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: queryID}
 			}
 			state.searchOpen, state.goToOpen = true, false
-			return ui.EventResult{Handled: true, Repaint: true, Focus: queryID}
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: queryID}
 		case "g":
 			state.cancelMacroForCommand()
 			state.closeIncrementalSearch()
 			state.goToOpen, state.searchOpen = true, false
-			return ui.EventResult{Handled: true, Repaint: true, Focus: goToFieldID}
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: goToFieldID}
 		case "d":
 			state.command("Duplicate Line")
 		case "l":
@@ -1551,10 +1470,10 @@ func newConfig(state *model) app.Config {
 		case "u":
 			if state.isReadOnly(state.space.Current()) {
 				state.notice = "Read-only document"
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			state.cancelMacroForCommand()
-			if event.Modifiers&ui.ModifierShift != 0 {
+			if event.Modifiers&gfx.ModifierShift != 0 {
 				state.convertSelectedCase(state.space.Current(), document.CaseUpper, "Converted to uppercase")
 			} else {
 				state.convertSelectedCase(state.space.Current(), document.CaseLower, "Converted to lowercase")
@@ -1572,88 +1491,88 @@ func newConfig(state *model) app.Config {
 			state.cancelMacroForCommand()
 			state.closeTab(state.space.Active)
 		default:
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
-		return ui.EventResult{Handled: true, Repaint: true}
+		return gfx.EventResult{Handled: true, Repaint: true}
 	}
-	config.OnKey = func(event ui.KeyEvent) ui.EventResult {
+	config.OnKey = func(event gfx.KeyEvent) gfx.EventResult {
 		if state.markDialogOpen {
-			if event.Key == ui.KeyEscape && state.menuOpen < 0 {
+			if event.Key == gfx.KeyEscape && state.menuOpen < 0 {
 				state.markDialogOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			if event.Key == ui.KeyEnter && event.Target == queryID {
+			if event.Key == gfx.KeyEnter && event.Target == queryID {
 				state.markAll()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
 		if state.saveSessionOptionsOpen {
-			if event.Key == ui.KeyEscape {
+			if event.Key == gfx.KeyEscape {
 				state.saveSessionOptionsOpen = false
-			} else if event.Key == ui.KeyEnter {
+			} else if event.Key == gfx.KeyEnter {
 				state.saveNPPSession(state.saveSessionIncludeWorkspace)
 			}
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.byteRangeOpen {
-			if event.Key == ui.KeyEscape {
+			if event.Key == gfx.KeyEscape {
 				state.byteRangeOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			if event.Key == ui.KeyEnter && (event.Target == byteRangeStartID || event.Target == byteRangeEndID || event.Target == byteRangeFindID) {
+			if event.Key == gfx.KeyEnter && (event.Target == byteRangeStartID || event.Target == byteRangeEndID || event.Target == byteRangeFindID) {
 				state.findByteRange()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if event.Target == byteRangeStartID || event.Target == byteRangeEndID {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
 		}
 		if state.columnDialogOpen {
-			if event.Key == ui.KeyEscape {
+			if event.Key == gfx.KeyEscape {
 				state.columnDialogOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			if event.Key == ui.KeyEnter && state.columnField(event.Target) {
+			if event.Key == gfx.KeyEnter && state.columnField(event.Target) {
 				state.applyColumnDialog()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.columnField(event.Target) {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.preferencesOpen {
-			if event.Key == ui.KeyEscape {
+			if event.Key == gfx.KeyEscape {
 				state.preferencesOpen = false
 				state.printVariableOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.printPreferenceField(event.Target) {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.runDialogOpen {
 			switch event.Key {
-			case ui.KeyEscape:
+			case gfx.KeyEscape:
 				state.cancelRunDialog()
-				return ui.EventResult{Handled: true, Repaint: true}
-			case ui.KeyEnter:
+				return gfx.EventResult{Handled: true, Repaint: true}
+			case gfx.KeyEnter:
 				if event.Target == runDialogInputID || event.Target == runDialogNameID {
 					state.applyRunDialog()
-					return ui.EventResult{Handled: true, Repaint: true}
+					return gfx.EventResult{Handled: true, Repaint: true}
 				}
 			}
 			if event.Target == runDialogInputID || event.Target == runDialogNameID {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.summaryOpen {
-			if event.Key == ui.KeyEscape || event.Key == ui.KeyEnter {
+			if event.Key == gfx.KeyEscape || event.Key == gfx.KeyEnter {
 				state.summaryOpen = false
 			}
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.windowsDialogOpen {
 			return state.windowsDialogKey(event)
@@ -1668,73 +1587,76 @@ func newConfig(state *model) app.Config {
 				state.wordCompletion = nil
 			} else {
 				switch event.Key {
-				case ui.KeyEscape:
+				case gfx.KeyEscape:
 					state.wordCompletion = nil
 					focus := editorID
 					if state.activePane == 1 {
 						focus = rightEditorID
 					}
-					return ui.EventResult{Handled: true, Repaint: true, Focus: focus}
-				case ui.KeyDown, ui.KeyUp:
+					return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
+				case gfx.KeyDown, gfx.KeyUp:
 					current := state.wordCompletion
 					step := 1
-					if event.Key == ui.KeyUp {
+					if event.Key == gfx.KeyUp {
 						step = -1
 					}
 					current.selected = (current.selected + step + len(current.items)) % len(current.items)
 					state.wordFocusPending = true
-					return ui.EventResult{Handled: true, Repaint: true}
-				case ui.KeyEnter, ui.KeyTab:
+					return gfx.EventResult{Handled: true, Repaint: true}
+				case gfx.KeyEnter, gfx.KeyTab:
 					state.acceptWordCompletion(state.wordCompletion.selected)
 					focus := editorID
 					if state.activePane == 1 {
 						focus = rightEditorID
 					}
-					return ui.EventResult{Handled: true, Repaint: true, Focus: focus}
+					return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
 				default:
 					state.wordCompletion = nil
 				}
 			}
 		}
-		if event.Key == ui.KeyEscape {
+		if result, handled := state.changeHistoryMenuKey(event); handled {
+			return result
+		}
+		if event.Key == gfx.KeyEscape {
 			if state.styleMenuMode != "" {
 				state.styleMenuMode = ""
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.markJumpMenuOpen {
 				state.markJumpMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.macroSaveOpen || state.macroRunOpen {
 				state.closeMacroDialog()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.hashDialogOpen {
 				state.closeHashDialog()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.dateTimeDialogOpen {
 				state.closeDateTimeDialog()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.renameDoc != nil || state.renamePlan != nil {
 				state.cancelRename()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.pendingTrash != nil {
-				state.pendingTrash = nil
-				return ui.EventResult{Handled: true, Repaint: true}
+				state.dismissTrash()
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.replaceConfirmOpen {
 				if !state.filesApplying {
 					state.replaceConfirmOpen, state.replacePlan = false, nil
 				}
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.filesDialogOpen {
 				state.cancelFileSearch()
 				state.filesDialogOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.incrementOpen && event.Target == incrementQueryID && state.menuOpen < 0 {
 				state.closeIncrementalSearch()
@@ -1742,184 +1664,188 @@ func newConfig(state *model) app.Config {
 				if state.splitEnabled && state.activePane == 1 {
 					focus = rightEditorID
 				}
-				return ui.EventResult{Handled: true, Repaint: true, Focus: focus}
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
 			}
 			if state.selectedSearchMenuOpen {
 				state.selectedSearchMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.resultsOpen {
 				state.resultsOpen = false
 				state.clearResultFocus()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.pendingClose >= 0 {
 				state.cancelClose()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.pendingReload >= 0 {
-				state.pendingReload = -1
-				return ui.EventResult{Handled: true, Repaint: true}
+				state.cancelReload()
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.recentOpen {
 				state.recentOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.lineMenuOpen {
 				state.lineMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.charsetMenuOpen {
 				state.charsetMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.savedMacroMenuOpen {
 				state.savedMacroMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.insertDateOpen {
 				state.insertDateOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.hashMenuOpen {
 				state.hashMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.symbolMenuOpen {
 				state.symbolMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.viewTabMenuOpen {
 				state.viewTabMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.foldMenuOpen {
 				state.foldMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.windowSortMenuOpen {
 				state.windowSortMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.menuOverflowOpen {
 				state.menuOverflowOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.caseMenuOpen {
 				state.caseMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.commentMenuOpen {
 				state.commentMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.eolMenuOpen {
 				state.eolMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.sessionMenuOpen {
 				state.sessionMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.bookmarkMenuOpen {
 				state.bookmarkMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
+			}
+			if state.changeHistoryMenuOpen {
+				state.changeHistoryMenuOpen = false
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.closeMultipleMenuOpen {
 				state.closeMultipleMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.containingMenuOpen {
 				state.containingMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.autoMenuOpen {
 				state.autoMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.blankMenuOpen {
 				state.blankMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.copyPathsMenuOpen {
 				state.copyPathsMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.onSelectionMenuOpen {
 				state.onSelectionMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.multiAllMenuOpen || state.multiNextMenuOpen {
 				state.multiAllMenuOpen, state.multiNextMenuOpen = false, false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.readOnlyMenuOpen {
 				state.readOnlyMenuOpen = false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.menuOpen >= 0 || state.searchOpen || state.goToOpen {
 				state.menuOpen, state.searchOpen, state.goToOpen = -1, false, false
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.fullscreen {
 				state.command("Toggle Full Screen Mode")
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
 		if state.renameDoc != nil {
-			if event.Key == ui.KeyEnter && event.Target == renameFieldID {
+			if event.Key == gfx.KeyEnter && event.Target == renameFieldID {
 				state.applyUntitledRename()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
 		if state.dateTimeDialogOpen {
-			if event.Key == ui.KeyEnter && event.Target == dateTimeFieldID {
+			if event.Key == gfx.KeyEnter && event.Target == dateTimeFieldID {
 				state.applyDateTimeSettings()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if event.Target == dateTimeFieldID {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.macroSaveOpen || state.macroRunOpen {
-			if event.Key == ui.KeyEnter && (event.Target == macroNameID || event.Target == macroCountID) {
+			if event.Key == gfx.KeyEnter && (event.Target == macroNameID || event.Target == macroCountID) {
 				state.applyMacroDialog()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if event.Target == macroNameID || event.Target == macroCountID {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.hashDialogOpen {
 			if state.hashMode == hashFromText && event.Target == hashInputID {
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.renamePlan != nil || state.pendingTrash != nil {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
 		if state.filesDialogOpen {
-			if event.Key == ui.KeyEnter && (event.Target == queryID || event.Target == replacementID || event.Target == filesRootID || event.Target == filesPatternID) {
+			if event.Key == gfx.KeyEnter && (event.Target == queryID || event.Target == replacementID || event.Target == filesRootID || event.Target == filesPatternID) {
 				if state.filesReplaceMode {
 					state.startReplacePreview()
 				} else {
 					state.startFileSearch()
 				}
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
 		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
-			return ui.EventResult{Handled: true}
+			return gfx.EventResult{Handled: true}
 		}
-		if event.Key == ui.KeyF7 && event.Modifiers == 0 {
+		if event.Key == gfx.KeyF7 && event.Modifiers == 0 {
 			if !state.resultsOpen || len(state.fileResults.Matches) == 0 {
 				state.notice = "No search results"
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			state.searchOpen, state.goToOpen = false, false
 			state.menuOpen = -1
@@ -1929,40 +1855,40 @@ func newConfig(state *model) app.Config {
 				if state.splitEnabled && state.activePane == 1 {
 					focus = rightEditorID
 				}
-				return ui.EventResult{Handled: true, Repaint: true, Focus: focus}
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
 			}
 			state.resultFocusMode = true
-			return ui.EventResult{Handled: true, Repaint: true, Focus: resultsPaneID}
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: resultsPaneID}
 		}
 		if state.resultsOpen && (event.Target == resultsPaneID || event.Target.Scope() == resultScope) {
 			index := state.resultSelected
 			handled := true
 			switch event.Key {
-			case ui.KeyDown:
+			case gfx.KeyDown:
 				index++
-			case ui.KeyUp:
+			case gfx.KeyUp:
 				if index < 0 {
 					index = len(state.fileResults.Matches)
 				}
 				index--
-			case ui.KeyHome:
+			case gfx.KeyHome:
 				index = 0
-			case ui.KeyEnd:
+			case gfx.KeyEnd:
 				index = len(state.fileResults.Matches) - 1
-			case ui.KeyPageDown:
+			case gfx.KeyPageDown:
 				index += max(1, state.resultVisible)
-			case ui.KeyPageUp:
+			case gfx.KeyPageUp:
 				index -= max(1, state.resultVisible)
-			case ui.KeyEnter:
+			case gfx.KeyEnter:
 				if index >= 0 && state.openFileResult(index) {
 					state.resultFocusMode = false
 					focus := editorID
 					if state.splitEnabled && state.activePane == 1 {
 						focus = rightEditorID
 					}
-					return ui.EventResult{Handled: true, Repaint: true, Focus: focus}
+					return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
 				}
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			default:
 				handled = false
 			}
@@ -1970,113 +1896,113 @@ func newConfig(state *model) app.Config {
 				if len(state.fileResults.Matches) != 0 {
 					state.selectFileResult(min(max(0, index), len(state.fileResults.Matches)-1))
 				}
-				return ui.EventResult{Handled: true, Repaint: true, Focus: resultsPaneID}
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: resultsPaneID}
 			}
 		}
-		if event.Key == ui.KeyF4 && event.Modifiers&^ui.ModifierShift == 0 {
-			if event.Modifiers&ui.ModifierShift != 0 {
+		if event.Key == gfx.KeyF4 && event.Modifiers&^gfx.ModifierShift == 0 {
+			if event.Modifiers&gfx.ModifierShift != 0 {
 				state.command("Previous Search Result")
 			} else {
 				state.command("Next Search Result")
 			}
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if event.Key == ui.KeyF2 {
+		if event.Key == gfx.KeyF2 {
 			if pane := paneForTarget(event.Target); pane >= 0 {
 				state.activatePane(pane)
 			}
-			if event.Modifiers&ui.ModifierControl != 0 {
+			if event.Modifiers&gfx.ModifierControl != 0 {
 				state.toggleBookmark()
 			} else {
-				state.navigateBookmark(event.Modifiers&ui.ModifierShift != 0)
+				state.navigateBookmark(event.Modifiers&gfx.ModifierShift != 0)
 			}
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if event.Key == ui.KeyTab && event.Modifiers&ui.ModifierControl != 0 {
-			state.cycleTabs(event.Modifiers&ui.ModifierShift != 0)
+		if event.Key == gfx.KeyTab && event.Modifiers&gfx.ModifierControl != 0 {
+			state.cycleTabs(event.Modifiers&gfx.ModifierShift != 0)
 			focus := editorID
 			if state.splitEnabled && state.activePane == 1 {
 				focus = rightEditorID
 			}
-			return ui.EventResult{Handled: true, Repaint: true, Focus: focus}
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
 		}
-		if event.Key == ui.KeyF3 {
-			if state.incrementOpen && event.Target == incrementQueryID && event.Modifiers&^ui.ModifierShift == 0 {
-				state.findIncremental(event.Modifiers&ui.ModifierShift != 0, true)
-				return ui.EventResult{Handled: true, Repaint: true}
+		if event.Key == gfx.KeyF3 {
+			if state.incrementOpen && event.Target == incrementQueryID && event.Modifiers&^gfx.ModifierShift == 0 {
+				state.findIncremental(event.Modifiers&gfx.ModifierShift != 0, true)
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if pane := paneForTarget(event.Target); pane >= 0 {
 				state.activatePane(pane)
 			}
 			switch event.Modifiers {
-			case 0, ui.ModifierShift:
+			case 0, gfx.ModifierShift:
 				state.cancelMacroForCommand()
-				state.find(event.Modifiers&ui.ModifierShift != 0)
+				state.find(event.Modifiers&gfx.ModifierShift != 0)
 			case primary():
 				state.command("Select and Find Next")
-			case primary() | ui.ModifierShift:
+			case primary() | gfx.ModifierShift:
 				state.command("Select and Find Previous")
-			case primary() | ui.ModifierAlt:
+			case primary() | gfx.ModifierAlt:
 				state.command("Find (Volatile) Next")
-			case primary() | ui.ModifierAlt | ui.ModifierShift:
+			case primary() | gfx.ModifierAlt | gfx.ModifierShift:
 				state.command("Find (Volatile) Previous")
 			default:
-				return ui.EventResult{}
+				return gfx.EventResult{}
 			}
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if state.searchOpen && event.Target == queryID && event.Key == ui.KeyEnter {
+		if state.searchOpen && event.Target == queryID && event.Key == gfx.KeyEnter {
 			state.find(false)
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if event.Target == goToFieldID && event.Key == ui.KeyEnter {
+		if event.Target == goToFieldID && event.Key == gfx.KeyEnter {
 			state.goToLine()
-			return ui.EventResult{Handled: true, Repaint: true, Focus: editorID}
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: editorID}
 		}
-		if state.incrementOpen && event.Target == incrementQueryID && event.Key == ui.KeyEnter {
-			state.findIncremental(event.Modifiers&ui.ModifierShift != 0, true)
-			return ui.EventResult{Handled: true, Repaint: true}
+		if state.incrementOpen && event.Target == incrementQueryID && event.Key == gfx.KeyEnter {
+			state.findIncremental(event.Modifiers&gfx.ModifierShift != 0, true)
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if result := state.splitKey(event, state.splitWidth); result.Handled {
 			return result
 		}
 		pane := paneForTarget(event.Target)
 		if pane < 0 || event.Target != editorID && event.Target != rightEditorID {
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
 		state.activatePane(pane)
 		doc := state.paneDocument(pane)
 		if state.extendRectangleKey(pane, event) {
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if state.isReadOnly(doc) && (event.Key == ui.KeyLeft || event.Key == ui.KeyRight) {
-			modifiers := event.Modifiers &^ ui.ModifierShift
-			extend := event.Modifiers&ui.ModifierShift != 0
+		if state.isReadOnly(doc) && (event.Key == gfx.KeyLeft || event.Key == gfx.KeyRight) {
+			modifiers := event.Modifiers &^ gfx.ModifierShift
+			extend := event.Modifiers&gfx.ModifierShift != 0
 			switch {
 			case modifiers == 0:
-				if event.Key == ui.KeyLeft {
+				if event.Key == gfx.KeyLeft {
 					doc.Editor.MoveLeft(extend)
 				} else {
 					doc.Editor.MoveRight(extend)
 				}
-				return ui.EventResult{Handled: true, Repaint: true}
-			case modifiers == ui.ModifierControl || runtime.GOOS == "darwin" && modifiers == ui.ModifierAlt:
-				doc.Editor.MoveWord(event.Key == ui.KeyRight, extend)
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
+			case modifiers == gfx.ModifierControl || runtime.GOOS == "darwin" && modifiers == gfx.ModifierAlt:
+				doc.Editor.MoveWord(event.Key == gfx.KeyRight, extend)
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
 		if command, ok := components.CodeEditorCommandForKey(event); ok {
 			if state.isReadOnly(doc) {
 				state.notice = "Read-only document"
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			state.applyCodeCommand(doc, command)
 			state.recordMacro(doc, macro.Step{Kind: macro.CodeStep, Code: command})
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		movement, extend := components.TextareaMovementForKey(event.Key, event.Modifiers)
 		if movement == components.TextareaMoveNone {
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
 		value := doc.Editor.String()
 		next := state.codeEditorForPane(pane).Move(value, doc.Editor.ByteOffset(doc.Editor.Caret()), movement)
@@ -2084,7 +2010,7 @@ func newConfig(state *model) app.Config {
 		if state.macroRecording {
 			state.cancelMacroUnsupported("movement")
 		}
-		return ui.EventResult{Handled: true, Repaint: true}
+		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	config.OnCloseRequest = func(allow func()) {
 		if state.saveSessionOptionsOpen {
@@ -2215,6 +2141,7 @@ func codeOptions(language string) (text.CodeOptions, bool) {
 }
 
 func (state *model) openFiles() {
+	defer state.requestNativeChooserFocus()
 	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "Open", AllowMultiple: true})
 	if err != nil {
 		if !errors.Is(err, app.ErrCanceled) {
@@ -2256,6 +2183,7 @@ func (state *model) save(index int, saveAs bool) bool {
 	doc := state.space.Documents[index]
 	path := doc.Path
 	if saveAs || path == "" {
+		defer state.requestNativeChooserFocus()
 		chosen, err := app.SaveFile(app.SaveFileOptions{Title: "Save As", SuggestedName: doc.Name, DefaultExtension: "txt"})
 		if err != nil {
 			if !errors.Is(err, app.ErrCanceled) {
@@ -2277,7 +2205,11 @@ func (state *model) save(index int, saveAs bool) bool {
 		}
 	}
 	if err := doc.Save(path); err != nil {
-		state.notice = err.Error()
+		if errors.Is(err, os.ErrPermission) {
+			state.notice = "Save failed: permission denied"
+		} else {
+			state.notice = err.Error()
+		}
 		return false
 	}
 	state.notice = "Saved " + filepath.Base(doc.Path)
@@ -2327,12 +2259,14 @@ func (state *model) closeTab(index int) {
 }
 
 func (state *model) releaseDocument(doc *document.Document) {
+	state.releaseDocumentComposition(doc)
 	state.stopMonitor(doc)
 	delete(state.editors, doc)
 	delete(state.secondEditors, doc)
 	delete(state.paneOwner, doc)
 	delete(state.languages, doc)
 	delete(state.bookmarks, doc)
+	delete(state.changeView, doc)
 	for pane := range state.multiSelections {
 		if state.multiSelections[pane].doc == doc {
 			state.multiSelections[pane] = multiSelectionState{}
@@ -2479,6 +2413,8 @@ func (state *model) cancelClose() {
 	state.closingDocs, state.closingActive = nil, nil
 	state.closingOwners, state.closingPaneDocs = nil, [2]*document.Document{}
 	state.closingSplit = false
+	state.focusViewRequested, state.focusViewArmed = true, false
+	state.invalidator.Invalidate()
 }
 
 func (state *model) persistSession() {
@@ -2625,16 +2561,43 @@ func (state *model) goToLine() {
 
 func (state *model) command(command string) {
 	doc := state.space.Current()
+	// Clear refuses a live composition without mutating anything, so its preflight
+	// must run before the generic composition cancel below.
+	historyNotice := false
+	switch command {
+	case "Clear Change History":
+		if err := doc.ClearChangeHistoryPreflight(); err != nil {
+			// A refusal still dismisses the menus and returns focus, so the user can
+			// retry after finishing the composition.
+			state.menuOpen, state.changeHistoryMenuOpen, state.menuOverflowOpen = -1, false, false
+			state.notice = err.Error()
+			state.restoreEditorCommandFocus(command)
+			return
+		}
+		historyNotice = true
+	case "Next Change", "Previous Change", "Change History",
+		"Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off":
+		// Opening the submenu and changing the display mode report through the same
+		// notice, which a bookmark synchronization must not overwrite.
+		historyNotice = true
+	}
+	state.cancelLiveComposition()
 	state.bookmarkLines(doc)
 	before := doc.Editor.String()
 	editStart := doc.Editor.Selection().Start
 	defer func() {
+		notice := state.notice
 		state.bookmarkLines(doc)
+		if historyNotice {
+			// Bookmark synchronisation has its own warnings; a change-history command
+			// owns its result (success, refusal or unavailable reason).
+			state.notice = notice
+		}
 		state.relocateSelectAnchors(doc, before, doc.Editor.String(), editStart)
 		state.restoreEditorCommandFocus(command)
 	}()
 	state.menuOpen = -1
-	state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
+	state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.changeHistoryMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
 	state.insertDateOpen = false
 	state.markJumpMenuOpen = false
 	state.styleMenuMode = ""
@@ -2893,16 +2856,16 @@ func (state *model) command(command string) {
 			}
 		}
 	case "Paste":
-		value, err := app.ClipboardText()
+		value, rectangular, err := app.ClipboardTextWithFormat()
 		if err != nil {
 			state.notice = err.Error()
 		} else if state.multiSelections[state.activePane].active && state.multiSelections[state.activePane].doc == doc {
-			if app.ClipboardRectangular() {
+			if rectangular {
 				state.notice = "Clear multi-selection before column paste"
 			} else if _, err := state.editMultiSelection(state.activePane, value, multiInsert); err != nil {
 				state.notice = "Multi-selection paste failed: " + err.Error()
 			}
-		} else if app.ClipboardRectangular() {
+		} else if rectangular {
 			if selection := doc.Editor.Selection(); selection.Start != selection.End {
 				state.notice = "Clear the selection before column paste"
 				break
@@ -3153,11 +3116,25 @@ func (state *model) command(command string) {
 		} else {
 			state.notice = "Lines already sorted"
 		}
+	case "Change History: Margin":
+		state.setChangeHistoryView("margin")
+	case "Change History: Indicator":
+		state.setChangeHistoryView("indicator")
+	case "Change History: Both":
+		state.setChangeHistoryView("both")
+	case "Change History: Off":
+		state.setChangeHistoryView("off")
+	case "Next Change":
+		state.navigateChange(false)
+	case "Previous Change":
+		state.navigateChange(true)
+	case "Clear Change History":
+		state.clearChangeHistory()
 	case "Randomize Line Order":
-		changed := false
-		seed := uint64(time.Now().Unix())
-		state.editLineTargetsWithBookmarks(doc, "replace", func() { changed = doc.RandomizeLines(rand.New(rand.NewPCG(seed, 1))) })
-		if changed {
+		changed, randomizeErr := state.randomizeLineOrder(doc, uint64(time.Now().Unix()))
+		if randomizeErr != nil {
+			state.notice = randomizeErr.Error()
+		} else if changed {
 			state.notice = "Randomized line order"
 		} else {
 			state.notice = "Line order unchanged"
@@ -3378,6 +3355,12 @@ func (state *model) command(command string) {
 		state.removeBookmarkedLines(false)
 	case "Bookmark":
 		state.menuOpen, state.bookmarkMenuOpen = 2, true
+	case "Change History":
+		state.menuOpen, state.changeHistoryMenuOpen = 2, true
+		if reason, bad := changeHistoryUnavailable(doc); bad {
+			// Opening the submenu tells the user why its entries cannot act.
+			state.notice = reason
+		}
 	case "Replace All in Open Documents":
 		state.replaceAllOpenDocuments()
 	case "Find in Files...":

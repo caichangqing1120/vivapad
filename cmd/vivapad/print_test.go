@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/printing"
 )
@@ -98,7 +98,7 @@ func TestCompactFileMenuScrollReachesPrintAndExit(t *testing.T) {
 		t.Fatalf("File menu visible rows = %d", state.fileMenuVisible)
 	}
 	first := syncScrollHit(t, driver, menuItemScope.At(1))
-	if err := driver.Scroll(ui.ScrollEvent{X: first.X + 20, Y: first.Y + 8, DeltaY: 120}); err != nil || state.fileMenuOffset == 0 {
+	if err := driver.Scroll(gfx.ScrollEvent{X: first.X + 20, Y: first.Y + 8, DeltaY: 120}); err != nil || state.fileMenuOffset == 0 {
 		t.Fatalf("File menu ignored the wheel: offset=%d, %v", state.fileMenuOffset, err)
 	}
 	for _, index := range []int{21, 22, 23} {
@@ -156,7 +156,7 @@ func fileMenuControls(driver *app.Driver) bool {
 	return false
 }
 
-func revealFileMenuItem(t *testing.T, driver *app.Driver, index int) ui.Rect {
+func revealFileMenuItem(t *testing.T, driver *app.Driver, index int) gfx.Rect {
 	t.Helper()
 	for step := 0; step <= len(menuCommands[0]); step++ {
 		first := len(menuCommands[0])
@@ -177,5 +177,5 @@ func revealFileMenuItem(t *testing.T, driver *app.Driver, index int) ui.Rect {
 		}
 	}
 	t.Fatalf("File row %d never became visible", index)
-	return ui.Rect{}
+	return gfx.Rect{}
 }

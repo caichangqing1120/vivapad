@@ -3,6 +3,7 @@ package document
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -47,7 +48,14 @@ func TestOpenSavePreservesCRLFAndBOM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0600 || doc.Dirty() {
+	if runtime.GOOS == "windows" {
+		// Go reports synthetic permission bits on Windows (0666, or 0444 while
+		// the read-only attribute is set), so POSIX privacy cannot be checked
+		// there; Save must leave the file writable instead.
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0200 == 0 || doc.Dirty() {
+			t.Fatalf("mode = %v; dirty = %v", info.Mode(), doc.Dirty())
+		}
+	} else if info.Mode().Perm() != 0600 || doc.Dirty() {
 		t.Fatalf("permissions = %v; dirty = %v", info.Mode().Perm(), doc.Dirty())
 	}
 }

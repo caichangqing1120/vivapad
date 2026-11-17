@@ -48,7 +48,7 @@ func TestFindAllCurrentRejectsStaleResultAndInvalidPattern(t *testing.T) {
 	}
 	state.query.Insert("one")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(7))
+	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	if len(state.fileResults.Matches) != 2 {
 		t.Fatalf("initial results = %+v", state.fileResults)
 	}
@@ -93,7 +93,7 @@ func TestFindAllResultHeadingKeepsTheQueryThatProducedIt(t *testing.T) {
 	}
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(7))
+	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	state.query.SetSelection(text.Range{Start: 0, End: state.query.RuneCount()})
 	state.query.Insert("dog")
 	state.invalidator.Invalidate()
@@ -134,7 +134,7 @@ func TestCurrentResultDoesNotMoveTabToOtherView(t *testing.T) {
 	defer driver.Close()
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(7))
+	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	clickID(t, driver, rightEditorID)
 	clickID(t, driver, resultScope.At(0))
 	if state.activePane != 0 || state.paneDocs[0] != first || state.paneDocs[1] != second || state.paneOwner[first] != 0 || state.paneOwner[second] != 1 {

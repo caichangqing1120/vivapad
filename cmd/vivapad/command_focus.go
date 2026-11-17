@@ -3,7 +3,7 @@ package main
 import (
 	"slices"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func (state *model) editorCommandFocusBlocked() bool {
@@ -21,7 +21,10 @@ func (state *model) restoreEditorCommandFocus(command string) {
 	if command == "Record Macro" && !state.macroRecording {
 		return
 	}
-	returnsToEditor := state.textMutation(command) ||
+	// The change-history commands act on the editor even though they sit in the
+	// Search menu, so they hand focus back like the edit commands do.
+	historyCommand := command == "Next Change" || command == "Previous Change" || command == "Clear Change History"
+	returnsToEditor := state.textMutation(command) || historyCommand ||
 		slices.Contains(menuCommands[1][:], command) || slices.Contains(menuCommands[6][:], command) ||
 		slices.Contains(symbolCommands[:], command) || slices.Contains(copyPathsCommands[:], command) ||
 		slices.Contains(viewTabCommands[:], command) || foldLevelForCommand(command)
@@ -29,7 +32,7 @@ func (state *model) restoreEditorCommandFocus(command string) {
 		returnsToEditor = true
 	}
 	switch command {
-	case "Record Macro", "Stop Recording", "Clear Macro",
+	case "Record Macro", "Stop Recording", "Clear Macro", "Print...", "Print Now",
 		"Read-Only on Current Document", "Read-Only for All Documents", "Clear Read-Only for All Documents",
 		"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom",
 		"Split View", "Move to Other View", "Clone to Other View", "Focus on Another View",
@@ -40,11 +43,26 @@ func (state *model) restoreEditorCommandFocus(command string) {
 	if !returnsToEditor {
 		return
 	}
+	state.requestEditorCommandFocus()
+}
+
+func (state *model) requestEditorCommandFocus() {
+	if state.editorCommandFocusBlocked() {
+		return
+	}
 	state.focusViewRequested, state.focusViewArmed = true, false
 	state.invalidator.Invalidate()
 }
 
-func (state *model) paintEditorCommandFocus(canvas *ui.Canvas) {
+func (state *model) requestNativeChooserFocus() {
+	if state.editorCommandFocusBlocked() {
+		return
+	}
+	state.focusViewRequested, state.focusViewArmed = true, true
+	state.invalidator.Invalidate()
+}
+
+func (state *model) paintEditorCommandFocus(canvas *gfx.Canvas) {
 	if !state.focusViewRequested {
 		return
 	}
@@ -53,7 +71,7 @@ func (state *model) paintEditorCommandFocus(canvas *ui.Canvas) {
 		focus = rightEditorID
 	}
 	requested := canvas.FocusRequest()
-	if state.editorCommandFocusBlocked() || requested != (ui.ID{}) && requested != focus {
+	if state.editorCommandFocusBlocked() || requested != (gfx.ID{}) && requested != focus {
 		state.focusViewRequested, state.focusViewArmed = false, false
 		return
 	}

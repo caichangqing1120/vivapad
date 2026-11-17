@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/searchfiles"
 )
 
@@ -21,23 +21,23 @@ func TestResultNavigationF4WrapsAcrossOpenDocumentsAndClickPosition(t *testing.T
 	state.showInActivePane(second)
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(8))
+	clickID(t, driver, searchCommandID(t, "Find All in Open Documents"))
 	if state.resultSelected != -1 {
 		t.Fatalf("new search selected result %d", state.resultSelected)
 	}
-	if err := driver.Key(ui.KeyF4, 0); err != nil {
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.space.Current() != first || state.resultSelected != 0 || first.Editor.Selection() != (text.Range{Start: 0, End: 3}) {
 		t.Fatalf("first result navigation = active %p, selected %d", state.space.Current(), state.resultSelected)
 	}
-	if err := driver.Key(ui.KeyF4, 0); err != nil {
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.space.Current() != second || state.resultSelected != 1 {
 		t.Fatalf("next result = active %p, selected %d", state.space.Current(), state.resultSelected)
 	}
-	if err := driver.Key(ui.KeyF4, 0); err != nil {
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.space.Current() != first || state.resultSelected != 0 {
@@ -47,7 +47,7 @@ func TestResultNavigationF4WrapsAcrossOpenDocumentsAndClickPosition(t *testing.T
 	if state.resultSelected != 1 {
 		t.Fatalf("click did not establish navigation position: %d", state.resultSelected)
 	}
-	if err := driver.Key(ui.KeyF4, ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyF4, gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	if state.space.Current() != first || state.resultSelected != 0 {
@@ -61,11 +61,11 @@ func TestStaleResultNavigationLeavesSelectionAndIndexUntouched(t *testing.T) {
 	doc.Editor.Insert("cat cat")
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(7))
+	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	doc.Editor.SetSelection(text.Range{Start: 0, End: 3})
 	doc.Editor.Insert("dog")
 	selection := doc.Editor.Selection()
-	if err := driver.Key(ui.KeyF4, 0); err != nil {
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.resultSelected != -1 || doc.Editor.Selection() != selection || !strings.Contains(state.notice, "changed") {
@@ -90,9 +90,9 @@ func TestResultNavigationAdjustsAfterClosingAResultSource(t *testing.T) {
 	defer driver.Close()
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(8))
+	clickID(t, driver, searchCommandID(t, "Find All in Open Documents"))
 	for range 2 {
-		if err := driver.Key(ui.KeyF4, 0); err != nil {
+		if err := driver.Key(gfx.KeyF4, 0); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -100,7 +100,7 @@ func TestResultNavigationAdjustsAfterClosingAResultSource(t *testing.T) {
 	if state.resultSelected != 0 || len(state.fileResults.Matches) != 1 {
 		t.Fatalf("closing earlier source left stale index %d / %d", state.resultSelected, len(state.fileResults.Matches))
 	}
-	if err := driver.Key(ui.KeyF4, 0); err != nil {
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.resultSelected != 0 || state.space.Current() != second {
@@ -120,9 +120,9 @@ func TestResultNavigationKeepsSelectedRowVisibleAndMenuReachable(t *testing.T) {
 	state.space.Current().Editor.Insert(strings.Repeat("cat ", 20))
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(7))
+	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	for range 6 {
-		if err := driver.Key(ui.KeyF4, 0); err != nil {
+		if err := driver.Key(gfx.KeyF4, 0); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -137,13 +137,14 @@ func TestResultNavigationKeepsSelectedRowVisibleAndMenuReachable(t *testing.T) {
 		t.Fatal("selected result row is not in the visible hit list")
 	}
 	clickID(t, driver, menuScope.At(2))
-	for _, index := range []int{15, 16} {
+	for _, command := range []string{"Next Search Result", "Previous Search Result"} {
+		index := searchCommandIndex(t, command)
 		bounds := revealSearchMenuItem(t, driver, index)
 		if bounds.Y+bounds.Height > 400-statusHeight {
 			t.Fatalf("result navigation menu item %d clipped: %+v", index, bounds)
 		}
 	}
-	clickID(t, driver, menuItemScope.At(16))
+	clickID(t, driver, searchCommandID(t, "Previous Search Result"))
 	if state.resultSelected != 4 {
 		t.Fatalf("previous-result menu selected %d, want 4", state.resultSelected)
 	}
@@ -159,15 +160,15 @@ func TestResultNavigationOpensDirectoryMatchesAndRejectsMissingFile(t *testing.T
 	}
 	state, driver := startDriver(t)
 	state.fileResults = searchfiles.Result{Matches: []searchfiles.Match{
-		{Path: firstPath, Line: 1, Column: 1, Text: "cat", Preview: "cat", Start: 0, End: 3},
-		{Path: secondPath, Line: 1, Column: 1, Text: "cat", Preview: "cat", Start: 0, End: 3},
+		{Path: firstPath, Source: "cat", Line: 1, Column: 1, Text: "cat", Preview: "cat", Start: 0, End: 3},
+		{Path: secondPath, Source: "cat", Line: 1, Column: 1, Text: "cat", Preview: "cat", Start: 0, End: 3},
 	}}
 	state.resultsOpen, state.resultSelected, state.resultQuery = true, -1, "cat"
 	state.invalidator.Invalidate()
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyF4, 0); err != nil {
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.space.Current().Path == "" || state.space.Current().Name != "first.txt" || state.resultSelected != 0 {
@@ -176,7 +177,7 @@ func TestResultNavigationOpensDirectoryMatchesAndRejectsMissingFile(t *testing.T
 	if err := os.Remove(secondPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyF4, 0); err != nil {
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.resultSelected != 0 || state.space.Current().Name != "first.txt" || !strings.Contains(state.notice, "second.txt") {
@@ -190,7 +191,7 @@ func TestResultNavigationWithoutMatchesDoesNotMoveCaret(t *testing.T) {
 	doc.Editor.Insert("no match")
 	before := doc.Editor.Selection()
 	state.resultsOpen = true
-	if err := driver.Key(ui.KeyF4, 0); err != nil {
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.Selection() != before || state.resultSelected != -1 || state.notice != "No search results" {
@@ -203,7 +204,7 @@ func TestFailedNewSearchResetsPreviousResultPosition(t *testing.T) {
 	state.space.Current().Editor.Insert("cat")
 	state.query.Insert("cat")
 	state.findAllCurrent()
-	if err := driver.Key(ui.KeyF4, 0); err != nil {
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.resultSelected != 0 {

@@ -6,32 +6,44 @@ import (
 	"slices"
 
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/syntax"
 )
 
 var palette = struct {
-	chrome, toolbar, tabs, tab, border, hover, text, muted, gutter, blue, white ui.Color
+	chrome, toolbar, tabs, tab, border, hover, text, muted, gutter, blue, white gfx.Color
+	changeReverted, changeSaved, changeModified, changeRevertedModified         gfx.Color
 }{
-	chrome: ui.RGB(248, 248, 249), toolbar: ui.RGB(253, 253, 253),
-	tabs: ui.RGB(238, 239, 241), tab: ui.RGB(230, 232, 235),
-	border: ui.RGB(207, 210, 214), hover: ui.RGB(252, 236, 239),
-	text: ui.RGB(39, 42, 47), muted: ui.RGB(112, 116, 123),
-	gutter: ui.RGB(249, 249, 249), blue: ui.RGB(215, 38, 61), white: ui.RGB(255, 255, 255),
+	chrome: gfx.RGB(248, 248, 249), toolbar: gfx.RGB(253, 253, 253),
+	tabs: gfx.RGB(238, 239, 241), tab: gfx.RGB(230, 232, 235),
+	border: gfx.RGB(207, 210, 214), hover: gfx.RGB(252, 236, 239),
+	text: gfx.RGB(39, 42, 47), muted: gfx.RGB(112, 116, 123),
+	gutter: gfx.RGB(249, 249, 249), blue: gfx.RGB(215, 38, 61), white: gfx.RGB(255, 255, 255),
+	// Change margin states, following the original family's palette.
+	changeReverted: gfx.RGB(0x40, 0xa0, 0xbf), changeSaved: gfx.RGB(0x00, 0xa0, 0x00),
+	changeModified: gfx.RGB(0xff, 0x80, 0x00), changeRevertedModified: gfx.RGB(0xa0, 0xc0, 0x00),
 }
 
 var menuLabels = [...]string{"File", "Edit", "Search", "View", "Encoding", "Language", "Settings", "Tools", "Macro", "Run", "Plugins", "Window", "?"}
 
-var menuCommands = [...][29]string{
+var menuCommands = [...][]string{
 	{"New", "Open...", "Save", "Save As...", "Save a Copy As...", "Save All", "Close", "Open as GB18030...", "Open as Windows-1252...", "Reload from Disk", "Recent Files", "Close All", "Close Other Tabs", "Sessions", "Rename...", "Close Multiple Documents", "Open Folder as Workspace...", "Open in Default Viewer", "Open Containing Folder", "Open as Encoding...", "Move to Recycle Bin", "Print...", "Print Now", "Exit"},
 	{"Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Line Operations", "Convert Case", "Blank Operations", "Copy to Clipboard", "Delete", "Begin/End Select", "Read-Only in Notepad++", fileReadOnlyLabel(), "Auto-Completion", "Comment/Uncomment", "Insert", "EOL Conversion", "Column Editor...", "Begin/End Select in Column Mode", "On Selection", "Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select"},
-	{"Find...", "Find Next", "Find Previous", "Replace...", "Go to Line...", "Find in Files...", "Replace in Files...", "Find All in Current Document", "Find All in Open Documents", "Replace All in Open Documents", "Mark...", "Clear Marks", "Bookmark", "Go to Matching Brace", "Select All In-between {} [] or ()", "Next Search Result", "Previous Search Result", "Search Results Window", "Selected Text Search", "Incremental Search", "Find characters in range...", "Jump Up", "Jump Down", "Style All Occurrences of Token", "Style One Token", "Clear Style", "Copy Styled Text"},
+	{
+		"Find...", "Find in Files...", "Find Next", "Find Previous", "Selected Text Search",
+		"Replace...", "Incremental Search", "Search Results Window", "Next Search Result", "Previous Search Result",
+		"Go to Line...", "Go to Matching Brace", "Select All In-between {} [] or ()", "Mark...", "Change History",
+		"Style All Occurrences of Token", "Style One Token", "Clear Style", "Jump Up", "Jump Down", "Copy Styled Text",
+		"Bookmark", "Find characters in range...",
+		"Replace in Files...", "Find All in Current Document", "Find All in Open Documents", "Replace All in Open Documents",
+		"Clear Marks", "Next Change", "Previous Change", "Clear Change History",
+	},
 	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views"},
 	{"Unix (LF)", "Windows (CR LF)", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE", "GB18030", "Windows-1252", "Character sets"},
 	{"Normal Text", "Go", "JavaScript", "TypeScript", "Python", "JSON", "HTML", "CSS", "Markdown", "SQL"},
-	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format..."},
+	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off"},
 	{"MD5", "SHA-1", "SHA-256", "SHA-512"},
 	{"Record Macro", "Stop Recording", "Playback Macro", "Save Current Recorded Macro...", "Run a Macro Multiple Times...", "Playback 5 Times", "Clear Macro", "Saved Macros"},
 	{"Run..."},
@@ -62,8 +74,8 @@ func resultPaneHeight(windowHeight float32) float32 {
 	return min(180, max(120, windowHeight*0.35))
 }
 
-func (state *model) paint(canvas *ui.Canvas, size ui.Size) {
-	window := ui.Rect{Width: size.Width, Height: size.Height}
+func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
+	window := gfx.Rect{Width: size.Width, Height: size.Height}
 	canvas.Fill(window, palette.white)
 	if !state.fullscreen {
 		state.paintMenuBar(canvas, size.Width)
@@ -71,10 +83,10 @@ func (state *model) paint(canvas *ui.Canvas, size ui.Size) {
 	}
 	state.paintTabs(canvas, size.Width)
 	if state.fullscreen {
-		bounds := ui.Rect{X: size.Width - 30, Width: 30, Height: tabHeight}
+		bounds := gfx.Rect{X: size.Width - 30, Width: 30, Height: tabHeight}
 		canvas.Border(bounds, 1, palette.border, palette.tabs)
-		canvas.DrawIcon(fullscreenRestoreIcon, bounds.Inset(ui.All(6)), palette.text)
-		canvas.HitWithOptions(fullscreenRestoreID, bounds, "Exit full screen", ui.HitOptions{Role: ui.RoleButton, Hint: "Restore window"})
+		canvas.DrawIcon(fullscreenRestoreIcon, bounds.Inset(gfx.All(6)), palette.text)
+		canvas.HitWithOptions(fullscreenRestoreID, bounds, "Exit full screen", gfx.HitOptions{Role: gfx.RoleButton, Hint: "Restore window"})
 		if canvas.Clicked(fullscreenRestoreID) {
 			state.command("Toggle Full Screen Mode")
 		}
@@ -104,11 +116,11 @@ func (state *model) paint(canvas *ui.Canvas, size ui.Size) {
 	if state.fullscreen {
 		top = tabHeight
 	}
-	editorBounds := ui.Rect{X: panelWidth, Y: top, Width: size.Width - panelWidth - mapWidth, Height: max(64, bottom-top)}
+	editorBounds := gfx.Rect{X: panelWidth, Y: top, Width: size.Width - panelWidth - mapWidth, Height: max(64, bottom-top)}
 	if panelWidth > 0 {
-		leftBounds := ui.Rect{Y: editorBounds.Y, Width: panelWidth, Height: editorBounds.Height}
+		leftBounds := gfx.Rect{Y: editorBounds.Y, Width: panelWidth, Height: editorBounds.Height}
 		if count := state.leftDockCount(); count > 1 {
-			state.paintLeftDockTabs(canvas, ui.Rect{Y: leftBounds.Y, Width: leftBounds.Width, Height: 28})
+			state.paintLeftDockTabs(canvas, gfx.Rect{Y: leftBounds.Y, Width: leftBounds.Width, Height: 28})
 			leftBounds.Y, leftBounds.Height = leftBounds.Y+28, leftBounds.Height-28
 		}
 		switch state.activeDock() {
@@ -122,7 +134,7 @@ func (state *model) paint(canvas *ui.Canvas, size ui.Size) {
 	}
 	state.paintEditor(canvas, editorBounds)
 	if state.documentMapVisible {
-		state.paintDocumentMap(canvas, ui.Rect{X: size.Width - mapWidth, Y: editorBounds.Y, Width: mapWidth, Height: editorBounds.Height}, editorBounds.Height)
+		state.paintDocumentMap(canvas, gfx.Rect{X: size.Width - mapWidth, Y: editorBounds.Y, Width: mapWidth, Height: editorBounds.Height}, editorBounds.Height)
 	}
 	if state.searchOpen {
 		state.paintSearch(canvas, size.Width, bottom)
@@ -141,7 +153,9 @@ func (state *model) paint(canvas *ui.Canvas, size ui.Size) {
 	if state.menuOverflowOpen {
 		state.paintOverflowMenu(canvas, size)
 	}
-	state.paintWordCompletionPopup(canvas, size)
+	if state.provisional.doc == nil || state.wordCompletion == nil || state.wordCompletion.doc != state.provisional.doc {
+		state.paintWordCompletionPopup(canvas, size)
+	}
 	state.checkMacroSource()
 	if state.markDialogOpen {
 		state.paintMarkDialog(canvas, size)
@@ -227,18 +241,18 @@ func (state *model) paint(canvas *ui.Canvas, size ui.Size) {
 	state.snapshotRecovery()
 }
 
-func smallLabel(canvas *ui.Canvas, value string, bounds ui.Rect, color ui.Color, size float32) {
-	canvas.Label(value, bounds, ui.TextStyle{Size: size, Color: color})
+func smallLabel(canvas *gfx.Canvas, value string, bounds gfx.Rect, color gfx.Color, size float32) {
+	canvas.Label(value, bounds, gfx.TextStyle{Size: size, Color: color})
 }
 
-func hitButton(canvas *ui.Canvas, id ui.ID, bounds ui.Rect, label string) bool {
-	canvas.HitWithOptions(id, bounds, label, ui.HitOptions{Role: ui.RoleButton})
+func hitButton(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, label string) bool {
+	canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{Role: gfx.RoleButton})
 	return canvas.Clicked(id)
 }
 
-func (state *model) paintMenuBar(canvas *ui.Canvas, width float32) {
-	canvas.Fill(ui.Rect{Width: width, Height: menuHeight}, palette.chrome)
-	canvas.Fill(ui.Rect{Y: menuHeight - 1, Width: width, Height: 1}, palette.border)
+func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
+	canvas.Fill(gfx.Rect{Width: width, Height: menuHeight}, palette.chrome)
+	canvas.Fill(gfx.Rect{Y: menuHeight - 1, Width: width, Height: 1}, palette.border)
 	allWidth := float32(8)
 	for _, label := range menuLabels {
 		allWidth += canvas.TextWidth(label, 11) + 19
@@ -255,8 +269,8 @@ func (state *model) paintMenuBar(canvas *ui.Canvas, width float32) {
 			state.menuFirstHidden = index
 			break
 		}
-		item := ui.Rect{X: x, Y: 1, Width: itemWidth, Height: 24}
-		enabled := index < len(menuCommands) && menuCommands[index][0] != ""
+		item := gfx.Rect{X: x, Y: 1, Width: itemWidth, Height: 24}
+		enabled := index < len(menuCommands) && len(menuCommands[index]) > 0 && menuCommands[index][0] != ""
 		if state.menuOpen == index || canvas.Hovered() == menuScope.At(index) && enabled {
 			canvas.Fill(item, palette.hover)
 		}
@@ -264,11 +278,11 @@ func (state *model) paintMenuBar(canvas *ui.Canvas, width float32) {
 		if !enabled {
 			color = palette.muted
 		}
-		smallLabel(canvas, label, ui.Rect{X: x + 9, Y: 1, Width: itemWidth - 11, Height: 24}, color, 11)
+		smallLabel(canvas, label, gfx.Rect{X: x + 9, Y: 1, Width: itemWidth - 11, Height: 24}, color, 11)
 		if enabled {
-			canvas.HitWithOptions(menuScope.At(index), item, label, ui.HitOptions{Role: ui.RoleButton})
+			canvas.HitWithOptions(menuScope.At(index), item, label, gfx.HitOptions{Role: gfx.RoleButton})
 			if canvas.Clicked(menuScope.At(index)) {
-				state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
+				state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.changeHistoryMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
 				state.markJumpMenuOpen = false
 				state.styleMenuMode = ""
 				state.insertDateOpen = false
@@ -304,12 +318,12 @@ func (state *model) paintMenuBar(canvas *ui.Canvas, width float32) {
 		x += itemWidth
 	}
 	if reserve != 0 {
-		button := ui.Rect{X: width - 28, Y: 1, Width: 25, Height: 24}
+		button := gfx.Rect{X: width - 28, Y: 1, Width: 25, Height: 24}
 		if state.menuOverflowOpen || canvas.Hovered() == menuOverflowID {
 			canvas.Fill(button, palette.hover)
 		}
-		canvas.DrawIcon(rightIcon, button.Inset(ui.All(5)), palette.text)
-		canvas.HitWithOptions(menuOverflowID, button, "More menus", ui.HitOptions{Role: ui.RoleButton, Hint: "Show hidden menus"})
+		canvas.DrawIcon(rightIcon, button.Inset(gfx.All(5)), palette.text)
+		canvas.HitWithOptions(menuOverflowID, button, "More menus", gfx.HitOptions{Role: gfx.RoleButton, Hint: "Show hidden menus"})
 		if canvas.Clicked(menuOverflowID) {
 			state.menuOpen, state.menuOverflowOpen = -1, !state.menuOverflowOpen
 			state.windowSortMenuOpen = false
@@ -319,49 +333,49 @@ func (state *model) paintMenuBar(canvas *ui.Canvas, width float32) {
 	}
 }
 
-func toolbarButton(canvas *ui.Canvas, id ui.ID, bounds ui.Rect, icon ui.Icon, name string, tint ui.Color, enabled, selected bool) bool {
+func toolbarButton(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, icon gfx.Icon, name string, tint gfx.Color, enabled, selected bool) bool {
 	if selected {
-		canvas.Rounded(bounds, 5.5, ui.RGB(221, 243, 237))
+		canvas.Rounded(bounds, 5.5, gfx.RGB(221, 243, 237))
 	}
 	if enabled && canvas.Hovered() == id {
-		canvas.Rounded(bounds, 5.5, ui.RGB(232, 236, 238))
+		canvas.Rounded(bounds, 5.5, gfx.RGB(232, 236, 238))
 	}
 	if enabled && canvas.Pressed() == id {
-		canvas.Rounded(bounds, 5.5, ui.RGB(220, 226, 229))
+		canvas.Rounded(bounds, 5.5, gfx.RGB(220, 226, 229))
 	}
 	if enabled && canvas.FocusVisible() == id {
-		canvas.RoundedBorder(bounds, 5.5, 1.5, ui.RGB(9, 131, 110), ui.RGBA(0, 0, 0, 0))
+		canvas.RoundedBorder(bounds, 5.5, 1.5, gfx.RGB(9, 131, 110), gfx.RGBA(0, 0, 0, 0))
 	}
 	iconBounds := controlIconBounds(bounds)
 	canvas.DrawIcon(icon, iconBounds, tint)
-	canvas.HitWithOptions(id, bounds, name, ui.HitOptions{Role: ui.RoleButton, Disabled: !enabled, Selected: selected, Hint: name})
+	canvas.HitWithOptions(id, bounds, name, gfx.HitOptions{Role: gfx.RoleButton, Disabled: !enabled, Selected: selected, Hint: name})
 	return enabled && canvas.Clicked(id)
 }
 
-func toolbarTint(id ui.ID, canUndo, canRedo bool) ui.Color {
+func toolbarTint(id gfx.ID, canUndo, canRedo bool) gfx.Color {
 	switch {
 	case id == undoID && !canUndo || id == redoID && !canRedo:
-		return ui.RGB(166, 175, 182)
+		return gfx.RGB(166, 175, 182)
 	default:
-		return ui.RGB(52, 61, 67)
+		return gfx.RGB(52, 61, 67)
 	}
 }
 
-func (state *model) paintToolbar(canvas *ui.Canvas, width float32) {
+func (state *model) paintToolbar(canvas *gfx.Canvas, width float32) {
 	y := menuHeight
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: toolbarHeight}, ui.RGB(251, 252, 252))
-	canvas.Fill(ui.Rect{Y: y + toolbarHeight - 1, Width: width, Height: 1}, palette.border)
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: toolbarHeight}, gfx.RGB(251, 252, 252))
+	canvas.Fill(gfx.Rect{Y: y + toolbarHeight - 1, Width: width, Height: 1}, palette.border)
 	x := float32(8)
-	button := func(id ui.ID, icon ui.Icon, label string) bool {
+	button := func(id gfx.ID, icon gfx.Icon, label string) bool {
 		doc := state.space.Current()
 		canUndo, canRedo := doc.Editor.CanUndo(), doc.Editor.CanRedo()
 		tint := toolbarTint(id, canUndo, canRedo)
 		enabled := !(id == undoID && !canUndo || id == redoID && !canRedo)
 		selected := id == searchID && state.searchOpen
 		if selected {
-			tint = ui.RGB(8, 105, 87)
+			tint = gfx.RGB(8, 105, 87)
 		}
-		clicked := toolbarButton(canvas, id, ui.Rect{X: x, Y: y + 4, Width: 26, Height: 26}, icon, label, tint, enabled, selected)
+		clicked := toolbarButton(canvas, id, gfx.Rect{X: x, Y: y + 4, Width: 26, Height: 26}, icon, label, tint, enabled, selected)
 		x += 30
 		return clicked
 	}
@@ -378,7 +392,7 @@ func (state *model) paintToolbar(canvas *ui.Canvas, width float32) {
 		state.save(state.space.Active, false)
 	}
 	separator := func() {
-		canvas.Fill(ui.Rect{X: x + 4, Y: y + 10, Width: 1, Height: 14}, ui.RGB(125, 138, 145))
+		canvas.Fill(gfx.Rect{X: x + 4, Y: y + 10, Width: 1, Height: 14}, gfx.RGB(125, 138, 145))
 		x += 13
 	}
 	separator()
@@ -407,7 +421,7 @@ func (state *model) paintToolbar(canvas *ui.Canvas, width float32) {
 	}
 }
 
-func (state *model) paintTabs(canvas *ui.Canvas, width float32) {
+func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 	if state.splitEnabled {
 		origin := state.folderPanelWidth(width)
 		state.paintSplitTabs(canvas, width-origin, origin)
@@ -417,8 +431,8 @@ func (state *model) paintTabs(canvas *ui.Canvas, width float32) {
 	if state.fullscreen {
 		y = 0
 	}
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: tabHeight}, palette.tabs)
-	canvas.Fill(ui.Rect{Y: y + tabHeight - 1, Width: width, Height: 1}, palette.border)
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: tabHeight}, palette.tabs)
+	canvas.Fill(gfx.Rect{Y: y + tabHeight - 1, Width: width, Height: 1}, palette.border)
 	contentWidth := width
 	if state.fullscreen {
 		contentWidth -= 30
@@ -443,35 +457,35 @@ func (state *model) paintTabs(canvas *ui.Canvas, width float32) {
 	for index := start; index < len(state.space.Documents) && index-start < visible; index++ {
 		doc := state.space.Documents[index]
 		x := 7 + float32(index-start)*161
-		rect := ui.Rect{X: x, Y: y + 2, Width: 157, Height: 26}
+		rect := gfx.Rect{X: x, Y: y + 2, Width: 157, Height: 26}
 		background, accent := state.tabColorPaint(doc, index == state.space.Active)
 		canvas.Border(rect, 1, palette.border, background)
 		if index == state.space.Active {
-			canvas.Fill(ui.Rect{X: x + 1, Y: y + 1, Width: 155, Height: 2}, accent)
+			canvas.Fill(gfx.Rect{X: x + 1, Y: y + 1, Width: 155, Height: 2}, accent)
 		}
 		name := doc.Name
 		if doc.Dirty() {
 			name = "* " + name
 		}
-		name = canvas.FitLine(name, 11, ui.WeightRegular, 103)
-		smallLabel(canvas, name, ui.Rect{X: x + 10, Y: y + 2, Width: 103, Height: 25}, palette.text, 11)
-		canvas.HitWithOptions(tabScope.At(index), rect, doc.Name, ui.HitOptions{Role: ui.RoleTab, Selected: index == state.space.Active})
+		name = canvas.FitLine(name, 11, gfx.WeightRegular, 103)
+		smallLabel(canvas, name, gfx.Rect{X: x + 10, Y: y + 2, Width: 103, Height: 25}, palette.text, 11)
+		canvas.HitWithOptions(tabScope.At(index), rect, doc.Name, gfx.HitOptions{Role: gfx.RoleTab, Selected: index == state.space.Active})
 		if canvas.Clicked(tabScope.At(index)) {
 			selected = index
 		}
-		pinRect := ui.Rect{X: x + 113, Y: y + 5, Width: 17, Height: 18}
+		pinRect := gfx.Rect{X: x + 113, Y: y + 5, Width: 17, Height: 18}
 		if canvas.Hovered() == tabPinScope.At(index) {
 			canvas.Fill(pinRect, palette.hover)
 		}
 		pinColor, pinLabel := palette.muted, "Pin "+doc.Name
 		if state.isPinned(doc) {
-			pinColor, pinLabel = ui.RGB(8, 105, 87), "Unpin "+doc.Name
+			pinColor, pinLabel = gfx.RGB(8, 105, 87), "Unpin "+doc.Name
 		}
 		canvas.DrawIcon(pinIcon, controlIconBounds(pinRect), pinColor)
 		if hitButton(canvas, tabPinScope.At(index), pinRect, pinLabel) {
 			pinning = index
 		}
-		closeRect := ui.Rect{X: x + 135, Y: y + 5, Width: 17, Height: 18}
+		closeRect := gfx.Rect{X: x + 135, Y: y + 5, Width: 17, Height: 18}
 		if canvas.Hovered() == tabCloseScope.At(index) {
 			canvas.Fill(closeRect, palette.hover)
 		}
@@ -491,8 +505,8 @@ func (state *model) paintTabs(canvas *ui.Canvas, width float32) {
 		state.togglePinned(state.space.Documents[pinning], 0)
 	}
 	if overflow {
-		left := ui.Rect{X: contentWidth - 49, Y: y + 3, Width: 22, Height: 22}
-		right := ui.Rect{X: contentWidth - 25, Y: y + 3, Width: 22, Height: 22}
+		left := gfx.Rect{X: contentWidth - 49, Y: y + 3, Width: 22, Height: 22}
+		right := gfx.Rect{X: contentWidth - 25, Y: y + 3, Width: 22, Height: 22}
 		canvas.Border(left, 1, palette.border, palette.toolbar)
 		canvas.Border(right, 1, palette.border, palette.toolbar)
 		canvas.DrawIcon(leftIcon, controlIconBounds(left), palette.text)
@@ -506,35 +520,45 @@ func (state *model) paintTabs(canvas *ui.Canvas, width float32) {
 	}
 }
 
-func (state *model) paintEditor(canvas *ui.Canvas, bounds ui.Rect) {
+func (state *model) paintEditor(canvas *gfx.Canvas, bounds gfx.Rect) {
 	state.splitWidth = bounds.Width
 	if !state.splitEnabled {
 		state.paintPane(canvas, bounds, 0, state.space.Current())
 		return
 	}
 	position := state.splitPosition(bounds.Width)
-	left := ui.Rect{X: bounds.X, Y: bounds.Y, Width: position, Height: bounds.Height}
-	right := ui.Rect{X: bounds.X + position + 8, Y: bounds.Y, Width: bounds.Width - position - 8, Height: bounds.Height}
+	left := gfx.Rect{X: bounds.X, Y: bounds.Y, Width: position, Height: bounds.Height}
+	right := gfx.Rect{X: bounds.X + position + 8, Y: bounds.Y, Width: bounds.Width - position - 8, Height: bounds.Height}
 	state.paintPane(canvas, left, 0, state.paneDocument(0))
-	divider := ui.Rect{X: bounds.X + position, Y: bounds.Y, Width: 8, Height: bounds.Height}
+	divider := gfx.Rect{X: bounds.X + position, Y: bounds.Y, Width: 8, Height: bounds.Height}
 	canvas.Fill(divider, palette.tabs)
-	canvas.Fill(ui.Rect{X: divider.X + 3, Y: divider.Y, Width: 1, Height: divider.Height}, palette.border)
-	canvas.HitWithOptions(splitterID, divider, "Resize editor views", ui.HitOptions{Role: ui.RoleSlider, Cursor: ui.PointerCursorResizeHorizontal})
+	canvas.Fill(gfx.Rect{X: divider.X + 3, Y: divider.Y, Width: 1, Height: divider.Height}, palette.border)
+	canvas.HitWithOptions(splitterID, divider, "Resize editor views", gfx.HitOptions{Role: gfx.RoleSlider, Cursor: gfx.PointerCursorResizeHorizontal})
 	state.paintPane(canvas, right, 1, state.paneDocument(1))
 	state.syncScrollAfterPaint()
 }
 
-func (state *model) paintPane(canvas *ui.Canvas, bounds ui.Rect, pane int, doc *document.Document) {
-	theme := ui.LightTheme()
+func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc *document.Document) {
+	if state.isReadOnly(doc) {
+		state.cancelDocumentComposition(doc)
+	}
+	theme := gfx.LightTheme()
 	theme.Background, theme.Card, theme.Foreground = palette.white, palette.white, palette.text
 	theme.Border, theme.Ring, theme.Input, theme.Primary = palette.white, palette.white, palette.white, palette.white
 	fontSize := state.paneFontSize(pane)
 	theme.Metrics.RadiusControl, theme.Metrics.FontSizeM = 0, float32(fontSize)
 	value := doc.Editor.String()
-	regions := state.foldRegions(doc)
-	hidden := state.hiddenRanges(doc)
-	state.revealHiddenCaret(doc)
-	state.syncFindMarks(doc)
+	// A live preedit is not committed source. Painting must not settle the
+	// edit-tracked indicator groups (fold regions, hidden lines, Find Mark
+	// spans, user styles) from the transient final text; the terminal event
+	// settles them exactly once on a later paint.
+	provisional := state.provisional.doc == doc
+	regions, hidden := state.foldCache[doc].regions, state.hiddenLines[doc]
+	if !provisional {
+		regions, hidden = state.foldRegions(doc), state.hiddenRanges(doc)
+		state.revealHiddenCaret(doc)
+		state.syncFindMarks(doc)
+	}
 	selection := doc.Editor.Selection()
 	composition, composing := doc.Editor.Composition()
 	id, barID, horizontalID := editorID, scrollbarID, horizontalBarID
@@ -555,11 +579,16 @@ func (state *model) paintPane(canvas *ui.Canvas, bounds ui.Rect, pane int, doc *
 		ScrollbarID:     barID, HorizontalScrollbarID: horizontalID,
 		Language: state.languageFor(doc), Highlight: state.syntax.Highlight,
 	}
+	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)
 	if len(regions) != 0 || len(hidden) != 0 {
 		snapshot.FoldGutter = true
-		snapshot.FoldedLines = state.visualFoldRanges(doc)
+		if provisional {
+			snapshot.FoldedLines = provisionalFoldRanges(regions, hidden, state.folded[doc])
+		} else {
+			snapshot.FoldedLines = state.visualFoldRanges(doc)
+		}
 		foldScope := leftFoldScope
 		hideScope := hideLineScope
 		if pane == 1 {
@@ -589,11 +618,29 @@ func (state *model) paintPane(canvas *ui.Canvas, bounds ui.Rect, pane int, doc *
 		state.eolLabels[pane] = doc.EOLLabels(state.eolLabels[pane])
 		snapshot.EOLLabels = state.eolLabels[pane]
 	}
-	for _, line := range state.bookmarkLines(doc) {
-		snapshot.GutterMarkers = append(snapshot.GutterMarkers, components.CodeEditorGutterMarker{Line: line, Color: ui.RGB(43, 104, 187)})
+	var bookmarks []int
+	if state.provisional.doc == doc {
+		// A live preedit has not yet committed its line mapping. Painting the
+		// pre-composition lines keeps bookmarks from walking on every frame.
+		if stored := state.bookmarks[doc]; stored != nil {
+			bookmarks = stored.lines
+		}
+	} else {
+		bookmarks = state.bookmarkLines(doc)
+	}
+	for _, line := range bookmarks {
+		snapshot.GutterMarkers = append(snapshot.GutterMarkers, components.CodeEditorGutterMarker{Line: line, Color: gfx.RGB(43, 104, 187)})
 	}
 	for style, color := range styleColors {
-		if spans := state.styleSpans(doc, style); len(spans) != 0 {
+		var spans []text.Span
+		if provisional {
+			if stored := state.styledMarks[doc]; stored != nil && style < len(stored.styles) {
+				spans = stored.styles[style]
+			}
+		} else {
+			spans = state.styleSpans(doc, style)
+		}
+		if len(spans) != 0 {
 			color.Alpha = 100.0 / 255
 			snapshot.MarkLayers = append(snapshot.MarkLayers, components.CodeEditorMarkLayer{Spans: spans, Color: color})
 		}
@@ -605,7 +652,7 @@ func (state *model) paintPane(canvas *ui.Canvas, bounds ui.Rect, pane int, doc *
 		snapshot.Marks = state.searchMarks()
 		snapshot.CurrentMark = text.Span{Start: snapshot.SelectionStart, End: snapshot.SelectionEnd}
 	} else if state.markedDocument == doc {
-		snapshot.MarkLayers = append(snapshot.MarkLayers, components.CodeEditorMarkLayer{Spans: state.markedSpans, Color: ui.Color{Red: 1, Alpha: 100.0 / 255}})
+		snapshot.MarkLayers = append(snapshot.MarkLayers, components.CodeEditorMarkLayer{Spans: state.markedSpans, Color: gfx.Color{Red: 1, Alpha: 100.0 / 255}})
 	}
 	if composing {
 		snapshot.CompositionStart = doc.Editor.ByteOffset(composition.Start)
@@ -632,31 +679,31 @@ func (state *model) paintPane(canvas *ui.Canvas, bounds ui.Rect, pane int, doc *
 	}
 }
 
-func (state *model) paintSearch(canvas *ui.Canvas, width, y float32) {
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: searchHeight}, palette.chrome)
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: 1}, palette.border)
+func (state *model) paintSearch(canvas *gfx.Canvas, width, y float32) {
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: searchHeight}, palette.chrome)
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.border)
 	fieldWidth := min(330, max(170, width-380))
-	fieldTheme := ui.LightTheme()
+	fieldTheme := gfx.LightTheme()
 	fieldTheme.Metrics.ControlHeight, fieldTheme.Metrics.FontSizeM, fieldTheme.Metrics.RadiusControl = 26, 12, 2
 	fieldTheme.Border, fieldTheme.Ring = palette.border, palette.blue
 	fieldTheme.Background, fieldTheme.Foreground = palette.white, palette.text
-	paintField := func(id ui.ID, editorValue string, row float32, label string) {
-		smallLabel(canvas, label, ui.Rect{X: 12, Y: y + row, Width: 58, Height: 26}, palette.text, 12)
-		components.PaintInput(canvas, fieldTheme, ui.Rect{X: 68, Y: y + row, Width: fieldWidth, Height: 25}, components.InputSnapshot{
+	paintField := func(id gfx.ID, editorValue string, row float32, label string) {
+		smallLabel(canvas, label, gfx.Rect{X: 12, Y: y + row, Width: 58, Height: 26}, palette.text, 12)
+		components.PaintInput(canvas, fieldTheme, gfx.Rect{X: 68, Y: y + row, Width: fieldWidth, Height: 25}, components.InputSnapshot{
 			ID: id, Label: label, Value: editorValue, PlatformEditing: canvas.Focused() == id,
 		})
 	}
 	paintField(queryID, state.query.String(), 6, "Find:")
 	paintField(replacementID, state.replacement.String(), 37, "Replace:")
 	x := 76 + fieldWidth
-	searchAction := func(id ui.ID, label string, top float32, buttonWidth float32) bool {
-		bounds := ui.Rect{X: x, Y: y + top, Width: buttonWidth, Height: 25}
+	searchAction := func(id gfx.ID, label string, top float32, buttonWidth float32) bool {
+		bounds := gfx.Rect{X: x, Y: y + top, Width: buttonWidth, Height: 25}
 		background := palette.toolbar
 		if canvas.Hovered() == id {
 			background = palette.hover
 		}
 		canvas.Border(bounds, 1, palette.border, background)
-		canvas.LabelCenter(label, bounds, ui.TextStyle{Size: 11, Color: palette.text})
+		canvas.LabelCenter(label, bounds, gfx.TextStyle{Size: 11, Color: palette.text})
 		x += buttonWidth + 5
 		return hitButton(canvas, id, bounds, label)
 	}
@@ -704,7 +751,7 @@ func (state *model) paintSearch(canvas *ui.Canvas, width, y float32) {
 		state.replaceAllOpenDocuments()
 	}
 	options := []struct {
-		id      ui.ID
+		id      gfx.ID
 		label   string
 		x       float32
 		checked *bool
@@ -714,51 +761,51 @@ func (state *model) paintSearch(canvas *ui.Canvas, width, y float32) {
 		{regexID, "Regular expression", 262, &state.searchOptions.Regex},
 	}
 	for _, option := range options {
-		box := ui.Rect{X: option.x, Y: y + 72, Width: 14, Height: 14}
+		box := gfx.Rect{X: option.x, Y: y + 72, Width: 14, Height: 14}
 		canvas.Border(box, 1, palette.border, palette.white)
 		if *option.checked {
-			canvas.Fill(box.Inset(ui.All(3)), palette.blue)
+			canvas.Fill(box.Inset(gfx.All(3)), palette.blue)
 		}
-		smallLabel(canvas, option.label, ui.Rect{X: option.x + 20, Y: y + 66, Width: 118, Height: 25}, palette.text, 11)
-		canvas.HitWithOptions(option.id, ui.Rect{X: option.x, Y: y + 66, Width: 119, Height: 25}, option.label, ui.HitOptions{Role: ui.RoleCheckbox, Checked: *option.checked})
+		smallLabel(canvas, option.label, gfx.Rect{X: option.x + 20, Y: y + 66, Width: 118, Height: 25}, palette.text, 11)
+		canvas.HitWithOptions(option.id, gfx.Rect{X: option.x, Y: y + 66, Width: 119, Height: 25}, option.label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: *option.checked})
 		if canvas.Clicked(option.id) {
 			*option.checked = !*option.checked
 		}
 	}
-	closeBounds := ui.Rect{X: width - 29, Y: y + 6, Width: 22, Height: 22}
+	closeBounds := gfx.Rect{X: width - 29, Y: y + 6, Width: 22, Height: 22}
 	canvas.DrawIcon(closeIcon, controlIconBounds(closeBounds), palette.muted)
 	if hitButton(canvas, searchCloseID, closeBounds, "Close search") {
 		state.searchOpen = false
 	}
 }
 
-func (state *model) paintGoTo(canvas *ui.Canvas, width, y float32) {
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: goToHeight}, palette.chrome)
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: 1}, palette.border)
-	smallLabel(canvas, "Go to line:", ui.Rect{X: 12, Y: y + 8, Width: 76, Height: 26}, palette.text, 12)
-	theme := ui.LightTheme()
+func (state *model) paintGoTo(canvas *gfx.Canvas, width, y float32) {
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: goToHeight}, palette.chrome)
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.border)
+	smallLabel(canvas, "Go to line:", gfx.Rect{X: 12, Y: y + 8, Width: 76, Height: 26}, palette.text, 12)
+	theme := gfx.LightTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 26, 12, 2
-	components.PaintInput(canvas, theme, ui.Rect{X: 90, Y: y + 8, Width: 160, Height: 26}, components.InputSnapshot{
+	components.PaintInput(canvas, theme, gfx.Rect{X: 90, Y: y + 8, Width: 160, Height: 26}, components.InputSnapshot{
 		ID: goToFieldID, Label: "Line number", Value: state.goToField.String(), PlatformEditing: canvas.Focused() == goToFieldID,
 	})
-	button := ui.Rect{X: 259, Y: y + 8, Width: 48, Height: 26}
+	button := gfx.Rect{X: 259, Y: y + 8, Width: 48, Height: 26}
 	canvas.Border(button, 1, palette.border, palette.toolbar)
-	canvas.LabelCenter("Go", button, ui.TextStyle{Size: 12, Color: palette.text})
+	canvas.LabelCenter("Go", button, gfx.TextStyle{Size: 12, Color: palette.text})
 	if hitButton(canvas, goToButtonID, button, "Go to line") {
 		state.goToLine()
 	}
-	closeBounds := ui.Rect{X: width - 29, Y: y + 9, Width: 22, Height: 22}
+	closeBounds := gfx.Rect{X: width - 29, Y: y + 9, Width: 22, Height: 22}
 	canvas.DrawIcon(closeIcon, controlIconBounds(closeBounds), palette.muted)
 	if hitButton(canvas, goToCloseID, closeBounds, "Close go to line") {
 		state.goToOpen = false
 	}
 }
 
-func (state *model) paintFilesDialog(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintFilesDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.SetEscapeTarget(filesCancelID)
 	canvas.PushLayer(5)
-	canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.RGBA(0, 0, 0, 0.20))
-	canvas.HitWithOptions(filesBackdropID, ui.Rect{Width: size.Width, Height: size.Height}, "Find in Files dialog", ui.HitOptions{Role: ui.RoleButton, SkipFocus: true})
+	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.20))
+	canvas.HitWithOptions(filesBackdropID, gfx.Rect{Width: size.Width, Height: size.Height}, "Find in Files dialog", gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true})
 	canvas.PushLayer(6)
 	width, height, shift := min(560, size.Width-32), float32(304), float32(0)
 	title := "Find in Files"
@@ -766,15 +813,15 @@ func (state *model) paintFilesDialog(canvas *ui.Canvas, size ui.Size) {
 		height, shift, title = 342, 38, "Replace in Files"
 	}
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(ui.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
-	smallLabel(canvas, title, ui.Rect{X: x + 18, Y: y + 12, Width: width - 36, Height: 26}, palette.text, 15)
-	fieldTheme := ui.LightTheme()
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	smallLabel(canvas, title, gfx.Rect{X: x + 18, Y: y + 12, Width: width - 36, Height: 26}, palette.text, 15)
+	fieldTheme := gfx.LightTheme()
 	fieldTheme.Metrics.ControlHeight, fieldTheme.Metrics.FontSizeM, fieldTheme.Metrics.RadiusControl = 26, 12, 2
 	fieldTheme.Border, fieldTheme.Ring = palette.border, palette.blue
 	fieldTheme.Background, fieldTheme.Foreground = palette.white, palette.text
-	field := func(id ui.ID, label, value string, offset, fieldWidth float32) {
-		smallLabel(canvas, label, ui.Rect{X: x + 18, Y: y + offset, Width: 76, Height: 26}, palette.text, 12)
-		components.PaintInput(canvas, fieldTheme, ui.Rect{X: x + 94, Y: y + offset, Width: fieldWidth, Height: 26}, components.InputSnapshot{
+	field := func(id gfx.ID, label, value string, offset, fieldWidth float32) {
+		smallLabel(canvas, label, gfx.Rect{X: x + 18, Y: y + offset, Width: 76, Height: 26}, palette.text, 12)
+		components.PaintInput(canvas, fieldTheme, gfx.Rect{X: x + 94, Y: y + offset, Width: fieldWidth, Height: 26}, components.InputSnapshot{
 			ID: id, Label: label, Value: value, PlatformEditing: canvas.Focused() == id,
 		})
 	}
@@ -784,34 +831,34 @@ func (state *model) paintFilesDialog(canvas *ui.Canvas, size ui.Size) {
 	}
 	field(filesRootID, "Directory:", state.filesRoot.String(), 81+shift, width-201)
 	field(filesPatternID, "Filter:", state.filesPattern.String(), 117+shift, min(220, width-116))
-	button := func(id ui.ID, label string, bounds ui.Rect) bool {
+	button := func(id gfx.ID, label string, bounds gfx.Rect) bool {
 		background := palette.toolbar
 		if canvas.Hovered() == id {
 			background = palette.hover
 		}
 		canvas.Border(bounds, 1, palette.border, background)
-		canvas.LabelCenter(label, bounds, ui.TextStyle{Size: 12, Color: palette.text})
+		canvas.LabelCenter(label, bounds, gfx.TextStyle{Size: 12, Color: palette.text})
 		return hitButton(canvas, id, bounds, label)
 	}
-	if button(filesBrowseID, "Browse...", ui.Rect{X: x + width - 96, Y: y + 81 + shift, Width: 78, Height: 26}) {
+	if button(filesBrowseID, "Browse...", gfx.Rect{X: x + width - 96, Y: y + 81 + shift, Width: 78, Height: 26}) {
 		state.browseFilesDirectory()
 	}
-	checkbox := func(id ui.ID, label string, checked *bool, left, top, span float32) {
-		box := ui.Rect{X: left, Y: top + 6, Width: 14, Height: 14}
+	checkbox := func(id gfx.ID, label string, checked *bool, left, top, span float32) {
+		box := gfx.Rect{X: left, Y: top + 6, Width: 14, Height: 14}
 		canvas.Border(box, 1, palette.border, palette.white)
 		if *checked {
-			canvas.Fill(box.Inset(ui.All(3)), palette.blue)
+			canvas.Fill(box.Inset(gfx.All(3)), palette.blue)
 		}
-		smallLabel(canvas, label, ui.Rect{X: left + 20, Y: top, Width: span - 20, Height: 26}, palette.text, 11)
-		canvas.HitWithOptions(id, ui.Rect{X: left, Y: top, Width: span, Height: 26}, label, ui.HitOptions{Role: ui.RoleCheckbox, Checked: *checked})
+		smallLabel(canvas, label, gfx.Rect{X: left + 20, Y: top, Width: span - 20, Height: 26}, palette.text, 11)
+		canvas.HitWithOptions(id, gfx.Rect{X: left, Y: top, Width: span, Height: 26}, label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: *checked})
 		if canvas.Clicked(id) {
 			*checked = !*checked
 		}
 	}
-	smallLabel(canvas, "Encoding:", ui.Rect{X: x + 18, Y: y + 151 + shift, Width: 76, Height: 26}, palette.text, 12)
+	smallLabel(canvas, "Encoding:", gfx.Rect{X: x + 18, Y: y + 151 + shift, Width: 76, Height: 26}, palette.text, 12)
 	segmentX := x + float32(94)
 	for _, mode := range []struct {
-		id       ui.ID
+		id       gfx.ID
 		label    string
 		encoding document.Encoding
 		width    float32
@@ -820,7 +867,7 @@ func (state *model) paintFilesDialog(canvas *ui.Canvas, size ui.Size) {
 		{filesGB18030ID, "GB18030", document.GB18030, 92},
 		{filesWindowsID, "Windows-1252", document.Windows1252, 119},
 	} {
-		bounds := ui.Rect{X: segmentX, Y: y + 151 + shift, Width: mode.width, Height: 26}
+		bounds := gfx.Rect{X: segmentX, Y: y + 151 + shift, Width: mode.width, Height: 26}
 		selected := state.filesEncoding == mode.encoding
 		background, foreground := palette.toolbar, palette.text
 		if selected || canvas.Hovered() == mode.id {
@@ -830,8 +877,8 @@ func (state *model) paintFilesDialog(canvas *ui.Canvas, size ui.Size) {
 			foreground = palette.blue
 		}
 		canvas.Border(bounds, 1, palette.border, background)
-		canvas.LabelCenter(mode.label, bounds, ui.TextStyle{Size: 11, Color: foreground})
-		canvas.HitWithOptions(mode.id, bounds, mode.label, ui.HitOptions{Role: ui.RoleRadio, Checked: selected})
+		canvas.LabelCenter(mode.label, bounds, gfx.TextStyle{Size: 11, Color: foreground})
+		canvas.HitWithOptions(mode.id, bounds, mode.label, gfx.HitOptions{Role: gfx.RoleRadio, Checked: selected})
 		if canvas.Clicked(mode.id) {
 			state.filesEncoding = mode.encoding
 		}
@@ -842,19 +889,19 @@ func (state *model) paintFilesDialog(canvas *ui.Canvas, size ui.Size) {
 	checkbox(wholeWordID, "Whole word", &state.searchOptions.WholeWord, x+136, y+215+shift, 116)
 	checkbox(regexID, "Regular expression", &state.searchOptions.Regex, x+260, y+215+shift, 157)
 	if state.filesSearching {
-		smallLabel(canvas, "Working...", ui.Rect{X: x + 18, Y: y + 262 + shift, Width: 160, Height: 26}, palette.muted, 12)
+		smallLabel(canvas, "Working...", gfx.Rect{X: x + 18, Y: y + 262 + shift, Width: 160, Height: 26}, palette.muted, 12)
 	} else if state.filesReplaceMode {
-		if button(replacePreviewID, "Preview", ui.Rect{X: x + width - 190, Y: y + 259 + shift, Width: 82, Height: 29}) {
+		if button(replacePreviewID, "Preview", gfx.Rect{X: x + width - 190, Y: y + 259 + shift, Width: 82, Height: 29}) {
 			state.startReplacePreview()
 		}
-	} else if button(filesSearchID, "Find All", ui.Rect{X: x + width - 190, Y: y + 259, Width: 82, Height: 29}) {
+	} else if button(filesSearchID, "Find All", gfx.Rect{X: x + width - 190, Y: y + 259, Width: 82, Height: 29}) {
 		state.startFileSearch()
 	}
 	if state.filesMessage != "" {
-		message := canvas.FitLine(state.filesMessage, 11, ui.WeightRegular, width-230)
-		smallLabel(canvas, message, ui.Rect{X: x + 18, Y: y + 262 + shift, Width: width - 230, Height: 26}, palette.blue, 11)
+		message := canvas.FitLine(state.filesMessage, 11, gfx.WeightRegular, width-230)
+		smallLabel(canvas, message, gfx.Rect{X: x + 18, Y: y + 262 + shift, Width: width - 230, Height: 26}, palette.blue, 11)
 	}
-	if button(filesCancelID, "Cancel", ui.Rect{X: x + width - 98, Y: y + 259 + shift, Width: 80, Height: 29}) {
+	if button(filesCancelID, "Cancel", gfx.Rect{X: x + width - 98, Y: y + 259 + shift, Width: 80, Height: 29}) {
 		state.cancelFileSearch()
 		state.filesDialogOpen = false
 	}
@@ -862,7 +909,7 @@ func (state *model) paintFilesDialog(canvas *ui.Canvas, size ui.Size) {
 	canvas.PopLayer()
 }
 
-func (state *model) paintReplaceConfirm(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintReplaceConfirm(canvas *gfx.Canvas, size gfx.Size) {
 	plan := state.replacePlan
 	if plan == nil {
 		return
@@ -871,46 +918,46 @@ func (state *model) paintReplaceConfirm(canvas *ui.Canvas, size ui.Size) {
 		canvas.SetEscapeTarget(replaceCancelID)
 	}
 	canvas.PushLayer(7)
-	canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.RGBA(0, 0, 0, 0.25))
-	canvas.HitWithOptions(replaceBackdropID, ui.Rect{Width: size.Width, Height: size.Height}, "Replace in Files preview", ui.HitOptions{Role: ui.RoleButton, SkipFocus: true})
+	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
+	canvas.HitWithOptions(replaceBackdropID, gfx.Rect{Width: size.Width, Height: size.Height}, "Replace in Files preview", gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true})
 	canvas.PushLayer(8)
 	width, height := min(560, size.Width-32), min(320, size.Height-32)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(ui.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
 	title := fmt.Sprintf("Replace %d matches in %d files?", plan.Replacements, len(plan.Changes))
-	smallLabel(canvas, title, ui.Rect{X: x + 20, Y: y + 14, Width: width - 40, Height: 30}, palette.text, 15)
+	smallLabel(canvas, title, gfx.Rect{X: x + 20, Y: y + 14, Width: width - 40, Height: 30}, palette.text, 15)
 	warning := fmt.Sprintf("%d files skipped. Files are saved one by one; batch undo is unavailable.", plan.FilesSkipped)
-	warning = canvas.FitLine(warning, 11, ui.WeightRegular, width-40)
-	smallLabel(canvas, warning, ui.Rect{X: x + 20, Y: y + 47, Width: width - 40, Height: 24}, palette.muted, 11)
+	warning = canvas.FitLine(warning, 11, gfx.WeightRegular, width-40)
+	smallLabel(canvas, warning, gfx.Rect{X: x + 20, Y: y + 47, Width: width - 40, Height: 24}, palette.muted, 11)
 	for index, change := range plan.Changes {
 		if index >= 6 {
 			break
 		}
-		row := ui.Rect{X: x + 20, Y: y + 78 + float32(index)*25, Width: width - 40, Height: 24}
+		row := gfx.Rect{X: x + 20, Y: y + 78 + float32(index)*25, Width: width - 40, Height: 24}
 		label := fmt.Sprintf("%s  (%d replacements)", filepath.Base(change.Path), change.Count)
-		label = canvas.FitLine(label, 12, ui.WeightRegular, row.Width)
+		label = canvas.FitLine(label, 12, gfx.WeightRegular, row.Width)
 		smallLabel(canvas, label, row, palette.text, 12)
 	}
 	if len(plan.Changes) > 6 {
-		smallLabel(canvas, fmt.Sprintf("and %d more files", len(plan.Changes)-6), ui.Rect{X: x + 20, Y: y + 228, Width: width - 40, Height: 22}, palette.muted, 11)
+		smallLabel(canvas, fmt.Sprintf("and %d more files", len(plan.Changes)-6), gfx.Rect{X: x + 20, Y: y + 228, Width: width - 40, Height: 22}, palette.muted, 11)
 	}
 	if state.filesApplying {
-		smallLabel(canvas, "Applying changes...", ui.Rect{X: x + 20, Y: y + height - 43, Width: 190, Height: 28}, palette.muted, 12)
+		smallLabel(canvas, "Applying changes...", gfx.Rect{X: x + 20, Y: y + height - 43, Width: 190, Height: 28}, palette.muted, 12)
 	} else if state.notice == "Save or close modified tabs before replacing files" ||
 		state.notice == "Close tabs opened with another encoding before replacing files" {
-		message := canvas.FitLine(state.notice, 11, ui.WeightRegular, width-40)
-		smallLabel(canvas, message, ui.Rect{X: x + 20, Y: y + height - 70, Width: width - 40, Height: 24}, palette.blue, 11)
+		message := canvas.FitLine(state.notice, 11, gfx.WeightRegular, width-40)
+		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + height - 70, Width: width - 40, Height: 24}, palette.blue, 11)
 	}
-	button := func(id ui.ID, label string, bounds ui.Rect) bool {
+	button := func(id gfx.ID, label string, bounds gfx.Rect) bool {
 		canvas.Border(bounds, 1, palette.border, palette.toolbar)
-		canvas.LabelCenter(label, bounds, ui.TextStyle{Size: 12, Color: palette.text})
+		canvas.LabelCenter(label, bounds, gfx.TextStyle{Size: 12, Color: palette.text})
 		return hitButton(canvas, id, bounds, label)
 	}
 	if !state.filesApplying {
-		if button(replaceConfirmID, "Replace Files", ui.Rect{X: x + width - 215, Y: y + height - 43, Width: 105, Height: 29}) {
+		if button(replaceConfirmID, "Replace Files", gfx.Rect{X: x + width - 215, Y: y + height - 43, Width: 105, Height: 29}) {
 			state.startReplaceApply()
 		}
-		if button(replaceCancelID, "Cancel", ui.Rect{X: x + width - 98, Y: y + height - 43, Width: 80, Height: 29}) {
+		if button(replaceCancelID, "Cancel", gfx.Rect{X: x + width - 98, Y: y + height - 43, Width: 80, Height: 29}) {
 			state.replaceConfirmOpen, state.replacePlan = false, nil
 		}
 	}
@@ -918,12 +965,12 @@ func (state *model) paintReplaceConfirm(canvas *ui.Canvas, size ui.Size) {
 	canvas.PopLayer()
 }
 
-func (state *model) paintFileResults(canvas *ui.Canvas, width, y, height float32) {
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: height}, palette.white)
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: 1}, palette.border)
-	canvas.Fill(ui.Rect{Y: y + 1, Width: width, Height: 28}, palette.chrome)
+func (state *model) paintFileResults(canvas *gfx.Canvas, width, y, height float32) {
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: height}, palette.white)
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.border)
+	canvas.Fill(gfx.Rect{Y: y + 1, Width: width, Height: 28}, palette.chrome)
 	if canvas.Focused() == resultsPaneID || canvas.Focused().Scope() == resultScope {
-		canvas.Fill(ui.Rect{Y: y + 1, Width: width, Height: 2}, palette.blue)
+		canvas.Fill(gfx.Rect{Y: y + 1, Width: width, Height: 2}, palette.blue)
 	}
 	query := state.resultQuery
 	if query == "" {
@@ -935,24 +982,24 @@ func (state *model) paintFileResults(canvas *ui.Canvas, width, y, height float32
 	} else if state.resultOpenDocuments {
 		heading = fmt.Sprintf("Find result: %s  (%d matches in open documents)", query, len(state.fileResults.Matches))
 	}
-	heading = canvas.FitLine(heading, 12, ui.WeightRegular, width-48)
-	smallLabel(canvas, heading, ui.Rect{X: 10, Y: y + 1, Width: width - 48, Height: 27}, palette.text, 12)
-	closeBounds := ui.Rect{X: width - 29, Y: y + 4, Width: 22, Height: 22}
+	heading = canvas.FitLine(heading, 12, gfx.WeightRegular, width-48)
+	smallLabel(canvas, heading, gfx.Rect{X: 10, Y: y + 1, Width: width - 48, Height: 27}, palette.text, 12)
+	closeBounds := gfx.Rect{X: width - 29, Y: y + 4, Width: 22, Height: 22}
 	canvas.DrawIcon(closeIcon, controlIconBounds(closeBounds), palette.muted)
 	if hitButton(canvas, resultsCloseID, closeBounds, "Close find results") {
 		state.resultsOpen = false
 		state.clearResultFocus()
 	}
-	canvas.HitWithOptions(resultsPaneID, ui.Rect{Y: y + 29, Width: width, Height: height - 29}, "Find results", ui.HitOptions{Role: ui.RoleGroup})
+	canvas.HitWithOptions(resultsPaneID, gfx.Rect{Y: y + 29, Width: width, Height: height - 29}, "Find results", gfx.HitOptions{Role: gfx.RoleGroup})
 	visible := max(1, int((height-30)/22))
 	state.resultVisible = visible
 	for row := 0; row < visible && state.resultOffset+row < len(state.fileResults.Matches); row++ {
 		index := state.resultOffset + row
 		match := state.fileResults.Matches[index]
-		bounds := ui.Rect{X: 4, Y: y + 30 + float32(row)*22, Width: width - 8, Height: 22}
+		bounds := gfx.Rect{X: 4, Y: y + 30 + float32(row)*22, Width: width - 8, Height: 22}
 		if index == state.resultSelected {
-			canvas.Fill(bounds, ui.RGB(241, 243, 246))
-			canvas.Fill(ui.Rect{X: bounds.X, Y: bounds.Y, Width: 2, Height: bounds.Height}, palette.blue)
+			canvas.Fill(bounds, gfx.RGB(241, 243, 246))
+			canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y, Width: 2, Height: bounds.Height}, palette.blue)
 		} else if canvas.Hovered() == resultScope.At(index) {
 			canvas.Fill(bounds, palette.hover)
 		}
@@ -963,19 +1010,28 @@ func (state *model) paintFileResults(canvas *ui.Canvas, width, y, height float32
 			name = state.resultDocuments[index].Name
 		}
 		label := fmt.Sprintf("%s:%d:%d  %s", name, match.Line, match.Column, match.Preview)
-		label = canvas.FitLine(label, 11, ui.WeightRegular, width-26)
-		smallLabel(canvas, label, ui.Rect{X: 12, Y: bounds.Y, Width: width - 26, Height: 22}, palette.text, 11)
-		canvas.HitWithOptions(resultScope.At(index), bounds, match.Path, ui.HitOptions{Role: ui.RoleButton, Hint: match.Preview, Selected: index == state.resultSelected})
+		label = canvas.FitLine(label, 11, gfx.WeightRegular, width-26)
+		smallLabel(canvas, label, gfx.Rect{X: 12, Y: bounds.Y, Width: width - 26, Height: 22}, palette.text, 11)
+		canvas.HitWithOptions(resultScope.At(index), bounds, match.Path, gfx.HitOptions{Role: gfx.RoleButton, Hint: match.Preview, Selected: index == state.resultSelected})
 		if canvas.Clicked(resultScope.At(index)) {
 			state.openFileResult(index)
 		}
 	}
 }
 
-func (state *model) paintStatus(canvas *ui.Canvas, width, y float32) {
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: statusHeight}, palette.chrome)
-	canvas.Fill(ui.Rect{Y: y, Width: width, Height: 1}, palette.border)
+func (state *model) paintStatus(canvas *gfx.Canvas, width, y float32) {
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: statusHeight}, palette.chrome)
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.border)
 	doc := state.space.Current()
+	if state.notice == "No changes to navigate" {
+		if doc != state.noChangeNoticeDoc {
+			state.notice = ""
+		} else if consumer, err := doc.ChangeHistory(); err != nil {
+			state.notice = err.Error()
+		} else if consumer.Revision() != state.noChangeNoticeRevision {
+			state.notice = ""
+		}
+	}
 	line, column := doc.Position()
 	message := state.notice
 	if message == "" {
@@ -986,7 +1042,7 @@ func (state *model) paintStatus(canvas *ui.Canvas, width, y float32) {
 		}
 	}
 	for _, hover := range []struct {
-		id    ui.ID
+		id    gfx.ID
 		label string
 	}{
 		{newID, "New"}, {openID, "Open"}, {saveID, "Save"}, {undoID, "Undo"},
@@ -1020,25 +1076,25 @@ func (state *model) paintStatus(canvas *ui.Canvas, width, y float32) {
 		total += cell.width
 	}
 	messageWidth := max(60, width-total-20)
-	message = canvas.FitLine(message, 11, ui.WeightRegular, messageWidth)
-	smallLabel(canvas, message, ui.Rect{X: 10, Y: y + 1, Width: messageWidth, Height: 21}, palette.muted, 11)
+	message = canvas.FitLine(message, 11, gfx.WeightRegular, messageWidth)
+	smallLabel(canvas, message, gfx.Rect{X: 10, Y: y + 1, Width: messageWidth, Height: 21}, palette.muted, 11)
 	x := width - total
 	for _, cell := range shown {
-		canvas.Fill(ui.Rect{X: x, Y: y + 3, Width: 1, Height: 18}, palette.border)
-		smallLabel(canvas, cell.label, ui.Rect{X: x + 7, Y: y + 1, Width: cell.width - 9, Height: 21}, palette.text, 11)
+		canvas.Fill(gfx.Rect{X: x, Y: y + 3, Width: 1, Height: 18}, palette.border)
+		smallLabel(canvas, cell.label, gfx.Rect{X: x + 7, Y: y + 1, Width: cell.width - 9, Height: 21}, palette.text, 11)
 		x += cell.width
 	}
 }
 
-func (state *model) paintOpenMenu(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 	if state.menuOpen < 0 || state.menuOpen >= len(menuCommands) {
 		return
 	}
 	canvas.SetEscapeTarget(menuDismissID)
 	canvas.PushLayer(1)
-	canvas.HitWithOptions(menuDismissID, ui.Rect{Y: menuHeight, Width: size.Width, Height: size.Height - menuHeight}, "Close menu", ui.HitOptions{Role: ui.RoleButton})
+	canvas.HitWithOptions(menuDismissID, gfx.Rect{Y: menuHeight, Width: size.Width, Height: size.Height - menuHeight}, "Close menu", gfx.HitOptions{Role: gfx.RoleButton})
 	if canvas.Clicked(menuDismissID) {
-		state.menuOpen, state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = -1, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
+		state.menuOpen, state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.changeHistoryMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = -1, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
 		state.insertDateOpen = false
 		state.markJumpMenuOpen = false
 		state.styleMenuMode = ""
@@ -1117,6 +1173,7 @@ func (state *model) paintOpenMenu(canvas *ui.Canvas, size ui.Size) {
 	}
 	if state.menuOpen == 2 {
 		state.searchMenuVisible = visible
+		state.revealSearchSubmenuParent()
 		state.searchMenuOffset = min(max(0, state.searchMenuOffset), count-visible)
 	}
 	if state.menuOpen != 0 && state.menuOpen != 1 && state.menuOpen != 2 && float32(count)*20 > available {
@@ -1130,16 +1187,16 @@ func (state *model) paintOpenMenu(canvas *ui.Canvas, size ui.Size) {
 		rowHeight = max(minimum, available/float32(count))
 	}
 	canvas.PushLayer(2)
-	canvas.PushOverlayClip(ui.Rect{Width: size.Width, Height: size.Height})
+	canvas.PushOverlayClip(gfx.Rect{Width: size.Width, Height: size.Height})
 	height := float32(visible)*rowHeight + controls + 8
-	panel := ui.Rect{X: x, Y: menuHeight, Width: width, Height: height}
+	panel := gfx.Rect{X: x, Y: menuHeight, Width: width, Height: height}
 	canvas.Border(panel, 1, palette.border, palette.white)
 	if state.menuOpen == 0 {
-		canvas.HitWithOptions(fileMenuPanelID, panel, "File menu", ui.HitOptions{Role: ui.RoleMenu})
+		canvas.HitWithOptions(fileMenuPanelID, panel, "File menu", gfx.HitOptions{Role: gfx.RoleMenu})
 	} else if state.menuOpen == 1 {
-		canvas.HitWithOptions(editMenuPanelID, panel, "Edit menu", ui.HitOptions{Role: ui.RoleMenu})
+		canvas.HitWithOptions(editMenuPanelID, panel, "Edit menu", gfx.HitOptions{Role: gfx.RoleMenu})
 	} else if state.menuOpen == 2 {
-		canvas.HitWithOptions(searchMenuPanelID, panel, "Search menu", ui.HitOptions{Role: ui.RoleMenu})
+		canvas.HitWithOptions(searchMenuPanelID, panel, "Search menu", gfx.HitOptions{Role: gfx.RoleMenu})
 	}
 	if controls > 0 {
 		previousID, nextID, noun := editMenuPreviousID, editMenuNextID, "Edit"
@@ -1149,8 +1206,8 @@ func (state *model) paintOpenMenu(canvas *ui.Canvas, size ui.Size) {
 			previousID, nextID, noun = searchMenuPreviousID, searchMenuNextID, "Search"
 		}
 		for _, control := range []struct {
-			id    ui.ID
-			icon  ui.Icon
+			id    gfx.ID
+			icon  gfx.Icon
 			label string
 			y     float32
 			step  int
@@ -1158,22 +1215,29 @@ func (state *model) paintOpenMenu(canvas *ui.Canvas, size ui.Size) {
 			{previousID, upIcon, "Previous " + noun + " commands", menuHeight + 4, -1},
 			{nextID, downIcon, "Next " + noun + " commands", menuHeight + height - 26, 1},
 		} {
-			bounds := ui.Rect{X: x + 4, Y: control.y, Width: width - 8, Height: 22}
-			canvas.DrawIcon(control.icon, ui.Rect{X: bounds.X + bounds.Width/2 - 8, Y: bounds.Y + 3, Width: 16, Height: 16}, palette.muted)
+			bounds := gfx.Rect{X: x + 4, Y: control.y, Width: width - 8, Height: 22}
+			canvas.DrawIcon(control.icon, gfx.Rect{X: bounds.X + bounds.Width/2 - 8, Y: bounds.Y + 3, Width: 16, Height: 16}, palette.muted)
 			if hitButton(canvas, control.id, bounds, control.label) {
 				if state.menuOpen == 0 {
 					state.fileMenuOffset = min(max(0, state.fileMenuOffset+control.step), count-visible)
 				} else if state.menuOpen == 2 {
 					state.searchMenuOffset = min(max(0, state.searchMenuOffset+control.step), count-visible)
+					state.closeSearchSubmenus()
 				} else {
 					state.editMenuOffset = min(max(0, state.editMenuOffset+control.step), count-visible)
 				}
 			}
 		}
 	}
-	rows := ui.Rect{X: x + 4, Y: menuHeight + 4 + controls/2, Width: width - 8, Height: float32(visible) * rowHeight}
+	rows := gfx.Rect{X: x + 4, Y: menuHeight + 4 + controls/2, Width: width - 8, Height: float32(visible) * rowHeight}
 	if controls > 0 {
 		canvas.Clip(rows)
+	}
+	// Dispatch after declaring rows: closing the menu changes their index basis.
+	selected := ""
+	menuHot := canvas.Hovered()
+	if menuHot.Scope() != menuItemScope {
+		menuHot = canvas.FocusVisible()
 	}
 	for row := 0; row < visible; row++ {
 		index := row
@@ -1185,9 +1249,9 @@ func (state *model) paintOpenMenu(canvas *ui.Canvas, size ui.Size) {
 			index += state.searchMenuOffset
 		}
 		command := commands[index]
-		item := ui.Rect{X: rows.X, Y: rows.Y + float32(row)*rowHeight, Width: rows.Width, Height: rowHeight}
+		item := gfx.Rect{X: rows.X, Y: rows.Y + float32(row)*rowHeight, Width: rows.Width, Height: rowHeight}
 		id := menuItemScope.At(index)
-		if canvas.Hovered() == id {
+		if menuHot == id {
 			canvas.Fill(item, palette.hover)
 		}
 		checked := state.menuSelected(command)
@@ -1198,29 +1262,36 @@ func (state *model) paintOpenMenu(canvas *ui.Canvas, size ui.Size) {
 			iconY = item.Y + (rowHeight-iconSize)/2
 		}
 		if checked {
-			canvas.DrawIcon(checkIcon, ui.Rect{X: item.X + 6, Y: iconY, Width: iconSize, Height: iconSize}, palette.blue)
+			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 6, Y: iconY, Width: iconSize, Height: iconSize}, palette.blue)
 		}
-		if state.menuOpen == 7 || command == "Recent Files" || command == "Line Operations" || command == "Insert" || command == "Convert Case" || command == "Comment/Uncomment" || command == "EOL Conversion" || command == "Show Symbol" || command == "Tab" || command == "Fold Level" || command == "Unfold Level" || command == "Sort By" || command == "Blank Operations" || command == "Copy to Clipboard" || command == "On Selection" || command == "Multi-select All" || command == "Multi-select Next" || command == "Read-Only in Notepad++" || command == "Auto-Completion" || command == "Sessions" || command == "Bookmark" || command == "Jump Up" || command == "Jump Down" || command == "Style All Occurrences of Token" || command == "Style One Token" || command == "Clear Style" || command == "Copy Styled Text" || command == "Close Multiple Documents" || command == "Open Containing Folder" || command == "Selected Text Search" || command == "Character sets" || command == "Open as Encoding..." || command == "Saved Macros" {
-			canvas.DrawIcon(rightIcon, ui.Rect{X: item.X + item.Width - 21, Y: iconY, Width: iconSize, Height: iconSize}, palette.muted)
+		if state.menuOpen == 7 || command == "Recent Files" || command == "Line Operations" || command == "Insert" || command == "Convert Case" || command == "Comment/Uncomment" || command == "EOL Conversion" || command == "Show Symbol" || command == "Tab" || command == "Fold Level" || command == "Unfold Level" || command == "Sort By" || command == "Blank Operations" || command == "Copy to Clipboard" || command == "On Selection" || command == "Multi-select All" || command == "Multi-select Next" || command == "Read-Only in Notepad++" || command == "Auto-Completion" || command == "Sessions" || command == "Bookmark" || command == "Change History" || command == "Jump Up" || command == "Jump Down" || command == "Style All Occurrences of Token" || command == "Style One Token" || command == "Clear Style" || command == "Copy Styled Text" || command == "Close Multiple Documents" || command == "Open Containing Folder" || command == "Selected Text Search" || command == "Character sets" || command == "Open as Encoding..." || command == "Saved Macros" {
+			canvas.DrawIcon(rightIcon, gfx.Rect{X: item.X + item.Width - 21, Y: iconY, Width: iconSize, Height: iconSize}, palette.muted)
 		}
 		fontSize := float32(12)
 		if rowHeight < 18 {
 			fontSize = 11
 		}
-		label := canvas.FitLine(command, fontSize, ui.WeightRegular, item.Width-30)
+		label := canvas.FitLine(command, fontSize, gfx.WeightRegular, item.Width-30)
 		disabled := state.menuOpen == 11 && command == "Recent Window"
 		color := palette.text
 		if disabled {
 			color = palette.muted
 		}
-		smallLabel(canvas, label, ui.Rect{X: item.X + 27, Y: item.Y, Width: item.Width - 30, Height: item.Height}, color, fontSize)
-		canvas.HitWithOptions(id, item, command, ui.HitOptions{Role: ui.RoleMenuItem, Checked: checked, Hint: command, Disabled: disabled})
+		smallLabel(canvas, label, gfx.Rect{X: item.X + 27, Y: item.Y, Width: item.Width - 30, Height: item.Height}, color, fontSize)
+		canvas.HitWithOptions(id, item, command, gfx.HitOptions{Role: gfx.RoleMenuItem, Checked: checked, Hint: command, Disabled: disabled})
 		if !disabled && canvas.Clicked(id) {
-			state.command(command)
+			selected = command
 		}
 	}
 	if controls > 0 {
 		canvas.Unclip()
+	}
+	if selected != "" {
+		state.command(selected)
+	}
+	searchParentY := func(command string) float32 {
+		index := slices.Index(commands, command) - state.searchMenuOffset
+		return rows.Y + float32(index)*rowHeight
 	}
 	if state.recentOpen && state.menuOpen == 0 {
 		state.paintRecentMenu(canvas, size, x+width)
@@ -1271,13 +1342,16 @@ func (state *model) paintOpenMenu(canvas *ui.Canvas, size ui.Size) {
 		state.paintReadOnlyMenu(canvas, size, x+width)
 	}
 	if state.bookmarkMenuOpen && state.menuOpen == 2 {
-		state.paintBookmarkMenu(canvas, size, x+width)
+		state.paintBookmarkMenu(canvas, size, x+width, searchParentY("Bookmark"))
+	}
+	if state.changeHistoryMenuOpen && state.menuOpen == 2 {
+		state.paintChangeHistoryMenu(canvas, size, x+width, searchParentY("Change History"))
 	}
 	if state.markJumpMenuOpen && state.menuOpen == 2 {
-		state.paintMarkJumpMenu(canvas, size, x+width)
+		state.paintMarkJumpMenu(canvas, size, x+width, searchParentY(state.searchSubmenuParent()))
 	}
 	if state.styleMenuMode != "" && state.menuOpen == 2 {
-		state.paintStylePopup(canvas, size, x+width, state.styleMenuMode)
+		state.paintStylePopup(canvas, size, x+width, searchParentY(state.searchSubmenuParent()), state.styleMenuMode)
 	}
 	if state.closeMultipleMenuOpen && state.menuOpen == 0 {
 		state.paintCloseMultipleMenu(canvas, size, x+width)
@@ -1289,7 +1363,7 @@ func (state *model) paintOpenMenu(canvas *ui.Canvas, size ui.Size) {
 		state.paintAutoCompletionMenu(canvas, size, x+width)
 	}
 	if state.selectedSearchMenuOpen && state.menuOpen == 2 {
-		state.paintSelectedSearchMenu(canvas, size, x+width)
+		state.paintSelectedSearchMenu(canvas, size, x+width, searchParentY("Selected Text Search"))
 	}
 	canvas.PopOverlayClip()
 	canvas.PopLayer()
@@ -1308,6 +1382,18 @@ func (state *model) menuSelected(command string) bool {
 		return false
 	}
 	switch command {
+	case "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off":
+		view := state.changeHistoryView
+		if view == "" {
+			view = "margin"
+		}
+		want := map[string]string{
+			"Change History: Margin":    "margin",
+			"Change History: Indicator": "indicator",
+			"Change History: Both":      "both",
+			"Change History: Off":       "off",
+		}[command]
+		return view == want
 	case "Unix (LF)":
 		return doc.LineEnding() == document.LF
 	case "Windows (CR LF)":
@@ -1408,31 +1494,31 @@ func (state *model) languageLabel(doc *document.Document) string {
 	return "Normal text file"
 }
 
-func (state *model) paintCloseDialog(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintCloseDialog(canvas *gfx.Canvas, size gfx.Size) {
 	if state.pendingClose >= len(state.space.Documents) {
 		state.pendingClose = -1
 		return
 	}
 	canvas.PushLayer(3)
-	canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.RGBA(0, 0, 0, 0.25))
-	canvas.HitWithOptions(dialogBackdropID, ui.Rect{Width: size.Width, Height: size.Height}, "Save changes dialog", ui.HitOptions{Role: ui.RoleButton, SkipFocus: true})
+	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
+	canvas.HitWithOptions(dialogBackdropID, gfx.Rect{Width: size.Width, Height: size.Height}, "Save changes dialog", gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true})
 	canvas.PushLayer(4)
 	width := float32(388)
 	x, y := (size.Width-width)/2, (size.Height-158)/2
-	canvas.RoundedBorder(ui.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.white)
-	smallLabel(canvas, "Save changes to "+state.space.Documents[state.pendingClose].Name+"?", ui.Rect{X: x + 20, Y: y + 18, Width: width - 40, Height: 30}, palette.text, 15)
-	smallLabel(canvas, "Your changes will be lost if you discard them.", ui.Rect{X: x + 20, Y: y + 56, Width: width - 40, Height: 25}, palette.muted, 12)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.white)
+	smallLabel(canvas, "Save changes to "+state.space.Documents[state.pendingClose].Name+"?", gfx.Rect{X: x + 20, Y: y + 18, Width: width - 40, Height: 30}, palette.text, 15)
+	smallLabel(canvas, "Your changes will be lost if you discard them.", gfx.Rect{X: x + 20, Y: y + 56, Width: width - 40, Height: 25}, palette.muted, 12)
 	buttons := []struct {
-		id    ui.ID
+		id    gfx.ID
 		label string
 		x     float32
 	}{
 		{saveCloseID, "Save", x + 75}, {discardID, "Discard", x + 159}, {cancelCloseID, "Cancel", x + 270},
 	}
 	for _, button := range buttons {
-		bounds := ui.Rect{X: button.x, Y: y + 105, Width: 80, Height: 30}
+		bounds := gfx.Rect{X: button.x, Y: y + 105, Width: 80, Height: 30}
 		canvas.Border(bounds, 1, palette.border, palette.toolbar)
-		canvas.LabelCenter(button.label, bounds, ui.TextStyle{Size: 12, Color: palette.text})
+		canvas.LabelCenter(button.label, bounds, gfx.TextStyle{Size: 12, Color: palette.text})
 		if hitButton(canvas, button.id, bounds, button.label) {
 			switch button.id {
 			case saveCloseID:
@@ -1446,4 +1532,33 @@ func (state *model) paintCloseDialog(canvas *ui.Canvas, size ui.Size) {
 	}
 	canvas.PopLayer()
 	canvas.PopLayer()
+}
+
+// provisionalFoldRanges renders the fold geometry a live preedit has not
+// committed: the cached regions and manually hidden ranges at their
+// pre-composition positions instead of re-deriving them from the transient
+// text. The terminal event replaces this with visualFoldRanges on a later
+// paint.
+func provisionalFoldRanges(regions []syntax.FoldRegion, hidden []hiddenLineRange, folded map[int]bool) []components.CodeEditorFoldRange {
+	var ranges []components.CodeEditorFoldRange
+	lastEnd := -1
+	for _, region := range regions {
+		if folded[region.Header] && region.Header > lastEnd {
+			ranges = append(ranges, components.CodeEditorFoldRange{Header: region.Header, LastLine: region.LastLine})
+			lastEnd = region.LastLine
+		}
+	}
+	for _, group := range hidden {
+		ranges = append(ranges, components.CodeEditorFoldRange{Header: group.Start - 1, LastLine: group.End})
+	}
+	slices.SortFunc(ranges, func(left, right components.CodeEditorFoldRange) int { return left.Header - right.Header })
+	merged := ranges[:0]
+	for _, candidate := range ranges {
+		if len(merged) != 0 && candidate.Header <= merged[len(merged)-1].LastLine {
+			merged[len(merged)-1].LastLine = max(merged[len(merged)-1].LastLine, candidate.LastLine)
+		} else {
+			merged = append(merged, candidate)
+		}
+	}
+	return merged
 }

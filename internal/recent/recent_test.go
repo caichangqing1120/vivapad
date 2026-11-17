@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -46,11 +47,11 @@ func TestPrivateRecentHistoryRoundTripAndClear(t *testing.T) {
 		t.Fatalf("history = %+v, %v", got, err)
 	}
 	fileInfo, err := os.Stat(path)
-	if err != nil || fileInfo.Mode().Perm() != 0600 {
+	if err != nil || !privateMode(fileInfo.Mode()) {
 		t.Fatalf("file mode = %+v, %v", fileInfo, err)
 	}
 	directoryInfo, err := os.Stat(filepath.Dir(path))
-	if err != nil || directoryInfo.Mode().Perm() != 0700 {
+	if err != nil || !privateDirMode(directoryInfo.Mode()) {
 		t.Fatalf("directory mode = %+v, %v", directoryInfo, err)
 	}
 	if err := Clear(path); err != nil {
@@ -96,4 +97,24 @@ func TestRecentHistoryRejectsInvalidAndOversizedData(t *testing.T) {
 	if _, err := Load(path); err == nil {
 		t.Fatal("oversized history accepted")
 	}
+}
+
+// privateMode reports whether mode carries the private-file metadata this
+// platform supports: POSIX 0600 on macOS and Linux, or a writable regular file
+// on Windows, where Go reports synthetic permission bits and VivaPad keeps the
+// privacy of its stores in the profile directory ACL (a separate gate).
+func privateMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsRegular() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0600
+}
+
+// privateDirMode reports whether mode carries a private directory's metadata:
+// POSIX 0700 on macOS and Linux, or a writable directory on Windows.
+func privateDirMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsDir() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0700
 }

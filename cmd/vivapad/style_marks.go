@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -16,8 +16,8 @@ type styleMarkState struct {
 	styles   [5][]text.Span
 }
 
-var styleColors = [5]ui.Color{
-	ui.RGB(0, 255, 255), ui.RGB(255, 128, 0), ui.RGB(255, 255, 0), ui.RGB(128, 0, 255), ui.RGB(0, 128, 0),
+var styleColors = [5]gfx.Color{
+	gfx.RGB(0, 255, 255), gfx.RGB(255, 128, 0), gfx.RGB(255, 255, 0), gfx.RGB(128, 0, 255), gfx.RGB(0, 128, 0),
 }
 
 func (state *model) styleSpans(doc *document.Document, style int) []text.Span {

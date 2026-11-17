@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestOpenInDefaultViewerPreservesDirtyBufferAndRejectsUnsafeFile(t *testing.T) {
@@ -104,7 +104,7 @@ func TestContainingFolderSubmenuFitsCompactViewportAndUsesSavedPath(t *testing.T
 	}
 	clickID(t, driver, menuScope.At(0))
 	clickID(t, driver, menuItemScope.At(18))
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.containingMenuOpen || state.menuOpen != 0 {

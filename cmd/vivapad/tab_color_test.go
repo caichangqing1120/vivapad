@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/recovery"
 	"vivapad/internal/session"
@@ -114,7 +114,7 @@ func TestNPPColorsRejectConflictingCloneBeforeMutation(t *testing.T) {
 	if state.space.Current() != before || len(state.space.Documents) != 1 || len(state.tabColors) != 0 || !strings.Contains(state.notice, "conflicting") {
 		t.Fatalf("conflicting clone mutated workspace: %q", state.notice)
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 }

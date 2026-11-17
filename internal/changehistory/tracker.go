@@ -197,3 +197,18 @@ func (tracker *Tracker) NextDelete(position int) int {
 	}
 	return next
 }
+
+// clone returns a deep copy of the metadata so a consumer can validate and apply
+// a complete frame chain before committing it. Only the slice-backed metadata is
+// copied; no text or per-byte state exists to copy.
+func (tracker *Tracker) clone() *Tracker {
+	if tracker == nil {
+		return nil
+	}
+	cloned := &Tracker{log: tracker.log.clone()}
+	if tracker.reversions != nil {
+		reversions := tracker.reversions.clone()
+		cloned.reversions = &reversions
+	}
+	return cloned
+}

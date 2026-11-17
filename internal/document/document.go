@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/text"
+	"vivapad/internal/changehistory"
 )
 
 type Document struct {
@@ -26,11 +27,22 @@ type Document struct {
 	newline       string
 	encoding      Encoding
 	recovered     bool
-	eolBaseText   string
-	eolBreaks     []string
-	eolCacheText  string
+	eolEditor     *text.Editor
+	eolRevision   uint64
+	eolCacheValid bool
+	eolCacheEOL   string
+	eolUniform    bool
+	eolLabels     []byte
 	eolCache      []string
 	uniformEOL    bool
+
+	// history is the change-history consumer bound to historyEditor when the
+	// document was created. It is never rebound in place: a replaced editor
+	// retires the source and reads as an explicit unavailable history.
+	history       *changehistory.Consumer
+	historyEditor *text.Editor
+	historyErr    error
+	historyBound  bool
 }
 
 type LineEnding uint8
@@ -42,10 +54,23 @@ const (
 )
 
 func New(name string) *Document {
-	editor := text.NewEditor("")
+	doc := newDocument(name, text.NewEditor(""))
+	doc.bindChangeHistory()
+	return doc
+}
+
+// newDocument prepares a document around editor without enabling the history
+// producer yet. Callers that own a final editor enable it with
+// bindChangeHistory once the editor can no longer be replaced.
+func newDocument(name string, editor *text.Editor) *Document {
+	doc := &Document{Name: name, Editor: editor, newline: "\n", savedNewline: "\n"}
+	labels := bytes.Repeat([]byte{'L'}, strings.Count(editor.String(), "\n"))
+	if editor.TrackLFLabels(labels, 'L', mapLFLineEndings) {
+		doc.eolEditor = editor
+	}
 	editor.SetSavePoint()
 	editor.TrackLineEdits()
-	return &Document{Name: name, Editor: editor, newline: "\n", savedNewline: "\n"}
+	return doc
 }
 
 func Open(path string) (*Document, error) {
@@ -85,10 +110,17 @@ func open(path string, selected *Encoding) (*Document, error) {
 		return nil, fmt.Errorf("%s: %w", absolute, err)
 	}
 	value, newline, breaks := normalizeLineEndings(value)
-	doc := New(filepath.Base(absolute))
+	// Build the final editor first: there is no empty editor to replace and
+	// therefore no chance that a throwaway editor becomes the history source.
+	doc := newDocument(filepath.Base(absolute), text.NewEditor(value))
 	doc.Path, doc.newline, doc.encoding = absolute, newline, encoding
-	doc.eolBaseText, doc.eolBreaks = value, breaks
-	doc.Editor = text.NewEditor(value)
+	labels := bytes.Repeat([]byte{lineEndingCode(newline)}, strings.Count(value, "\n"))
+	for index, ending := range breaks {
+		labels[index] = lineEndingCode(ending)
+	}
+	if !doc.Editor.SetLFLabels(labels, lineEndingCode(newline)) {
+		return nil, fmt.Errorf("%s: cannot initialize EOL labels", absolute)
+	}
 	doc.Editor.MoveTo(0, false)
 	doc.Editor.SetSavePoint()
 	doc.Editor.TrackLineEdits()
@@ -96,6 +128,8 @@ func open(path string, selected *Encoding) (*Document, error) {
 	doc.savedDisk = original
 	doc.savedDigest = digest(original)
 	doc.savedNewline, doc.savedEncoding = newline, encoding
+	// Bind only after the editor is final and before the first undoable edit.
+	doc.bindChangeHistory()
 	return doc, nil
 }
 
@@ -118,17 +152,22 @@ func (doc *Document) SetLineEnding(ending LineEnding) {
 	if ending != LF && ending != CRLF && ending != CR {
 		return
 	}
-	if len(doc.eolBreaks) != 0 {
-		doc.uniformEOL = true
-	}
+	newline := "\n"
 	switch ending {
-	case LF:
-		doc.newline = "\n"
 	case CRLF:
-		doc.newline = "\r\n"
+		newline = "\r\n"
 	case CR:
-		doc.newline = "\r"
+		newline = "\r"
 	}
+	labels, err := doc.currentLFLabels()
+	if err != nil || newline == doc.newline && uniformLFLabels(labels, lineEndingCode(newline)) {
+		return
+	}
+	if !doc.Editor.UnifyLFLabels(lineEndingCode(newline)) {
+		return
+	}
+	doc.uniformEOL = doc.uniformEOL || !uniformLFLabels(labels, lineEndingCode(doc.newline))
+	doc.newline = newline
 }
 
 func (doc *Document) LineEnding() LineEnding {
@@ -179,7 +218,10 @@ func (doc *Document) Save(path string) error {
 		}
 	}
 	value := doc.Editor.String()
-	physical, breaks := doc.physicalValue(value)
+	physical, err := doc.physicalValue(value)
+	if err != nil {
+		return err
+	}
 	data, err := encodeText(physical, doc.encoding)
 	if err != nil {
 		return err
@@ -191,8 +233,7 @@ func (doc *Document) Save(path string) error {
 	doc.savedDisk = data
 	doc.savedDigest = digest(data)
 	doc.savedNewline, doc.savedEncoding = doc.newline, doc.encoding
-	doc.eolBaseText, doc.eolBreaks, doc.uniformEOL = value, breaks, false
-	doc.eolCacheText, doc.eolCache = "", nil
+	doc.uniformEOL = false
 	doc.recovered = false
 	doc.Editor.SetSavePoint()
 	return nil
@@ -206,7 +247,10 @@ func (doc *Document) SaveCopy(path string) error {
 	if doc.Path != "" && absolute == doc.Path {
 		return fmt.Errorf("copy destination is the active document; use Save")
 	}
-	physical, _ := doc.physicalValue(doc.Editor.String())
+	physical, err := doc.physicalValue(doc.Editor.String())
+	if err != nil {
+		return err
+	}
 	data, err := encodeText(physical, doc.encoding)
 	if err != nil {
 		return err
@@ -244,8 +288,11 @@ func CanonicalSavePath(path string) (string, error) {
 }
 
 func (doc *Document) ValidateEncoding() error {
-	physical, _ := doc.physicalValue(doc.Editor.String())
-	_, err := encodeText(physical, doc.encoding)
+	physical, err := doc.physicalValue(doc.Editor.String())
+	if err != nil {
+		return err
+	}
+	_, err = encodeText(physical, doc.encoding)
 	return err
 }
 

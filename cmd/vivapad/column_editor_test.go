@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestColumnEditorTextMenuAndOneUndo(t *testing.T) {
@@ -104,7 +104,7 @@ func TestColumnEditorNumberFailureCancelReadOnlyAndSplit(t *testing.T) {
 	if err := os.WriteFile(dropped, []byte("drop"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	newConfig(state).OnFileDrop(ui.FileDropEvent{Phase: ui.FileDropDrop, Paths: []string{dropped}})
+	newConfig(state).OnFileDrop(gfx.FileDropEvent{Phase: gfx.FileDropDrop, Paths: []string{dropped}})
 	if len(state.space.Documents) != 2 {
 		t.Fatal("Column Editor accepted a file drop")
 	}
@@ -158,7 +158,7 @@ func TestCaptureColumnEditorWhenRequested(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := session.Driver().Key(ui.KeyEscape, 0); err != nil || state.columnDialogOpen {
+	if err := session.Driver().Key(gfx.KeyEscape, 0); err != nil || state.columnDialogOpen {
 		t.Fatalf("Column Editor Escape failed: %v", err)
 	}
 	clickID(t, session.Driver(), menuScope.At(1))

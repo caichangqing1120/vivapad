@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -89,7 +89,7 @@ func TestWindowsDialogCompactMultiSelectAndWheel(t *testing.T) {
 	clickID(t, driver, menuOverflowID)
 	clickID(t, driver, hiddenMenuScope.At(11))
 	clickID(t, driver, menuItemScope.At(1))
-	panel := ui.Rect{}
+	panel := gfx.Rect{}
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == windowsPanelID {
 			panel = hit.Bounds
@@ -101,7 +101,7 @@ func TestWindowsDialogCompactMultiSelectAndWheel(t *testing.T) {
 	if panel.Width == 0 {
 		t.Fatal("compact Windows dialog list missing")
 	}
-	if err := driver.Scroll(ui.ScrollEvent{X: panel.X + 20, Y: panel.Y + 45, DeltaY: 120}); err != nil {
+	if err := driver.Scroll(gfx.ScrollEvent{X: panel.X + 20, Y: panel.Y + 45, DeltaY: 120}); err != nil {
 		t.Fatal(err)
 	}
 	if state.windowsOffset == 0 {
@@ -111,7 +111,7 @@ func TestWindowsDialogCompactMultiSelectAndWheel(t *testing.T) {
 	if len(state.windowsSelected) != 1 {
 		t.Fatal("Windows multi-selection did not track clicked row")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.windowsDialogOpen || len(state.space.Documents) != 26 || strings.TrimSpace(state.space.Current().Name) == "" {

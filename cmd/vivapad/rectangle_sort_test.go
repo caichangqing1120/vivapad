@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestRectangleSortRoutesMenuToSourceColumnKeys(t *testing.T) {
@@ -121,7 +121,7 @@ func TestRectangleSortCloneUndoKeepsOwnerAndMenuTarget(t *testing.T) {
 	if _, err := driver.ShortcutChord(primary(), 'z'); err != nil || doc.Editor.String() != before || state.activePane != 1 || !state.rectangles[0].active || state.rectangles[1].active || state.rectangles[0].anchor != anchor || state.rectangles[0].caret != caret {
 		t.Fatalf("clone Undo lost rectangle ownership: %q %v", doc.Editor.String(), err)
 	}
-	if _, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'z'); err != nil || doc.Editor.String() != want || state.rectangles[0].anchor != len("outside\n") || state.rectangles[1].active {
+	if _, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'z'); err != nil || doc.Editor.String() != want || state.rectangles[0].anchor != len("outside\n") || state.rectangles[1].active {
 		t.Fatalf("clone Redo lost rectangle ownership: %q %v", doc.Editor.String(), err)
 	}
 }

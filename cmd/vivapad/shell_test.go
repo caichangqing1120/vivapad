@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/preferences"
 	"vivapad/internal/recovery"
@@ -31,7 +31,7 @@ func startDriver(t *testing.T) (*model, *app.Driver) {
 	return state, driver
 }
 
-func clickID(t *testing.T, driver *app.Driver, id ui.ID) {
+func clickID(t *testing.T, driver *app.Driver, id gfx.ID) {
 	t.Helper()
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == id {
@@ -92,7 +92,7 @@ func searchMenuControls(driver *app.Driver) bool {
 	return false
 }
 
-func revealSearchMenuItem(t *testing.T, driver *app.Driver, index int) ui.Rect {
+func revealSearchMenuItem(t *testing.T, driver *app.Driver, index int) gfx.Rect {
 	t.Helper()
 	for range len(menuCommands[2]) + 1 {
 		first, last := len(menuCommands[2]), -1
@@ -116,7 +116,7 @@ func revealSearchMenuItem(t *testing.T, driver *app.Driver, index int) ui.Rect {
 		}
 	}
 	t.Fatalf("Search item %d did not become visible", index)
-	return ui.Rect{}
+	return gfx.Rect{}
 }
 
 func editMenuControls(driver *app.Driver) bool {
@@ -128,7 +128,7 @@ func editMenuControls(driver *app.Driver) bool {
 	return false
 }
 
-func revealEditMenuItem(t *testing.T, driver *app.Driver, index int) ui.Rect {
+func revealEditMenuItem(t *testing.T, driver *app.Driver, index int) gfx.Rect {
 	t.Helper()
 	for range len(menuCommands[1]) + 1 {
 		first, last := len(menuCommands[1]), -1
@@ -151,7 +151,7 @@ func revealEditMenuItem(t *testing.T, driver *app.Driver, index int) ui.Rect {
 		}
 	}
 	t.Fatalf("Edit item %d did not become visible", index)
-	return ui.Rect{}
+	return gfx.Rect{}
 }
 
 func viewMenuControls(driver *app.Driver) bool {
@@ -163,7 +163,7 @@ func viewMenuControls(driver *app.Driver) bool {
 	return false
 }
 
-func revealViewMenuItem(t *testing.T, driver *app.Driver, index int) ui.Rect {
+func revealViewMenuItem(t *testing.T, driver *app.Driver, index int) gfx.Rect {
 	t.Helper()
 	for range len(menuCommands[3]) + 1 {
 		first, last := len(menuCommands[3]), -1
@@ -187,7 +187,7 @@ func revealViewMenuItem(t *testing.T, driver *app.Driver, index int) ui.Rect {
 		}
 	}
 	t.Fatalf("View item %d unreachable", index)
-	return ui.Rect{}
+	return gfx.Rect{}
 }
 
 func TestTypeSaveAndOpenThroughToolbar(t *testing.T) {
@@ -776,8 +776,8 @@ func TestOverflowTabsCanNavigateBackToFirst(t *testing.T) {
 
 func BenchmarkPaintIdleWindow(b *testing.B) {
 	state := newModel()
-	var canvas ui.Canvas
-	size := ui.Size{Width: 1280, Height: 800}
+	var canvas gfx.Canvas
+	size := gfx.Size{Width: 1280, Height: 800}
 	state.paint(&canvas, size)
 	b.ReportAllocs()
 	for b.Loop() {
@@ -790,8 +790,8 @@ func BenchmarkPaintHighlightedGoFile(b *testing.B) {
 	state := newModel()
 	state.space.Current().Name = "sample.go"
 	state.space.Current().Editor.Insert(strings.Repeat("func main() { // sample\n", 400))
-	var canvas ui.Canvas
-	size := ui.Size{Width: 1280, Height: 800}
+	var canvas gfx.Canvas
+	size := gfx.Size{Width: 1280, Height: 800}
 	state.paint(&canvas, size)
 	b.ReportAllocs()
 	for b.Loop() {
@@ -957,7 +957,7 @@ func TestSettingsMenuChangesCodeEditingAndPersists(t *testing.T) {
 	if err := driver.Type("("); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyTab, 0); err != nil {
+	if err := driver.Key(gfx.KeyTab, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := state.space.Current().Editor.String(); got != "(\t" {
@@ -1079,7 +1079,7 @@ func TestSplitDividerClampsAtMinimumWidthAndMovesByKey(t *testing.T) {
 	if err := driver.Resize(640, 400); err != nil {
 		t.Fatal(err)
 	}
-	var divider ui.Rect
+	var divider gfx.Rect
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == splitterID {
 			divider = hit.Bounds
@@ -1089,20 +1089,20 @@ func TestSplitDividerClampsAtMinimumWidthAndMovesByKey(t *testing.T) {
 		t.Fatal("split divider has no hit region")
 	}
 	startX, centerY := divider.X+divider.Width/2, divider.Y+divider.Height/2
-	if err := driver.Press(startX, centerY, ui.PointerButtonPrimary); err != nil {
+	if err := driver.Press(startX, centerY, gfx.PointerButtonPrimary); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.Move(10, centerY); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Release(10, centerY, ui.PointerButtonPrimary); err != nil {
+	if err := driver.Release(10, centerY, gfx.PointerButtonPrimary); err != nil {
 		t.Fatal(err)
 	}
 	if got := state.splitPosition(640); got < 200 || got > 432 {
 		t.Fatalf("split drag left pane width = %g", got)
 	}
 	before := state.splitPosition(640)
-	if err := driver.Key(ui.KeyRight, 0); err != nil {
+	if err := driver.Key(gfx.KeyRight, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := state.splitPosition(640); got <= before {
@@ -1127,7 +1127,7 @@ func TestSplitEditorsScrollIndependently(t *testing.T) {
 	if firstLeft != 0 || firstRight != 0 {
 		t.Fatalf("initial visible lines = %d / %d", firstLeft, firstRight)
 	}
-	if err := driver.Scroll(ui.ScrollEvent{X: 100, Y: 300, DeltaY: 240}); err != nil {
+	if err := driver.Scroll(gfx.ScrollEvent{X: 100, Y: 300, DeltaY: 240}); err != nil {
 		t.Fatal(err)
 	}
 	scrolledLeft, _ := state.codeEditorForPane(0).VisibleLines()
@@ -1135,7 +1135,7 @@ func TestSplitEditorsScrollIndependently(t *testing.T) {
 	if scrolledLeft == 0 || scrolledRight != 0 {
 		t.Fatalf("left scroll affected views = %d / %d", scrolledLeft, scrolledRight)
 	}
-	if err := driver.Scroll(ui.ScrollEvent{X: 1000, Y: 300, DeltaY: 240}); err != nil {
+	if err := driver.Scroll(gfx.ScrollEvent{X: 1000, Y: 300, DeltaY: 240}); err != nil {
 		t.Fatal(err)
 	}
 	if currentLeft, _ := state.codeEditorForPane(0).VisibleLines(); currentLeft != scrolledLeft {
@@ -1165,7 +1165,7 @@ func TestSplitSearchResultOpensInActivePane(t *testing.T) {
 	}
 	state := newModel()
 	state.toggleSplit()
-	state.fileResults = searchfiles.Result{Matches: []searchfiles.Match{{Path: path, Start: 0, End: 6, Text: "needle"}}}
+	state.fileResults = searchfiles.Result{Matches: []searchfiles.Match{{Path: path, Source: "needle", Start: 0, End: 6, Text: "needle"}}}
 	state.resultsOpen = true
 	driver, err := app.NewDriver(newConfig(state), nil)
 	if err != nil {
@@ -1216,7 +1216,7 @@ func TestSplitViewHasIndependentTabStrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer driver.Close()
-	hits := map[ui.ID]bool{}
+	hits := map[gfx.ID]bool{}
 	for _, hit := range driver.Snapshot().Hits {
 		hits[hit.ID] = true
 	}
@@ -1331,13 +1331,13 @@ func TestControlTabCyclesOnlyActiveView(t *testing.T) {
 	}
 	defer driver.Close()
 	clickID(t, driver, leftTabScope.At(0))
-	if err := driver.Key(ui.KeyTab, ui.ModifierControl); err != nil {
+	if err := driver.Key(gfx.KeyTab, gfx.ModifierControl); err != nil {
 		t.Fatal(err)
 	}
 	if state.space.Current().Name != "new 2" || state.paneDocs[1].Name != "new 3" {
 		t.Fatalf("forward tab cycle = active:%q right:%q", state.space.Current().Name, state.paneDocs[1].Name)
 	}
-	if err := driver.Key(ui.KeyTab, ui.ModifierControl|ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyTab, gfx.ModifierControl|gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	if state.space.Current().Name != "new 1" || state.activePane != 0 {
@@ -1380,7 +1380,7 @@ func TestEncodingMenuExposesSelectedFormat(t *testing.T) {
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == menuItemScope.At(0) || hit.ID == menuItemScope.At(1) || hit.ID == menuItemScope.At(2) || hit.ID == menuItemScope.At(3) {
 			index, _ := hit.ID.Name().Index()
-			if hit.Role != ui.RoleMenuItem {
+			if hit.Role != gfx.RoleMenuItem {
 				t.Fatalf("encoding entry role = %v", hit.Role)
 			}
 			selected[index] = hit.Checked
@@ -1700,7 +1700,7 @@ func TestUntitledReloadIsRejectedAndEscapeCancelsDirtyReload(t *testing.T) {
 	if state.pendingReload < 0 {
 		t.Fatal("dirty reload did not ask")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.pendingReload != -1 || state.space.Current() != original || !original.Dirty() {
@@ -1729,7 +1729,7 @@ func TestGoFileSupportsCommentToggleAndTabIndent(t *testing.T) {
 		t.Fatalf("comment toggle = %q", got)
 	}
 	state.space.Current().Editor.MoveTo(0, false)
-	if err := driver.Key(ui.KeyTab, 0); err != nil {
+	if err := driver.Key(gfx.KeyTab, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := state.space.Current().Editor.String(); got != "    // package main\n" {
@@ -1752,7 +1752,7 @@ func TestGoFileAutoClosesAndIndentsBlock(t *testing.T) {
 	if err := driver.Type("{"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := state.space.Current().Editor.String(); got != "{\n    \n}" {
@@ -1847,7 +1847,7 @@ func TestFindInFilesOpensExactResult(t *testing.T) {
 	}
 	state, driver := startDriver(t)
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(5))
+	clickID(t, driver, searchCommandID(t, "Find in Files..."))
 	if !state.filesDialogOpen {
 		t.Fatal("find-in-files dialog did not open")
 	}
@@ -1895,7 +1895,7 @@ func TestFindInFilesOpensLegacyResultInSelectedEncoding(t *testing.T) {
 	}
 	state, driver := startDriver(t)
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(5))
+	clickID(t, driver, searchCommandID(t, "Find in Files..."))
 	if err := driver.QueueOpenDirectory(root, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -1928,7 +1928,7 @@ func TestFindInFilesOpensLegacyResultInSelectedEncoding(t *testing.T) {
 
 func TestFindInFilesShortcutAndInvalidRegex(t *testing.T) {
 	state, driver := startDriver(t)
-	if _, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'f'); err != nil {
+	if _, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'f'); err != nil {
 		t.Fatal(err)
 	}
 	if !state.filesDialogOpen {
@@ -1968,7 +1968,7 @@ func TestFindInFilesEnterStartsSearch(t *testing.T) {
 	}
 	state, driver := startDriver(t)
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(5))
+	clickID(t, driver, searchCommandID(t, "Find in Files..."))
 	if err := driver.QueueOpenDirectory(root, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -1977,7 +1977,7 @@ func TestFindInFilesEnterStartsSearch(t *testing.T) {
 	if err := driver.Type("needle"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	for attempts := 0; attempts < 100 && state.filesSearching; attempts++ {
@@ -2005,7 +2005,7 @@ func TestFindPanelEnterFindsNext(t *testing.T) {
 	if err := driver.Type("second"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if selection := state.space.Current().Editor.Selection(); selection.Start != 6 || selection.End != 12 {
@@ -2026,7 +2026,7 @@ func TestReplaceInFilesPreviewThenConfirmRefreshesOpenTab(t *testing.T) {
 	}
 	defer driver.Close()
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(6))
+	clickID(t, driver, searchCommandID(t, "Replace in Files..."))
 	if !state.filesDialogOpen || !state.filesReplaceMode {
 		t.Fatal("Replace in Files dialog did not open")
 	}
@@ -2085,7 +2085,7 @@ func TestReplaceInFilesLegacyChoiceRefreshesMatchingOpenTab(t *testing.T) {
 	}
 	defer driver.Close()
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(6))
+	clickID(t, driver, searchCommandID(t, "Replace in Files..."))
 	clickID(t, driver, queryID)
 	if err := driver.Type("中"); err != nil {
 		t.Fatal(err)
@@ -2136,7 +2136,7 @@ func TestReplaceInFilesRejectsOpenTabWithDifferentEncoding(t *testing.T) {
 	}
 	defer driver.Close()
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(6))
+	clickID(t, driver, searchCommandID(t, "Replace in Files..."))
 	clickID(t, driver, queryID)
 	if err := driver.Type("cat"); err != nil {
 		t.Fatal(err)
@@ -2185,7 +2185,7 @@ func TestReplaceInFilesCancelLeavesDiskUntouched(t *testing.T) {
 	}
 	defer driver.Close()
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(6))
+	clickID(t, driver, searchCommandID(t, "Replace in Files..."))
 	clickID(t, driver, queryID)
 	if err := driver.Type("needle"); err != nil {
 		t.Fatal(err)
@@ -2224,7 +2224,7 @@ func TestReplaceInFilesRefusesDirtyOpenTab(t *testing.T) {
 	defer driver.Close()
 	state.space.Current().Editor.Insert(" local")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(6))
+	clickID(t, driver, searchCommandID(t, "Replace in Files..."))
 	clickID(t, driver, queryID)
 	if err := driver.Type("cat"); err != nil {
 		t.Fatal(err)
@@ -2262,7 +2262,7 @@ func TestReplaceInFilesRefusesStalePreview(t *testing.T) {
 	}
 	defer driver.Close()
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(6))
+	clickID(t, driver, searchCommandID(t, "Replace in Files..."))
 	clickID(t, driver, queryID)
 	if err := driver.Type("cat"); err != nil {
 		t.Fatal(err)
@@ -2312,7 +2312,7 @@ func TestReplaceInFilesEnterOpensPreviewWithoutWriting(t *testing.T) {
 	}
 	defer driver.Close()
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(6))
+	clickID(t, driver, searchCommandID(t, "Replace in Files..."))
 	clickID(t, driver, queryID)
 	if err := driver.Type("cat"); err != nil {
 		t.Fatal(err)
@@ -2321,7 +2321,7 @@ func TestReplaceInFilesEnterOpensPreviewWithoutWriting(t *testing.T) {
 	if err := driver.Type("dog"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	for attempts := 0; attempts < 100 && state.filesSearching; attempts++ {

@@ -3,7 +3,7 @@ package main
 import (
 	"path/filepath"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 	"vivapad/internal/recent"
 )
@@ -64,7 +64,7 @@ func (state *model) clearRecent() {
 	state.notice = "Recent files cleared"
 }
 
-func (state *model) paintRecentMenu(canvas *ui.Canvas, size ui.Size, parentRight float32) {
+func (state *model) paintRecentMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
 	rows := len(state.recentEntries)
 	if rows == 0 {
 		rows = 1
@@ -80,45 +80,45 @@ func (state *model) paintRecentMenu(canvas *ui.Canvas, size ui.Size, parentRight
 	x := parentRight
 	y := min(menuHeight+4+10*fileMenuRowHeight, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	canvas.Border(ui.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
 	selected := -1
 	for index, entry := range state.recentEntries {
-		item := ui.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
+		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
 		id := recentScope.At(index)
 		if canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
 		label := filepath.Base(entry.Path) + "   " + filepath.Dir(entry.Path)
-		label = canvas.FitLine(label, 11, ui.WeightRegular, item.Width-18)
-		smallLabel(canvas, label, ui.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, palette.text, 11)
-		canvas.HitWithOptions(id, item, entry.Path, ui.HitOptions{Role: ui.RoleMenuItem, Hint: entry.Path})
+		label = canvas.FitLine(label, 11, gfx.WeightRegular, item.Width-18)
+		smallLabel(canvas, label, gfx.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, palette.text, 11)
+		canvas.HitWithOptions(id, item, entry.Path, gfx.HitOptions{Role: gfx.RoleMenuItem, Hint: entry.Path})
 		if canvas.Clicked(id) {
 			selected = index
 		}
 	}
 	row := len(state.recentEntries)
 	if len(state.recentEntries) == 0 {
-		smallLabel(canvas, "No recent files", ui.Rect{X: x + 14, Y: y + 4, Width: width - 28, Height: 27}, palette.muted, 11)
+		smallLabel(canvas, "No recent files", gfx.Rect{X: x + 14, Y: y + 4, Width: width - 28, Height: 27}, palette.muted, 11)
 		row++
 	}
 	if len(state.closedHistory) != 0 {
-		item := ui.Rect{X: x + 4, Y: y + 4 + float32(row)*27, Width: width - 8, Height: 27}
+		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(row)*27, Width: width - 8, Height: 27}
 		if canvas.Hovered() == recentRestoreID {
 			canvas.Fill(item, palette.hover)
 		}
-		smallLabel(canvas, "Restore Recent Closed File", ui.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: 27}, palette.text, 11)
-		canvas.HitWithOptions(recentRestoreID, item, "Restore Recent Closed File", ui.HitOptions{Role: ui.RoleMenuItem})
+		smallLabel(canvas, "Restore Recent Closed File", gfx.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: 27}, palette.text, 11)
+		canvas.HitWithOptions(recentRestoreID, item, "Restore Recent Closed File", gfx.HitOptions{Role: gfx.RoleMenuItem})
 		if canvas.Clicked(recentRestoreID) {
 			state.restoreClosed()
 		}
 		row++
 	}
 	if len(state.recentEntries) != 0 || len(state.closedHistory) != 0 {
-		item := ui.Rect{X: x + 4, Y: y + 4 + float32(row)*27, Width: width - 8, Height: 27}
+		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(row)*27, Width: width - 8, Height: 27}
 		if canvas.Hovered() == recentClearID {
 			canvas.Fill(item, palette.hover)
 		}
-		smallLabel(canvas, "Clear Recent Files", ui.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: 27}, palette.text, 11)
+		smallLabel(canvas, "Clear Recent Files", gfx.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: 27}, palette.text, 11)
 		if hitButton(canvas, recentClearID, item, "Clear Recent Files") {
 			state.clearRecent()
 		}

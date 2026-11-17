@@ -7,15 +7,15 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
 func clickMenuLabel(t *testing.T, driver *app.Driver, label string) {
 	t.Helper()
 	for _, hit := range driver.Snapshot().Hits {
-		if hit.Label == label && hit.Role == ui.RoleMenuItem {
+		if hit.Label == label && hit.Role == gfx.RoleMenuItem {
 			clickID(t, driver, hit.ID)
 			return
 		}
@@ -35,7 +35,7 @@ func clickCharacterSet(t *testing.T, driver *app.Driver, label string) {
 	t.Helper()
 	for range len(document.LegacyEncodings()) {
 		for _, hit := range driver.Snapshot().Hits {
-			if hit.Label == label && hit.Role == ui.RoleMenuItem {
+			if hit.Label == label && hit.Role == gfx.RoleMenuItem {
 				clickID(t, driver, hit.ID)
 				return
 			}
@@ -69,13 +69,13 @@ func TestCharacterSetsMenuReachesEverySupportedCodePageAtCompactSize(t *testing.
 	clickMenuLabel(t, driver, "Character sets")
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.Label == "GB18030" && hit.ID.Scope() == charsetScope {
-			if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
 				t.Fatal(err)
 			}
 			if state.charsetOffset == 0 {
 				t.Fatal("character sets did not respond to wheel input")
 			}
-			if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: -120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: -120}); err != nil {
 				t.Fatal(err)
 			}
 			break

@@ -6,7 +6,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 	"vivapad/internal/document"
@@ -51,18 +51,18 @@ func summaryFor(doc *document.Document) documentSummary {
 	return summary
 }
 
-func (state *model) paintSummary(canvas *ui.Canvas, size ui.Size) {
+func (state *model) paintSummary(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.SetEscapeTarget(summaryCloseID)
 	canvas.PushLayer(3)
-	canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.RGBA(0, 0, 0, 0.25))
-	canvas.HitWithOptions(dialogBackdropID, ui.Rect{Width: size.Width, Height: size.Height}, "Summary dialog", ui.HitOptions{Role: ui.RoleButton, SkipFocus: true})
+	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
+	canvas.HitWithOptions(dialogBackdropID, gfx.Rect{Width: size.Width, Height: size.Height}, "Summary dialog", gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true})
 	canvas.PushLayer(4)
 	width := min(float32(580), size.Width-24)
 	height := min(float32(340), size.Height-24)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(ui.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
-	smallLabel(canvas, "Summary", ui.Rect{X: x + 18, Y: y + 12, Width: width - 36, Height: 26}, palette.text, 15)
-	canvas.Fill(ui.Rect{X: x + 18, Y: y + 43, Width: width - 36, Height: 1}, palette.border)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	smallLabel(canvas, "Summary", gfx.Rect{X: x + 18, Y: y + 12, Width: width - 36, Height: 26}, palette.text, 15)
+	canvas.Fill(gfx.Rect{X: x + 18, Y: y + 43, Width: width - 36, Height: 1}, palette.border)
 	printer := message.NewPrinter(language.English)
 	rows := make([]string, 0, 8)
 	if state.summary.path != "" {
@@ -84,13 +84,13 @@ func (state *model) paintSummary(canvas *ui.Canvas, size ui.Size) {
 	)
 	rowHeight := min(float32(27), (height-100)/float32(len(rows)))
 	for index, row := range rows {
-		bounds := ui.Rect{X: x + 18, Y: y + 52 + float32(index)*rowHeight, Width: width - 36, Height: rowHeight}
-		smallLabel(canvas, canvas.FitLine(row, 11, ui.WeightRegular, bounds.Width), bounds, palette.text, 11)
-		canvas.HitWithOptions(summaryRowScope.At(index), bounds, row, ui.HitOptions{Role: ui.RoleGroup, Hint: row})
+		bounds := gfx.Rect{X: x + 18, Y: y + 52 + float32(index)*rowHeight, Width: width - 36, Height: rowHeight}
+		smallLabel(canvas, canvas.FitLine(row, 11, gfx.WeightRegular, bounds.Width), bounds, palette.text, 11)
+		canvas.HitWithOptions(summaryRowScope.At(index), bounds, row, gfx.HitOptions{Role: gfx.RoleGroup, Hint: row})
 	}
-	closeBounds := ui.Rect{X: x + width - 100, Y: y + height - 43, Width: 80, Height: 28}
+	closeBounds := gfx.Rect{X: x + width - 100, Y: y + height - 43, Width: 80, Height: 28}
 	canvas.Border(closeBounds, 1, palette.border, palette.toolbar)
-	canvas.LabelCenter("OK", closeBounds, ui.TextStyle{Size: 12, Color: palette.text})
+	canvas.LabelCenter("OK", closeBounds, gfx.TextStyle{Size: 12, Color: palette.text})
 	if hitButton(canvas, summaryCloseID, closeBounds, "Close Summary") {
 		state.summaryOpen = false
 	}

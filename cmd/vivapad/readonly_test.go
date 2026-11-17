@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/macro"
 	"vivapad/internal/searchfiles"
@@ -52,10 +52,10 @@ func TestReadOnlyBlocksNativeToolbarMenuAndMacroEditsButAllowsCopy(t *testing.T)
 	if _, err := driver.ShortcutChord(primary(), 'd'); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'k'); err != nil {
+	if _, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'k'); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyTab, 0); err != nil {
+	if err := driver.Key(gfx.KeyTab, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.String() != "cat cat" {
@@ -159,10 +159,10 @@ func TestReadOnlyStillAllowsCaretSelectionAndCopy(t *testing.T) {
 	if doc.Editor.Caret() != 3 {
 		t.Fatalf("mouse cannot place read-only caret: %d", doc.Editor.Caret())
 	}
-	if err := driver.Key(ui.KeyLeft, 0); err != nil {
+	if err := driver.Key(gfx.KeyLeft, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyLeft, ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyLeft, gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.Selection() != (text.Range{Start: 1, End: 2}) {
@@ -222,30 +222,30 @@ func TestReadOnlyPointerDragAndWordNavigation(t *testing.T) {
 	if !ok {
 		t.Fatal("end caret was not painted")
 	}
-	if err := driver.Press(start.X+0.1, start.Y+start.Height/2, ui.PointerButtonPrimary); err != nil {
+	if err := driver.Press(start.X+0.1, start.Y+start.Height/2, gfx.PointerButtonPrimary); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.Move(end.X+0.1, end.Y+end.Height/2); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Release(end.X+0.1, end.Y+end.Height/2, ui.PointerButtonPrimary); err != nil {
+	if err := driver.Release(end.X+0.1, end.Y+end.Height/2, gfx.PointerButtonPrimary); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.Selection() != (text.Range{Start: 0, End: 5}) {
 		t.Fatalf("read-only drag selection = %+v", doc.Editor.Selection())
 	}
 	doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
-	modifier := ui.ModifierControl
+	modifier := gfx.ModifierControl
 	if runtime.GOOS == "darwin" {
-		modifier = ui.ModifierAlt
+		modifier = gfx.ModifierAlt
 	}
-	if err := driver.Key(ui.KeyLeft, modifier); err != nil {
+	if err := driver.Key(gfx.KeyLeft, modifier); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.Caret() != 6 {
 		t.Fatalf("read-only word-left caret = %d", doc.Editor.Caret())
 	}
-	if err := driver.Key(ui.KeyLeft, modifier|ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyLeft, modifier|gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.Selection() != (text.Range{Start: 0, End: 6}) || doc.Editor.String() != "alpha beta" {

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 var _ [120 - unsafe.Sizeof(printDialog{})]byte
@@ -36,7 +36,7 @@ func TestWindowsPrinterCoordinatesAndColorFollowGDI(t *testing.T) {
 	if printer.toX(18) != 0 || printer.toY(12) != 0 || printer.toX(90) != 300 {
 		t.Fatalf("printer page origin = %d,%d; x(90)=%d", printer.toX(18), printer.toY(12), printer.toX(90))
 	}
-	if got := printerColor(ui.RGB(49, 92, 167)); got != 0xa75c31 {
+	if got := printerColor(gfx.RGB(49, 92, 167)); got != 0xa75c31 {
 		t.Fatalf("Windows COLORREF = 0x%06x", got)
 	}
 }

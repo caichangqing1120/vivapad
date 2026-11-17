@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/session"
 )
 
@@ -186,7 +186,7 @@ func TestFolderWorkspaceMenuAndSplitTreeScrollFitCompactWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	panelWidth := state.folderPanelWidth(640)
-	var splitter, leftEditor ui.Rect
+	var splitter, leftEditor gfx.Rect
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == splitterID {
 			splitter = hit.Bounds
@@ -198,7 +198,7 @@ func TestFolderWorkspaceMenuAndSplitTreeScrollFitCompactWindow(t *testing.T) {
 	if leftEditor.X != panelWidth || splitter.X <= leftEditor.X || splitter.X+splitter.Width >= 640 {
 		t.Fatalf("split editor not aligned beside dock: panel=%g editor=%+v splitter=%+v", panelWidth, leftEditor, splitter)
 	}
-	if err := driver.Scroll(ui.ScrollEvent{X: 40, Y: 210, DeltaY: 120}); err != nil {
+	if err := driver.Scroll(gfx.ScrollEvent{X: 40, Y: 210, DeltaY: 120}); err != nil {
 		t.Fatal(err)
 	}
 	if state.folderOffset == 0 {

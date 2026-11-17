@@ -6,14 +6,22 @@ import (
 	"runtime"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/printing"
 )
 
+func init() {
+	// Go runs init on the startup thread; Cocoa needs main to stay on it.
+	if runtime.GOOS == "darwin" {
+		runtime.LockOSThread()
+	}
+}
+
 func main() {
-	// Cocoa must start on the process main thread before setup can migrate the goroutine.
-	runtime.LockOSThread()
-	var canvas ui.Canvas
+	if runtime.GOOS != "darwin" {
+		runtime.LockOSThread()
+	}
+	var canvas gfx.Canvas
 	sessionPath, err := defaultSessionPath()
 	if err != nil {
 		log.Printf("session storage unavailable: %v", err)

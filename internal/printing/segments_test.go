@@ -4,20 +4,20 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestSegmentsMapSourceColorOntoExpandedTabAndUnicode(t *testing.T) {
 	job := Job{Text: "a\t猫"}
 	row := Row{Text: "a   猫", StartByte: 0, EndByte: len(job.Text), LineNumber: 1}
-	red, blue := ui.RGB(172, 77, 64), ui.RGB(49, 92, 167)
+	red, blue := gfx.RGB(172, 77, 64), gfx.RGB(49, 92, 167)
 	spans := []ColorRun{
 		{StartByte: 1, EndByte: 2, Color: red},
 		{StartByte: 2, EndByte: len(job.Text), Color: blue},
 	}
 	got, err := Segments(job, row, spans, 4)
 	want := []Segment{
-		{Text: "a", Color: ui.RGB(0, 0, 0)},
+		{Text: "a", Color: gfx.RGB(0, 0, 0)},
 		{Text: "   ", Color: red},
 		{Text: "猫", Color: blue},
 	}
@@ -51,7 +51,7 @@ func TestSegmentsRejectInvalidSpanAndPreserveGrapheme(t *testing.T) {
 
 func TestPrintColorModesTransformSourceWithoutChangingText(t *testing.T) {
 	row := Row{Text: "ab", StartByte: 0, EndByte: 2}
-	red := ui.RGB(172, 77, 64)
+	red := gfx.RGB(172, 77, 64)
 	styles := []ColorRun{{StartByte: 1, EndByte: 2, Color: red}}
 	for _, mode := range []ColorMode{ColorOnWhite, ColorWYSIWYG, ColorBlackOnWhite, ColorInvertLight} {
 		job := Job{Text: "ab", Settings: Settings{ColorMode: mode}}
@@ -61,11 +61,11 @@ func TestPrintColorModesTransformSourceWithoutChangingText(t *testing.T) {
 		}
 		switch mode {
 		case ColorOnWhite, ColorWYSIWYG:
-			if got[0].Color != ui.RGB(0, 0, 0) || got[1].Color != red {
+			if got[0].Color != gfx.RGB(0, 0, 0) || got[1].Color != red {
 				t.Fatalf("mode %d changed source colors: %+v", mode, got)
 			}
 		case ColorBlackOnWhite:
-			if got[0].Color != ui.RGB(0, 0, 0) || got[1].Color != ui.RGB(0, 0, 0) {
+			if got[0].Color != gfx.RGB(0, 0, 0) || got[1].Color != gfx.RGB(0, 0, 0) {
 				t.Fatalf("black-on-white colors = %+v", got)
 			}
 		case ColorInvertLight:

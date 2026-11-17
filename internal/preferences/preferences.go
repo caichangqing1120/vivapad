@@ -14,30 +14,33 @@ import (
 
 const (
 	maxSize = 64 << 10
-	version = 5
+	version = 6
 )
 
 type State struct {
-	FontSize             int               `json:"font_size"`
-	SubFontSize          int               `json:"sub_font_size"`
-	ZoomSync             bool              `json:"zoom_sync,omitempty"`
-	TabWidth             int               `json:"tab_width"`
-	Wrap                 bool              `json:"wrap"`
-	LineNumbers          bool              `json:"line_numbers"`
-	AutoIndent           bool              `json:"auto_indent"`
-	AutoClose            bool              `json:"auto_close"`
-	IndentMode           string            `json:"indent_mode"`
-	DateTimeFormat       string            `json:"date_time_format,omitempty"`
-	DateTimeReverseOrder bool              `json:"date_time_reverse_order,omitempty"`
-	ShowWhitespace       bool              `json:"show_whitespace,omitempty"`
-	ShowEOL              bool              `json:"show_eol,omitempty"`
-	ShowIndentGuides     bool              `json:"show_indent_guides,omitempty"`
-	ShowWrapSymbol       bool              `json:"show_wrap_symbol,omitempty"`
-	ShowNonPrinting      bool              `json:"show_non_printing,omitempty"`
-	ShowControls         bool              `json:"show_controls,omitempty"`
-	NPCMode              string            `json:"npc_mode,omitempty"`
-	NPCIncludeControls   bool              `json:"npc_include_controls,omitempty"`
-	Print                printing.Settings `json:"print_settings"`
+	FontSize             int    `json:"font_size"`
+	SubFontSize          int    `json:"sub_font_size"`
+	ZoomSync             bool   `json:"zoom_sync,omitempty"`
+	TabWidth             int    `json:"tab_width"`
+	Wrap                 bool   `json:"wrap"`
+	LineNumbers          bool   `json:"line_numbers"`
+	AutoIndent           bool   `json:"auto_indent"`
+	AutoClose            bool   `json:"auto_close"`
+	IndentMode           string `json:"indent_mode"`
+	DateTimeFormat       string `json:"date_time_format,omitempty"`
+	DateTimeReverseOrder bool   `json:"date_time_reverse_order,omitempty"`
+	ShowWhitespace       bool   `json:"show_whitespace,omitempty"`
+	ShowEOL              bool   `json:"show_eol,omitempty"`
+	ShowIndentGuides     bool   `json:"show_indent_guides,omitempty"`
+	ShowWrapSymbol       bool   `json:"show_wrap_symbol,omitempty"`
+	// ChangeHistoryView selects how the change history is drawn: "margin"
+	// (default lane), "indicator" (in-text marks only), "both", or "off".
+	ChangeHistoryView  string            `json:"change_history_view,omitempty"`
+	ShowNonPrinting    bool              `json:"show_non_printing,omitempty"`
+	ShowControls       bool              `json:"show_controls,omitempty"`
+	NPCMode            string            `json:"npc_mode,omitempty"`
+	NPCIncludeControls bool              `json:"npc_include_controls,omitempty"`
+	Print              printing.Settings `json:"print_settings"`
 }
 
 type diskState struct {
@@ -46,7 +49,7 @@ type diskState struct {
 }
 
 func Default() State {
-	return State{FontSize: 13, SubFontSize: 13, TabWidth: 4, LineNumbers: true, AutoIndent: true, AutoClose: true, IndentMode: "language", DateTimeFormat: datetime.DefaultFormat, ShowIndentGuides: true, ShowControls: true, NPCMode: "abbreviation", Print: printing.DefaultSettings()}
+	return State{FontSize: 13, SubFontSize: 13, TabWidth: 4, LineNumbers: true, AutoIndent: true, AutoClose: true, IndentMode: "language", DateTimeFormat: datetime.DefaultFormat, ShowIndentGuides: true, ShowControls: true, NPCMode: "abbreviation", ChangeHistoryView: "margin", Print: printing.DefaultSettings()}
 }
 
 func (state State) validate() error {
@@ -61,6 +64,11 @@ func (state State) validate() error {
 	}
 	if state.NPCMode != "identity" && state.NPCMode != "abbreviation" && state.NPCMode != "codepoint" {
 		return fmt.Errorf("invalid non-printing representation mode %q", state.NPCMode)
+	}
+	switch state.ChangeHistoryView {
+	case "", "margin", "indicator", "both", "off":
+	default:
+		return fmt.Errorf("invalid change history view %q", state.ChangeHistoryView)
 	}
 	if err := datetime.ValidatePattern(state.DateTimeFormat); err != nil {
 		return err
@@ -112,6 +120,10 @@ func Load(path string) (State, error) {
 	}
 	if stored.Version < 5 {
 		stored.State.ShowControls = true
+	}
+	if stored.Version < 6 {
+		// Older files had no setting: keep the margin on, as it was before.
+		stored.State.ChangeHistoryView = "margin"
 	}
 	if stored.State.DateTimeFormat == "" {
 		stored.State.DateTimeFormat = datetime.DefaultFormat
