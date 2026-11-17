@@ -418,3 +418,82 @@ func TestChangeHistoryWorkflowReloadRefusalAndFreshSource(t *testing.T) {
 		t.Fatalf("reload did not bind a clean independent source: %v, notice=%q", err, state.notice)
 	}
 }
+
+func TestChangeHistoryCurrentDocumentEqualTargetsKeepRealUndo(t *testing.T) {
+	const original = "cat\ncat\nlast\n"
+	state, driver := openChangeHistoryFixture(t, original)
+	doc := state.space.Current()
+	state.query.Insert("cat")
+	state.replacement.Insert("cat")
+	clickID(t, driver, searchID)
+	clickID(t, driver, replaceAllID)
+	if doc.Editor.String() != original || !doc.Dirty() || !doc.Editor.CanUndo() {
+		t.Fatalf("equal target lost its real history: %q dirty=%v undo=%v", doc.Editor.String(), doc.Dirty(), doc.Editor.CanUndo())
+	}
+	if data, err := os.ReadFile(doc.Path); err != nil || string(data) != original {
+		t.Fatalf("equal target changed disk: %q, %v", data, err)
+	}
+	if bars := state.changeMarginLines(doc); len(bars) != 2 || bars[0].Line != 0 || bars[1].Line != 1 {
+		t.Fatalf("equal targets did not produce two changed lines: %+v", bars)
+	}
+	state.command("Save")
+	if doc.Dirty() {
+		t.Fatal("Save left equal-target edits dirty")
+	}
+	savedBars := state.changeMarginLines(doc)
+	if len(savedBars) != 2 {
+		t.Fatalf("Save lost equal-target editions: %+v", savedBars)
+	}
+	for _, bar := range savedBars {
+		if bar.Fill != palette.changeSaved {
+			t.Fatalf("saved equal-target edition = %+v", bar)
+		}
+	}
+	state.command("Undo")
+	if doc.Editor.String() != original || !doc.Dirty() || !doc.Editor.CanRedo() {
+		t.Fatalf("Undo lost equal-target history: %q dirty=%v redo=%v", doc.Editor.String(), doc.Dirty(), doc.Editor.CanRedo())
+	}
+	state.command("Redo")
+	if doc.Editor.String() != original || doc.Dirty() {
+		t.Fatalf("Redo did not restore equal-target save point: %q dirty=%v", doc.Editor.String(), doc.Dirty())
+	}
+}
+
+func TestChangeHistoryExpiredFramesFailClosedUntilClear(t *testing.T) {
+	state, driver := openChangeHistoryFixture(t, "one\ntwo\n")
+	doc := state.space.Current()
+	for range 300 {
+		doc.Editor.SetSavePoint()
+	}
+	caret := doc.Editor.Caret()
+	state.command("Next Change")
+	if doc.Editor.Caret() != caret || !strings.Contains(state.notice, "unavailable") {
+		t.Fatalf("expired history looked like no changes: caret=%d notice=%q", doc.Editor.Caret(), state.notice)
+	}
+	state.command("Change History")
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	navigationDisabled, clearEnabled := false, false
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.ID == changeHistoryScope.At(0) {
+			navigationDisabled = hit.Disabled
+		}
+		if hit.ID == changeHistoryScope.At(2) {
+			clearEnabled = !hit.Disabled
+		}
+	}
+	if !navigationDisabled || !clearEnabled {
+		t.Fatal("expired history did not disable navigation while allowing a reset")
+	}
+	clickID(t, driver, changeHistoryScope.At(2))
+	if state.notice != "Change history cleared" || doc.Dirty() {
+		t.Fatalf("Clear did not restore a clean available generation: %q dirty=%v", state.notice, doc.Dirty())
+	}
+	doc.Editor.MoveTo(4, false)
+	doc.Editor.Insert("X")
+	if _, err := doc.ChangeHistory(); err != nil || len(state.changeMarginLines(doc)) == 0 {
+		t.Fatalf("new generation did not track later edits: %v", err)
+	}
+}
