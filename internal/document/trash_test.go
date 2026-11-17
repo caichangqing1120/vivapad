@@ -134,10 +134,7 @@ func TestTrashPlanRejectsSameContentReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer plan.Close()
-	source, err := os.Lstat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	source := plan.source
 	retireTrashSource(t, path)
 	if err := os.WriteFile(path, []byte("original"), 0600); err != nil {
 		t.Fatal(err)
@@ -194,8 +191,8 @@ func TestTrashPlanReleasesSourceDescriptor(t *testing.T) {
 		if file == nil {
 			t.Fatalf("%s: prepared plan has no source descriptor", label)
 		}
-		if _, err := file.Stat(); !errors.Is(err, os.ErrClosed) {
-			t.Fatalf("%s: source descriptor still open: %v", label, err)
+		if err := file.Close(); !errors.Is(err, os.ErrClosed) {
+			t.Fatalf("%s: source descriptor was not closed: %v", label, err)
 		}
 	}
 

@@ -753,12 +753,12 @@ func (state *model) paintSearch(canvas *gfx.Canvas, width, y float32) {
 	options := []struct {
 		id      gfx.ID
 		label   string
-		x       float32
+		x, span float32
 		checked *bool
 	}{
-		{matchCaseID, "Match case", 12, &state.searchOptions.MatchCase},
-		{wholeWordID, "Whole word", 137, &state.searchOptions.WholeWord},
-		{regexID, "Regular expression", 262, &state.searchOptions.Regex},
+		{matchCaseID, "Match case", 12, 119, &state.searchOptions.MatchCase},
+		{wholeWordID, "Whole word", 137, 119, &state.searchOptions.WholeWord},
+		{regexID, "Regular expression", 262, 138, &state.searchOptions.Regex},
 	}
 	for _, option := range options {
 		box := gfx.Rect{X: option.x, Y: y + 72, Width: 14, Height: 14}
@@ -767,7 +767,7 @@ func (state *model) paintSearch(canvas *gfx.Canvas, width, y float32) {
 			canvas.Fill(box.Inset(gfx.All(3)), palette.blue)
 		}
 		smallLabel(canvas, option.label, gfx.Rect{X: option.x + 20, Y: y + 66, Width: 118, Height: 25}, palette.text, 11)
-		canvas.HitWithOptions(option.id, gfx.Rect{X: option.x, Y: y + 66, Width: 119, Height: 25}, option.label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: *option.checked})
+		canvas.HitWithOptions(option.id, gfx.Rect{X: option.x, Y: y + 66, Width: option.span, Height: 25}, option.label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: *option.checked})
 		if canvas.Clicked(option.id) {
 			*option.checked = !*option.checked
 		}
