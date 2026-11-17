@@ -20,12 +20,13 @@ func TestPublicCompositionDirectResultPreservesHistory(t *testing.T) {
 		event                              app.TextEvent
 		caret                              int
 		undo                               []string
+		recordable                         bool
 	}{
 		{
 			name: "caret", disk: "A\r\nB\nC", original: "A\nB\nC", before: "A\nB\nC!", want: "A\nB\nC!Z\n", labels: "WLW",
 			selection: text.Range{Start: 6, End: 6}, caret: 8,
 			event: app.TextEvent{Kind: app.TextInsert, CompositionPhase: text.CompositionResult, Text: "Z\n"},
-			undo:  []string{"A\nB\nC!", "A\nB\nC"},
+			undo:  []string{"A\nB\nC!", "A\nB\nC"}, recordable: true,
 		},
 		{
 			name: "selected", disk: "A\r\nB\nC", original: "A\nB\nC", before: "A\nB\nC!", want: "A\nZ\n\nC!", labels: "WWL",
@@ -73,9 +74,13 @@ func TestPublicCompositionDirectResultPreservesHistory(t *testing.T) {
 			if doc.EOLSequence() != test.labels || !doc.Dirty() || doc.Editor.AtSavePoint() {
 				t.Fatalf("direct Result labels/save: labels=%q dirty=%v saved=%v", doc.EOLSequence(), doc.Dirty(), doc.Editor.AtSavePoint())
 			}
-			wantSteps := []macro.Step{{Kind: macro.TextStep, TextKind: app.TextInsert, Text: "Z\n"}}
-			if !reflect.DeepEqual(state.macroSteps, wantSteps) {
-				t.Fatalf("direct Result macro = %+v", state.macroSteps)
+			if test.recordable {
+				wantSteps := []macro.Step{{Kind: macro.TextStep, TextKind: app.TextInsert, Text: "Z\n"}}
+				if !state.macroRecording || !reflect.DeepEqual(state.macroSteps, wantSteps) {
+					t.Fatalf("ordinary caret Result macro = %+v recording=%v", state.macroSteps, state.macroRecording)
+				}
+			} else if state.macroRecording || len(state.macroSteps) != 0 {
+				t.Fatalf("unreplayable Result remained in macro: %+v recording=%v", state.macroSteps, state.macroRecording)
 			}
 			for _, want := range test.undo {
 				if !doc.Editor.Undo() || doc.Editor.String() != want || doc.EOLSequence() != "WL" || doc.Dirty() != (want != test.before) {
@@ -173,8 +178,8 @@ func TestPublicCompositionDirectResultFallsBackFromMultiSelection(t *testing.T) 
 	if next.Value != "a Z" || state.multiSelections[0].active || next.Composing || state.provisional.doc != nil {
 		t.Fatalf("direct multi Result = %+v multi=%+v", next, state.multiSelections[0])
 	}
-	if len(state.macroSteps) != 1 || state.macroSteps[0].Text != "Z" {
-		t.Fatalf("multi fallback macro = %+v", state.macroSteps)
+	if state.macroRecording || len(state.macroSteps) != 0 {
+		t.Fatalf("multi fallback recorded an unreplayable selection: %+v recording=%v", state.macroSteps, state.macroRecording)
 	}
 	if !doc.Editor.Undo() || doc.Editor.String() != "a a" {
 		t.Fatalf("multi fallback Undo = %q; want a a", doc.Editor.String())
@@ -254,8 +259,8 @@ func TestPublicCompositionStaleRectangleResultPreservesProvenance(t *testing.T) 
 			if next.Value != test.want || next.Selection != (app.TextRange{Start: 1, End: 1}) || state.rectangles[0].active || state.rectangles[0].doc != nil {
 				t.Fatalf("stale rectangle lost Result provenance: next=%+v rectangle=%+v; want %q", next, state.rectangles[0], test.want)
 			}
-			if !state.macroRecording || len(state.macroSteps) != 1 || state.macroSteps[0].Text != "Z" {
-				t.Fatalf("normal fallback macro = %+v recording=%v", state.macroSteps, state.macroRecording)
+			if state.macroRecording || len(state.macroSteps) != 0 {
+				t.Fatalf("explicit fallback recorded an unreplayable replacement: %+v recording=%v", state.macroSteps, state.macroRecording)
 			}
 			for _, want := range test.undo {
 				if !doc.Editor.Undo() || doc.Editor.String() != want {

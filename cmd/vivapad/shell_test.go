@@ -684,8 +684,12 @@ func TestRecoveryWriteFailureIsVisible(t *testing.T) {
 	if err := state.recoveryWriter.Wait(); err == nil {
 		t.Fatal("backup unexpectedly succeeded")
 	}
-	if err := driver.Pump(); err != nil {
-		t.Fatal(err)
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.HasPrefix(state.notice, "Recovery failed:") && time.Now().Before(deadline) {
+		if err := driver.Pump(); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Millisecond)
 	}
 	if !strings.HasPrefix(state.notice, "Recovery failed:") {
 		t.Fatalf("backup failure not surfaced: %q", state.notice)

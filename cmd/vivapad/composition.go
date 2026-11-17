@@ -23,9 +23,11 @@ type compositionOwner struct {
 // anchor that existed before the first update. Bookmark and select-anchor
 // tracking is applied once, from this frame, when the composition terminates.
 type provisionalComposition struct {
-	doc    *document.Document
-	base   string
-	anchor int
+	doc           *document.Document
+	base          string
+	ordinaryBase  string
+	anchor        int
+	ordinaryStart int
 }
 
 // documentTextInput resolves one of VivaPad's two document editor surfaces. It
@@ -316,9 +318,6 @@ func (state *model) applyDocumentCompositionEvent(doc *document.Document, event 
 	if event.CompositionPhase == text.CompositionNone || !doc.Editor.TentativeCompositionEnabled() {
 		return app.TextStateOf(doc.Editor), false
 	}
-	if event.CompositionPhase == text.CompositionUpdate && event.Text == "" {
-		event.CompositionPhase = text.CompositionCancel
-	}
 	_, composing := doc.Editor.Composition()
 	switch event.CompositionPhase {
 	case text.CompositionUpdate, text.CompositionResult:
@@ -350,23 +349,51 @@ func (state *model) applyDocumentCompositionEvent(doc *document.Document, event 
 		return before, false
 	}
 	if event.CompositionPhase == text.CompositionUpdate {
-		if state.provisional.doc != doc {
-			state.provisional = provisionalComposition{doc: doc, base: base, anchor: anchor}
+		if marked, active := doc.Editor.Composition(); active {
+			if state.provisional.doc != doc {
+				ordinaryStart := anchor
+				if event.HasReplacement || event.HasReplacementUTF16 {
+					ordinaryStart = compositionReplacementStart(base, event)
+				}
+				ordinaryBase := base
+				value := []rune(doc.Editor.String())
+				if marked.Start >= 0 && marked.Start <= marked.End && marked.End <= len(value) {
+					ordinaryBase = string(value[:marked.Start]) + string(value[marked.End:])
+				}
+				state.provisional = provisionalComposition{doc: doc, base: base, ordinaryBase: ordinaryBase, anchor: anchor, ordinaryStart: ordinaryStart}
+			}
+			return app.TextStateOf(doc.Editor), true
 		}
-	} else if state.provisional.doc == doc {
+	}
+	if state.provisional.doc == doc {
 		state.provisional = provisionalComposition{}
 	}
 	return app.TextStateOf(doc.Editor), true
 }
 
-func (state *model) compositionFrame(doc *document.Document) (string, int) {
+func (state *model) compositionFrame(doc *document.Document) (string, int, string, int) {
 	if state.provisional.doc == doc {
-		return state.provisional.base, state.provisional.anchor
+		frame := state.provisional
+		return frame.base, frame.anchor, frame.ordinaryBase, frame.ordinaryStart
 	}
 	if doc == nil || doc.Editor == nil {
-		return "", 0
+		return "", 0, "", 0
 	}
-	return doc.Editor.String(), doc.Editor.Selection().Start
+	value, start := doc.Editor.String(), doc.Editor.Selection().Start
+	return value, start, value, start
+}
+
+func compositionReplacementStart(base string, event app.TextEvent) int {
+	source := text.NewEditor(base)
+	if event.HasReplacementUTF16 {
+		units := event.ReplacementUTF16.Start
+		index := source.UTF16ToRuneIndex(units)
+		if units < 0 || source.RuneIndexToUTF16(index) != units {
+			return source.RuneCount()
+		}
+		return index
+	}
+	return min(max(min(event.Replacement.Start, event.Replacement.End), 0), source.RuneCount())
 }
 
 // compositionTerminalRejected reports whether a terminal tagged event must be
@@ -409,8 +436,9 @@ func (state *model) applyMacroComposition(doc *document.Document, event app.Text
 		state.cancelDocumentComposition(doc)
 		return app.TextStateOf(doc.Editor), false
 	}
-	base, anchor := state.compositionFrame(doc)
+	base, anchor, ordinaryBase, ordinaryStart := state.compositionFrame(doc)
 	before := app.TextStateOf(doc.Editor)
+	selectedDirect := state.provisional.doc != doc && before.Selection.Start != before.Selection.End
 	composition, wasComposing := doc.Editor.Composition()
 	committed := ""
 	switch event.CompositionPhase {
@@ -430,12 +458,29 @@ func (state *model) applyMacroComposition(doc *document.Document, event app.Text
 		return next, true
 	}
 	after := doc.Editor.String()
-	if after != base {
+	if after != base || ordinaryBase != base {
 		state.bookmarkLines(doc)
-		state.relocateSelectAnchors(doc, base, after, anchor)
+		if event.CompositionPhase == text.CompositionResult && (event.HasReplacement || event.HasReplacementUTF16) {
+			if ordinaryBase != base {
+				state.relocateSelectAnchors(doc, base, ordinaryBase, ordinaryStart)
+				state.relocateSelectAnchors(doc, ordinaryBase, after, compositionReplacementStart(ordinaryBase, event))
+			} else {
+				state.relocateSelectAnchors(doc, base, after, compositionReplacementStart(base, event))
+			}
+		} else {
+			state.relocateSelectAnchors(doc, base, after, anchor)
+		}
 		if state.wordCompletion != nil && state.wordCompletion.doc == doc {
 			state.updateWordCompletionAfterInput(doc)
 		}
+	}
+	explicitChange := event.HasReplacement && event.Replacement.Start != event.Replacement.End ||
+		event.HasReplacementUTF16 && event.ReplacementUTF16.Length != 0
+	if state.macroRecording && (ordinaryBase != base ||
+		selectedDirect && (after != base || event.CompositionPhase == text.CompositionResult && event.Text != "") ||
+		(event.HasReplacement || event.HasReplacementUTF16) && (after != base || event.Text != "" || explicitChange) ||
+		event.CompositionPhase == text.CompositionEmptyCommit && after != base) {
+		state.cancelMacroUnsupported("composition replacement")
 	}
 	if state.macroRecording && committed != "" {
 		state.recordMacro(doc, macro.Step{Kind: macro.TextStep, TextKind: app.TextInsert, Text: committed})
