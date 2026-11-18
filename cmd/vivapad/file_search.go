@@ -4,13 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
+	"strings"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 	"vivapad/internal/searchfiles"
+)
+
+const (
+	missingSearchResultPrefix = "Search result file is missing: "
+	staleSearchResultNotice   = "Search result changed; run the search again"
 )
 
 func (state *model) filesDialogField(id gfx.ID) bool {
@@ -313,14 +320,18 @@ func (state *model) openFileResult(index int) bool {
 				doc, err = document.Open(absolute)
 			}
 			if err != nil {
-				state.notice = err.Error()
+				if errors.Is(err, fs.ErrNotExist) {
+					state.notice = missingSearchResultPrefix + filepath.Base(absolute)
+				} else {
+					state.notice = err.Error()
+				}
 				return false
 			}
 		}
 	}
 	value := doc.Editor.String()
 	if match.Source != value || match.Start < 0 || match.End > len(value) || match.Start >= match.End || value[match.Start:match.End] != match.Text {
-		state.notice = "Search result changed; run the search again"
+		state.notice = staleSearchResultNotice
 		return false
 	}
 	if !alreadyOpen {
@@ -349,7 +360,7 @@ func (state *model) openFileResult(index int) bool {
 	doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
 	state.codeEditor().Reveal(match.End)
 	state.selectFileResult(index)
-	if state.notice == "Search result changed; run the search again" {
+	if state.notice == staleSearchResultNotice || strings.HasPrefix(state.notice, missingSearchResultPrefix) {
 		state.notice = ""
 	}
 	return true

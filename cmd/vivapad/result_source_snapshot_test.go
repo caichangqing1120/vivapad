@@ -237,6 +237,68 @@ func TestFinderSourceSnapshotUnopenedDirectoryRefusalIsAtomic(t *testing.T) {
 	}
 }
 
+func TestFinderMissingDirectoryResultShowsCauseAndStaysRetryable(t *testing.T) {
+	root := filepath.Join(t.TempDir(), strings.Repeat("long-directory-", 8))
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.txt")
+	source := []byte("prefix cat\n")
+	if err := os.WriteFile(path, source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state, driver := startDriver(t)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, editorID)
+	if err := driver.Type("unsaved draft"); err != nil {
+		t.Fatal(err)
+	}
+	doc := state.space.Current()
+	before, caret := doc.Editor.Selection(), doc.Editor.Caret()
+	recents := slices.Clone(state.recentEntries)
+	state.query.Insert("cat")
+	collectFinderSnapshot(t, state, "directory", root)
+	if len(state.fileResults.Matches) != 1 {
+		t.Fatal("fixture did not collect the unopened result")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := driver.Snapshot()
+	if state.resultSelected != -1 || !state.resultsOpen || state.space.Current() != doc || len(state.space.Documents) != 1 ||
+		snapshot.Focused != editorID || doc.Editor.String() != "unsaved draft" || !doc.Dirty() || !doc.Editor.CanUndo() ||
+		doc.Editor.Selection() != before || doc.Editor.Caret() != caret || !slices.Equal(state.recentEntries, recents) {
+		t.Fatal("missing result changed the editor, result position, tabs or recent files")
+	}
+	visible := false
+	for _, label := range snapshot.Texts {
+		visible = visible || strings.Contains(label.Value, "Search result file is missing")
+	}
+	if !visible {
+		t.Errorf("compact status hid the reason the result could not open: %q", state.notice)
+	}
+	if err := os.WriteFile(path, source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
+		t.Fatal(err)
+	}
+	opened := state.space.Current()
+	if opened == doc || opened.Path != state.fileResults.Matches[0].Path || state.resultSelected != 0 ||
+		opened.Editor.Selection() != (text.Range{Start: 7, End: 10}) || opened.Dirty() ||
+		doc.Editor.String() != "unsaved draft" || !doc.Dirty() {
+		t.Fatal("retry did not open the restored match while preserving the draft")
+	}
+	if state.notice != "" {
+		t.Errorf("successful retry left a failure notice: %q", state.notice)
+	}
+}
+
 func TestFinderSourceSnapshotDirectoryKeepsEncodingMismatchRefusal(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "source.txt")
