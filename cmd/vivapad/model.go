@@ -1925,12 +1925,20 @@ func newConfig(state *model) app.Config {
 			}
 		}
 		if event.Key == gfx.KeyF4 && event.Modifiers&^gfx.ModifierShift == 0 {
+			fromPane := state.activePane
 			if event.Modifiers&gfx.ModifierShift != 0 {
 				state.command("Previous Search Result")
 			} else {
 				state.command("Next Search Result")
 			}
-			return gfx.EventResult{Handled: true, Repaint: true}
+			result := gfx.EventResult{Handled: true, Repaint: true}
+			if state.splitEnabled && paneForTarget(event.Target) == fromPane && state.activePane != fromPane {
+				result.Focus = editorID
+				if state.activePane == 1 {
+					result.Focus = rightEditorID
+				}
+			}
+			return result
 		}
 		if event.Key == gfx.KeyF2 {
 			if pane := paneForTarget(event.Target); pane >= 0 {

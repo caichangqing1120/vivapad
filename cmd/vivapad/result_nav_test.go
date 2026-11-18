@@ -56,6 +56,58 @@ func TestResultNavigationF4WrapsAcrossOpenDocumentsAndClickPosition(t *testing.T
 	}
 }
 
+func TestF4AcrossSplitKeepsTheFirstEditInTheResultPane(t *testing.T) {
+	state, driver := startDriver(t)
+	left := state.space.Current()
+	left.Editor.Insert("left")
+	right := state.space.NewDocument()
+	right.Editor.Insert("cat cat")
+	state.toggleSplit()
+	state.paneDocs = [2]*document.Document{left, right}
+	state.paneOwner[left], state.paneOwner[right] = 0, 1
+	state.activatePane(0)
+	state.query.Insert("cat")
+	state.findAllOpenDocuments()
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, editorID)
+	left.Editor.MoveTo(4, false)
+	right.Editor.MoveTo(0, false)
+	right.Editor.Insert("cat ")
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
+		t.Fatal(err)
+	}
+	if driver.Snapshot().Focused != editorID || state.activePane != 0 || state.resultSelected != -1 || left.Editor.Caret() != 4 {
+		t.Fatal("stale result changed focus, result or caret")
+	}
+	if !right.Editor.Undo() || right.Editor.String() != "cat cat" {
+		t.Fatal("could not restore the exact result source")
+	}
+	if err := driver.Key(gfx.KeyF4, gfx.ModifierShift); err != nil {
+		t.Fatal(err)
+	}
+	if state.activePane != 1 || state.space.Current() != right || state.resultSelected != 1 || right.Editor.Selection() != (text.Range{Start: 4, End: 7}) {
+		t.Fatal("previous result did not select the right document and match")
+	}
+	if err := driver.Type("x"); err != nil || left.Editor.String() != "left" || right.Editor.String() != "cat x" {
+		t.Fatalf("first edit after cross-pane F4: left=%q right=%q err=%v", left.Editor.String(), right.Editor.String(), err)
+	}
+	if !right.Editor.Undo() || right.Editor.String() != "cat cat" {
+		t.Fatal("could not restore the result source after the first edit")
+	}
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
+		t.Fatal(err)
+	}
+	if state.resultSelected != 0 || driver.Snapshot().Focused != resultsPaneID {
+		t.Fatal("F4 did not navigate while retaining search result list focus")
+	}
+}
+
 func TestStaleResultNavigationLeavesSelectionAndIndexUntouched(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()
