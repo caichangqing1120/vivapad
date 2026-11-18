@@ -176,6 +176,52 @@ func TestRecoveryExcludesLegacyMarkedText(t *testing.T) {
 	}
 }
 
+func TestLegacyPreeditIsCancelledBeforeSwitchingEditorPanes(t *testing.T) {
+	for _, name := range []string{"pointer/shared", "focus/separate"} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "source.txt")
+			if err := os.WriteFile(path, []byte("alpha\r\nbeta\ngamma"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			state := newStartupModel([]string{path}, "")
+			left := state.space.Current()
+			right, original := left, left.Editor.String()
+			if name == "focus/separate" {
+				right = document.New("separate")
+			}
+			state.splitEnabled = true
+			state.paneDocs = [2]*document.Document{left, right}
+			left.Editor.SetSelection(text.Range{Start: 10, End: 6})
+			input := documentCompositionInput(t, state, 0)
+			if live, err := input.OnEvent(app.TextEvent{Kind: app.TextSetMarked, Text: "p\nq"}); err != nil || !live.Composing || live.Value == original {
+				t.Fatalf("legacy marked input = %+v, %v", live, err)
+			}
+			if name == "pointer/shared" {
+				// Pointer dispatch must clear the mark before the shared editor's
+				// selection change has a chance to end and retain it.
+				state.pointerCompositionAway(rightEditorID)
+			} else {
+				input = documentCompositionInput(t, state, 1)
+			}
+			if left.Editor.CompositionActive() || left.Editor.String() != original || left.EOLSequence() != "WL" || left.Editor.Caret() != 6 ||
+				left.Editor.Selection() != (text.Range{Start: 6, End: 10}) || left.Dirty() || len(state.currentRecovery().Tabs) != 0 {
+				t.Fatalf("outgoing pane kept preedit: %q, EOL=%q, selection=%v, caret=%d, dirty=%t", left.Editor.String(), left.EOLSequence(), left.Editor.Selection(), left.Editor.Caret(), left.Dirty())
+			}
+			if name == "pointer/shared" {
+				input = documentCompositionInput(t, state, 1)
+			}
+			right.Editor.MoveTo(right.Editor.RuneCount(), false)
+			base := right.Editor.String()
+			if next, err := input.OnEvent(app.TextEvent{Kind: app.TextInsert, Text: "x"}); err != nil || next.Value != base+"x" {
+				t.Fatalf("first key in incoming pane = %+v, %v", next, err)
+			}
+			if !right.Editor.Undo() || right.Editor.String() != base || right.Editor.Undo() {
+				t.Fatal("switch left a preedit Undo unit")
+			}
+		})
+	}
+}
+
 // TestProvisionalCompositionFreezesEditTrackedIndicators proves that a paint
 // during a live tentative update does not advance or drop the edit-tracked
 // indicator groups (fold markers, hidden lines, Find Mark spans, user styles)

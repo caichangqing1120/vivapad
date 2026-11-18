@@ -226,8 +226,35 @@ func (state *model) reconcileCompositionOwner(target gfx.ID, editor *text.Editor
 	if state.compositionOwner.editor == editor && state.compositionOwner.target == target {
 		return
 	}
+	state.cancelLegacyPreeditAcrossPanes(target)
 	state.cancelCompositionOwner()
 	state.compositionOwner = compositionOwner{editor: editor, target: target}
+}
+
+func (state *model) cancelLegacyPreeditAcrossPanes(target gfx.ID) {
+	owner := state.compositionOwner
+	from, to := paneForTarget(owner.target), paneForTarget(target)
+	if owner.editor == nil || from < 0 || to < 0 || from == to {
+		return
+	}
+	for doc := range state.legacyRecovery {
+		if doc.Editor != owner.editor || state.provisional.doc == doc {
+			continue
+		}
+		if mark, composing := owner.editor.Composition(); composing {
+			before := owner.editor.String()
+			canceled := false
+			state.editWithBookmarkAnchor(doc, func() { canceled = owner.editor.CancelComposition() })
+			if canceled {
+				state.relocateSelectAnchors(doc, before, owner.editor.String(), mark.Start)
+				if selection := &state.rectangles[from]; selection.doc == doc {
+					selection.composing = false
+				}
+			}
+		}
+		delete(state.legacyRecovery, doc)
+		return
+	}
 }
 
 func (state *model) cancelCompositionOwner() {
@@ -250,12 +277,13 @@ func (state *model) cancelLiveComposition() {
 	}
 }
 
-// pointerCompositionAway cancels a live tentative when a pointer activates a
-// different target. A click inside the owning editor keeps the composition.
+// A shared editor's selection can change during the pointer dispatch, so
+// cancel any preedit that cannot follow the pointer before it reaches the pane.
 func (state *model) pointerCompositionAway(target gfx.ID) {
 	if state.compositionOwner.editor == nil || state.compositionOwner.target == target {
 		return
 	}
+	state.cancelLegacyPreeditAcrossPanes(target)
 	state.cancelCompositionOwner()
 }
 
