@@ -9,6 +9,7 @@ import (
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 	"vivapad/internal/macro"
+	"vivapad/internal/recovery"
 )
 
 // compositionOwner is the single app-owned native editor target. It is tracked
@@ -28,6 +29,7 @@ type provisionalComposition struct {
 	ordinaryBase  string
 	anchor        int
 	ordinaryStart int
+	recoveryTab   *recovery.Tab
 }
 
 // documentTextInput resolves one of VivaPad's two document editor surfaces. It
@@ -340,6 +342,11 @@ func (state *model) applyDocumentCompositionEvent(doc *document.Document, event 
 	before := app.TextStateOf(doc.Editor)
 	base := doc.Editor.String()
 	anchor := doc.Editor.Selection().Start
+	var recoveryTab *recovery.Tab
+	if event.CompositionPhase == text.CompositionUpdate && state.provisional.doc != doc && doc.Dirty() {
+		tab := state.recoveryTab(doc)
+		recoveryTab = &tab
+	}
 	handled := doc.Editor.ApplyComposition(text.CompositionEvent{
 		Phase:               event.CompositionPhase,
 		Text:                event.Text,
@@ -364,7 +371,7 @@ func (state *model) applyDocumentCompositionEvent(doc *document.Document, event 
 				if marked.Start >= 0 && marked.Start <= marked.End && marked.End <= len(value) {
 					ordinaryBase = string(value[:marked.Start]) + string(value[marked.End:])
 				}
-				state.provisional = provisionalComposition{doc: doc, base: base, ordinaryBase: ordinaryBase, anchor: anchor, ordinaryStart: ordinaryStart}
+				state.provisional = provisionalComposition{doc: doc, base: base, ordinaryBase: ordinaryBase, anchor: anchor, ordinaryStart: ordinaryStart, recoveryTab: recoveryTab}
 			}
 			return app.TextStateOf(doc.Editor), true
 		}

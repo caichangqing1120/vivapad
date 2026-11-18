@@ -121,24 +121,36 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 	}
 }
 
+func (state *model) recoveryTab(doc *document.Document) recovery.Tab {
+	selection := doc.Editor.Selection()
+	mode, selected := state.languages[doc]
+	return recovery.Tab{
+		Path: doc.Path, Name: doc.Name, Content: doc.Editor.String(),
+		Language: mode, LanguageSelected: selected, FoldedHeaders: state.foldHeaders(doc),
+		Encoding: doc.Encoding(), DiskEncoding: doc.SavedEncoding(), LineEnding: doc.LineEnding(), LineEndings: doc.EOLSequence(), DiskDigest: doc.DiskDigest(),
+		SelectionStart: selection.Start, SelectionEnd: selection.End,
+		Pane: state.paneOwner[doc], ReadOnly: state.isReadOnly(doc), Pinned: state.isPinned(doc), TabColor: state.tabColors[doc],
+	}
+}
+
 func (state *model) currentRecovery() recovery.State {
 	result := recovery.State{Active: -1}
 	if state.splitEnabled {
 		result.Split, result.ActivePane, result.Divider = true, state.activePane, state.splitRatio
 	}
 	for _, doc := range state.space.Documents {
-		if !doc.Dirty() {
-			continue
+		if state.provisional.doc == doc {
+			// The visible text and its selection/EOL labels change together during preedit.
+			if state.provisional.recoveryTab == nil {
+				continue
+			}
+			result.Tabs = append(result.Tabs, *state.provisional.recoveryTab)
+		} else {
+			if !doc.Dirty() {
+				continue
+			}
+			result.Tabs = append(result.Tabs, state.recoveryTab(doc))
 		}
-		selection := doc.Editor.Selection()
-		mode, selected := state.languages[doc]
-		result.Tabs = append(result.Tabs, recovery.Tab{
-			Path: doc.Path, Name: doc.Name, Content: doc.Editor.String(),
-			Language: mode, LanguageSelected: selected, FoldedHeaders: state.foldHeaders(doc),
-			Encoding: doc.Encoding(), DiskEncoding: doc.SavedEncoding(), LineEnding: doc.LineEnding(), LineEndings: doc.EOLSequence(), DiskDigest: doc.DiskDigest(),
-			SelectionStart: selection.Start, SelectionEnd: selection.End,
-			Pane: state.paneOwner[doc], ReadOnly: state.isReadOnly(doc), Pinned: state.isPinned(doc), TabColor: state.tabColors[doc],
-		})
 		if result.Active == -1 || doc == state.space.Current() {
 			result.Active = len(result.Tabs) - 1
 		}

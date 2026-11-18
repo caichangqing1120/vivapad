@@ -9,6 +9,7 @@ import (
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
+	"vivapad/internal/recovery"
 )
 
 // liveDocumentCompositionInput establishes the tentative capability explicitly
@@ -26,6 +27,59 @@ func liveDocumentCompositionInput(t *testing.T, state *model, pane int) *app.Tex
 		t.Fatalf("resolved input did not route the tentative capability: %+v", input.State)
 	}
 	return input
+}
+
+func TestRecoveryExcludesTentativeComposition(t *testing.T) {
+	for _, scenario := range []struct {
+		name string
+		edit string
+	}{{name: "clean"}, {name: "dirty", edit: " edit"}} {
+		t.Run(scenario.name, func(t *testing.T) {
+			root := t.TempDir()
+			path, sessionPath := filepath.Join(root, "source.txt"), filepath.Join(root, "state", "session.json")
+			const original = "one\r\ntwo\nthree\rfour"
+			if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			state := newStartupModel([]string{path}, sessionPath)
+			doc := state.space.Current()
+			doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+			doc.Editor.Insert(scenario.edit)
+			doc.Editor.SetSelection(text.Range{Start: 8, End: 4})
+			before := state.currentRecovery()
+			input := liveDocumentCompositionInput(t, state, 0)
+			sendComposition(t, input, text.CompositionUpdate, "p\nq\n")
+			if state.provisional.doc != doc {
+				t.Fatal("fixture did not establish a live preedit")
+			}
+			state.snapshotRecovery()
+			if err := state.recoveryWriter.Wait(); err != nil {
+				t.Fatal(err)
+			}
+			stored, err := recovery.Load(state.recoveryPath)
+			if err != nil || !recoveryEqual(before, stored) {
+				t.Fatalf("recovery changed during preedit: got %+v, want %+v, error %v", stored, before, err)
+			}
+			if scenario.edit != "" {
+				restored := newStartupModel(nil, sessionPath).space.Current()
+				if restored.Editor.String() != "one\ntwo\nthree\nfour edit" || restored.EOLSequence() != "WLM" {
+					t.Fatalf("recovered text %q, separators %q", restored.Editor.String(), restored.EOLSequence())
+				}
+			}
+			sendComposition(t, input, text.CompositionResult, "confirmed")
+			state.snapshotRecovery()
+			if err := state.recoveryWriter.Wait(); err != nil {
+				t.Fatal(err)
+			}
+			stored, err = recovery.Load(state.recoveryPath)
+			if err != nil || len(stored.Tabs) != 1 || stored.Tabs[0].Content != "one\nconfirmedthree\nfour"+scenario.edit {
+				t.Fatalf("recovery did not follow the confirmed result: %+v, %v", stored, err)
+			}
+			if disk, err := os.ReadFile(path); err != nil || string(disk) != original {
+				t.Fatalf("recovery touched the original file: %q, %v", disk, err)
+			}
+		})
+	}
 }
 
 // TestProvisionalCompositionFreezesEditTrackedIndicators proves that a paint
