@@ -19,6 +19,7 @@ type OpenChange struct {
 	ending      document.LineEnding
 	eolSequence string
 	source      *document.Document
+	editor      *text.Editor
 	targets     []document.ReplacementEdit
 }
 
@@ -66,7 +67,7 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 		plan.Changes = append(plan.Changes, OpenChange{
 			Doc: doc, Name: doc.Name, Count: count, Edits: append([]document.ReplacementEdit(nil), edits...),
 			before: before, encoding: doc.Encoding(), ending: doc.LineEnding(), eolSequence: doc.EOLSequence(),
-			source: doc, targets: edits,
+			source: doc, editor: doc.Editor, targets: edits,
 		})
 		plan.Replacements += count
 	}
@@ -98,7 +99,7 @@ func (plan *OpenReplacePlan) Apply(open []*document.Document) error {
 			return fmt.Errorf("replacement plan metadata changed; no documents were changed")
 		}
 		seen[change.Doc] = true
-		if !current[change.Doc] || change.Doc.Editor.String() != change.before ||
+		if !current[change.Doc] || change.Doc.Editor != change.editor || change.Doc.Editor.String() != change.before ||
 			change.Doc.Encoding() != change.encoding || change.Doc.LineEnding() != change.ending || change.Doc.EOLSequence() != change.eolSequence {
 			return fmt.Errorf("%s changed after replacement preview; no documents were changed", change.Name)
 		}

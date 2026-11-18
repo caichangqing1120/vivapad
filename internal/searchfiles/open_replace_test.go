@@ -201,6 +201,45 @@ func TestOpenBufferApplyPreflightsEverySource(t *testing.T) {
 	}
 }
 
+func TestOpenBufferReplaceRejectsReplacedEditorWithEqualText(t *testing.T) {
+	root := t.TempDir()
+	open := func(name string) *document.Document {
+		t.Helper()
+		path := filepath.Join(root, name)
+		if err := os.WriteFile(path, []byte("cat"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		doc, err := document.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doc
+	}
+	first, second := open("first.txt"), open("second.txt")
+	docs := []*document.Document{first, second}
+	plan, err := PreviewOpenReplace(docs, "cat", "dog", document.SearchOptions{})
+	if err != nil || plan.Replacements != 2 {
+		t.Fatalf("preview = %+v, %v", plan, err)
+	}
+	original := second.Editor
+	second.Editor = open("substitute.txt").Editor
+	if err := plan.Apply(docs); err == nil || !strings.Contains(err.Error(), "changed") {
+		t.Fatalf("plan did not reject the replaced editor: %v", err)
+	}
+	if first.Editor.String() != "cat" || second.Editor.String() != "cat" || original.String() != "cat" || first.Dirty() || second.Dirty() {
+		t.Fatal("refused plan changed a buffer or its saved state")
+	}
+	second.Editor = original
+	if err := plan.Apply(docs); err != nil || first.Editor.String() != "dog" || second.Editor.String() != "dog" {
+		t.Fatalf("plan could not be retried on the original editors: %v", err)
+	}
+	for _, doc := range docs {
+		if disk, err := os.ReadFile(doc.Path); err != nil || string(disk) != "cat" {
+			t.Fatalf("%s disk = %q, %v", doc.Name, disk, err)
+		}
+	}
+}
+
 func TestOpenBufferReplaceRejectsStaleMixedEOLConversion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mixed.txt")
 	if err := os.WriteFile(path, []byte("cat\r\ncat\n"), 0600); err != nil {
