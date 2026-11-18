@@ -64,7 +64,7 @@ func PreviewReplace(ctx context.Context, root, query, replacement string, search
 			continue
 		}
 		if err := doc.ValidateEncoding(); err != nil {
-			return nil, fmt.Errorf("%s cannot be replaced: %w", match.Path, err)
+			return nil, fmt.Errorf("%w (%s cannot be replaced)", err, match.Path)
 		}
 		plan.Changes = append(plan.Changes, FileChange{Path: match.Path, Count: count, Preview: match.Preview, Encoding: match.Encoding, digest: match.DiskDigest, doc: doc})
 		plan.Replacements += count
