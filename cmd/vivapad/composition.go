@@ -238,23 +238,39 @@ func (state *model) cancelLegacyPreeditAcrossPanes(target gfx.ID) {
 		return
 	}
 	for doc := range state.legacyRecovery {
-		if doc.Editor != owner.editor || state.provisional.doc == doc {
-			continue
+		if doc.Editor == owner.editor {
+			state.cancelLegacyDocumentPreedit(doc)
+			return
 		}
-		if mark, composing := owner.editor.Composition(); composing {
-			before := owner.editor.String()
-			canceled := false
-			state.editWithBookmarkAnchor(doc, func() { canceled = owner.editor.CancelComposition() })
-			if canceled {
-				state.relocateSelectAnchors(doc, before, owner.editor.String(), mark.Start)
-				if selection := &state.rectangles[from]; selection.doc == doc {
-					selection.composing = false
-				}
-			}
-		}
-		delete(state.legacyRecovery, doc)
+	}
+}
+
+func (state *model) cancelLegacyDocumentPreedit(doc *document.Document) {
+	if doc == nil || doc.Editor == nil || state.provisional.doc == doc {
 		return
 	}
+	if mark, composing := doc.Editor.Composition(); composing {
+		before := doc.Editor.String()
+		canceled := false
+		state.editWithBookmarkAnchor(doc, func() { canceled = doc.Editor.CancelComposition() })
+		if !canceled {
+			return
+		}
+		state.relocateSelectAnchors(doc, before, doc.Editor.String(), mark.Start)
+		for index := range state.rectangles {
+			if selection := &state.rectangles[index]; selection.doc == doc {
+				selection.composing = false
+			}
+		}
+	}
+	delete(state.legacyRecovery, doc)
+}
+
+// A native file command can run after menu focus has detached the editor's
+// input provider. Settle the document directly before interacting with disk.
+func (state *model) cancelFileCommandComposition(doc *document.Document) {
+	state.cancelDocumentComposition(doc)
+	state.cancelLegacyDocumentPreedit(doc)
 }
 
 func (state *model) cancelCompositionOwner() {

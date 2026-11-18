@@ -12,6 +12,78 @@ import (
 	"vivapad/internal/document"
 )
 
+func TestFileCommandsDoNotPersistLegacyPreedit(t *testing.T) {
+	for _, command := range []string{"Save", "Save As...", "Save a Copy As...", "Cancel Save As", "Cancel Open"} {
+		t.Run(command, func(t *testing.T) {
+			root := t.TempDir()
+			source, target := filepath.Join(root, "source.txt"), filepath.Join(root, "target.txt")
+			const original = "one\r\ntwo\nthree"
+			if err := os.WriteFile(source, []byte(original), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			state := newStartupModel([]string{source}, "")
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer driver.Close()
+			clickID(t, driver, editorID)
+			doc := state.space.Current()
+			doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+			doc.Editor.Insert("!")
+			doc.Editor.SetSelection(text.Range{Start: 8, End: 4})
+			input := documentCompositionInput(t, state, 0)
+			if next, err := input.OnEvent(app.TextEvent{Kind: app.TextSetMarked, Text: "p\nq"}); err != nil || !next.Composing {
+				t.Fatalf("marked input = %+v, %v", next, err)
+			}
+			// File menu focus can remove the editor provider before the command runs.
+			state.reconcileTextOwner(gfx.ID{}, nil)
+			switch command {
+			case "Save":
+				state.save(state.space.Active, false)
+			case "Save As...", "Save a Copy As...":
+				if err := driver.QueueSaveFile(target, nil); err != nil {
+					t.Fatal(err)
+				}
+				if command == "Save As..." {
+					state.save(state.space.Active, true)
+				} else {
+					state.saveCopy(state.space.Active)
+				}
+			case "Cancel Save As":
+				if err := driver.QueueSaveFile("", app.ErrCanceled); err != nil {
+					t.Fatal(err)
+				}
+				state.save(state.space.Active, true)
+			case "Cancel Open":
+				if err := driver.QueueOpenFiles(nil, app.ErrCanceled); err != nil {
+					t.Fatal(err)
+				}
+				state.openFiles()
+			}
+			if command == "Save" {
+				if data, err := os.ReadFile(source); err != nil || string(data) != original+"!" {
+					t.Fatalf("Save bytes = %q, %v", data, err)
+				}
+			} else if data, err := os.ReadFile(source); err != nil || string(data) != original {
+				t.Fatalf("source bytes changed = %q, %v", data, err)
+			}
+			if command == "Save As..." || command == "Save a Copy As..." {
+				if data, err := os.ReadFile(target); err != nil || string(data) != original+"!" {
+					t.Fatalf("target bytes = %q, %v", data, err)
+				}
+			}
+			if doc.Editor.String() != "one\ntwo\nthree!" || doc.Editor.CompositionActive() || doc.EOLSequence() != "WL" ||
+				doc.Editor.Selection() != (text.Range{Start: 4, End: 8}) || doc.Editor.Caret() != 4 {
+				t.Fatalf("file command did not restore the selected text: text=%q EOL=%q selection=%v caret=%d", doc.Editor.String(), doc.EOLSequence(), doc.Editor.Selection(), doc.Editor.Caret())
+			}
+			if !doc.Editor.Undo() || doc.Editor.String() != "one\ntwo\nthree" || doc.Editor.Undo() {
+				t.Fatal("file command left preedit in Undo history")
+			}
+		})
+	}
+}
+
 func TestSaveAsChooserReturnsToActiveEditor(t *testing.T) {
 	for _, size := range []struct {
 		name          string
