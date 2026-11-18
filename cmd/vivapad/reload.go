@@ -12,6 +12,7 @@ func (state *model) requestReload() {
 	doc := state.space.Current()
 	if doc.Path == "" {
 		state.notice = "Save the document before reloading from disk"
+		state.requestEditorCommandFocus()
 		return
 	}
 	if doc.Dirty() {
@@ -19,12 +20,12 @@ func (state *model) requestReload() {
 		return
 	}
 	state.reloadDocument(index, false)
+	state.requestEditorCommandFocus()
 }
 
 func (state *model) cancelReload() {
 	state.pendingReload = -1
-	state.focusViewRequested, state.focusViewArmed = true, false
-	state.invalidator.Invalidate()
+	state.requestEditorCommandFocus()
 }
 
 // reloadedNotice composes the reload notice from the replacement name and the
@@ -152,6 +153,7 @@ func (state *model) paintReloadDialog(canvas *gfx.Canvas, size gfx.Size) {
 			if item.id == reloadConfirmID {
 				state.pendingReload = -1
 				state.reloadDocument(index, true)
+				state.requestEditorCommandFocus()
 			} else {
 				state.cancelReload()
 			}
