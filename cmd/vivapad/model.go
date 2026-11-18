@@ -1673,9 +1673,7 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.replaceConfirmOpen {
-				if !state.filesApplying {
-					state.replaceConfirmOpen, state.replacePlan = false, nil
-				}
+				state.cancelReplacePreview()
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.filesDialogOpen {

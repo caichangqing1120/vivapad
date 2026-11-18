@@ -128,6 +128,14 @@ func (state *model) startReplaceApply() {
 	}()
 }
 
+func (state *model) cancelReplacePreview() {
+	if state.filesApplying {
+		return
+	}
+	state.replaceConfirmOpen, state.replacePlan = false, nil
+	state.requestEditorCommandFocus()
+}
+
 func (state *model) sendFileReply(reply fileSearchResponse) {
 	for {
 		select {
@@ -166,6 +174,7 @@ func (state *model) consumeFileSearch() {
 				if reloadErr != nil {
 					state.notice += "; tab reload failed: " + reloadErr.Error()
 				}
+				state.requestEditorCommandFocus()
 				continue
 			}
 			if !state.filesSearching {

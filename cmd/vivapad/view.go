@@ -958,7 +958,7 @@ func (state *model) paintReplaceConfirm(canvas *gfx.Canvas, size gfx.Size) {
 			state.startReplaceApply()
 		}
 		if button(replaceCancelID, "Cancel", gfx.Rect{X: x + width - 98, Y: y + height - 43, Width: 80, Height: 29}) {
-			state.replaceConfirmOpen, state.replacePlan = false, nil
+			state.cancelReplacePreview()
 		}
 	}
 	canvas.PopLayer()

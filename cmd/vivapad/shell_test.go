@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -2110,6 +2111,7 @@ func TestReplaceInFilesPreviewThenConfirmRefreshesOpenTab(t *testing.T) {
 	if data, _ := os.ReadFile(path); string(data) != "dog dog" || state.space.Current().Editor.String() != "dog dog" || state.replaceConfirmOpen {
 		t.Fatalf("confirmed replacement = disk:%q editor:%q modal:%v", data, state.space.Current().Editor.String(), state.replaceConfirmOpen)
 	}
+	requireEditorCommandFocus(t, driver, editorID)
 }
 
 func TestReplaceInFilesLegacyChoiceRefreshesMatchingOpenTab(t *testing.T) {
@@ -2251,6 +2253,54 @@ func TestReplaceInFilesCancelLeavesDiskUntouched(t *testing.T) {
 	if data, _ := os.ReadFile(path); string(data) != "needle" || state.replaceConfirmOpen {
 		t.Fatalf("canceled replacement = %q, modal:%v", data, state.replaceConfirmOpen)
 	}
+	requireEditorCommandFocus(t, driver, editorID)
+}
+
+func TestReplaceInFilesEscapeReturnsFocusToActiveRightEditor(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "right.txt")
+	if err := os.WriteFile(path, []byte("cat"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{path})
+	right := state.space.Current()
+	left := state.space.NewDocument()
+	left.Editor.Insert("unrelated")
+	state.toggleSplit()
+	state.paneDocs = [2]*document.Document{left, right}
+	state.paneOwner[left], state.paneOwner[right] = 0, 1
+	state.activePane = 1
+	state.space.Select(state.documentIndex(right))
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer driver.Close()
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := searchfiles.PreviewReplace(context.Background(), root, "cat", "dog", document.SearchOptions{}, searchfiles.Options{})
+	if err != nil || len(plan.Changes) != 1 {
+		t.Fatalf("replacement preview: %+v, %v", plan, err)
+	}
+	state.replacePlan, state.replaceConfirmOpen = plan, true
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+		t.Fatal(err)
+	}
+	if state.replaceConfirmOpen || state.replacePlan != nil || state.space.Current() != right {
+		t.Fatal("Escape did not dismiss the preview and keep the active tab")
+	}
+	requireEditorCommandFocus(t, driver, rightEditorID)
+	if err := driver.Type("x"); err != nil || !strings.Contains(right.Editor.String(), "x") || left.Editor.String() != "unrelated" {
+		t.Fatalf("first input after Escape: left=%q right=%q error=%v", left.Editor.String(), right.Editor.String(), err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "cat" {
+		t.Fatalf("Escape modified disk: %q, %v", data, err)
+	}
 }
 
 func TestReplaceInFilesRefusesDirtyOpenTab(t *testing.T) {
@@ -2344,6 +2394,7 @@ func TestReplaceInFilesRefusesStalePreview(t *testing.T) {
 	if data, _ := os.ReadFile(path); string(data) != "external cat" || !strings.Contains(state.notice, "changed after preview") {
 		t.Fatalf("stale preview = disk:%q notice:%q", data, state.notice)
 	}
+	requireEditorCommandFocus(t, driver, editorID)
 	for _, label := range driver.Snapshot().Texts {
 		if strings.Contains(label.Value, "changed after preview; no files written") {
 			return
