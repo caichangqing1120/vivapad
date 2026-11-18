@@ -237,10 +237,10 @@ func (state *model) cancelFileSearch() {
 	state.filesSearching = false
 }
 
-func (state *model) navigateFileResult(previous bool) {
+func (state *model) navigateFileResult(previous bool) bool {
 	if !state.resultsOpen || len(state.fileResults.Matches) == 0 {
 		state.notice = "No search results"
-		return
+		return false
 	}
 	index := state.resultSelected + 1
 	if previous {
@@ -254,7 +254,7 @@ func (state *model) navigateFileResult(previous bool) {
 	} else if index >= len(state.fileResults.Matches) {
 		index = 0
 	}
-	state.openFileResult(index)
+	return state.openFileResult(index)
 }
 
 func (state *model) selectFileResult(index int) {

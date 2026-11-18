@@ -108,6 +108,41 @@ func TestF4AcrossSplitKeepsTheFirstEditInTheResultPane(t *testing.T) {
 	}
 }
 
+func TestSearchResultMenuFocusesTheMatchedEditor(t *testing.T) {
+	for _, command := range []string{"Next Search Result", "Previous Search Result"} {
+		t.Run(command, func(t *testing.T) {
+			state, driver := startDriver(t)
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			left := state.space.Current()
+			left.Editor.Insert("left")
+			right := state.space.NewDocument()
+			right.Editor.Insert("cat")
+			state.toggleSplit()
+			state.paneDocs = [2]*document.Document{left, right}
+			state.paneOwner[left], state.paneOwner[right] = 0, 1
+			state.activatePane(0)
+			state.query.Insert("cat")
+			state.findAllOpenDocuments()
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, editorID)
+			clickID(t, driver, menuScope.At(2))
+			revealSearchMenuItem(t, driver, searchCommandIndex(t, command))
+			clickID(t, driver, searchCommandID(t, command))
+			if state.activePane != 1 || state.space.Current() != right || right.Editor.Selection() != (text.Range{Start: 0, End: 3}) {
+				t.Fatal("menu did not select the match in the right pane")
+			}
+			if err := driver.Type("x"); err != nil || left.Editor.String() != "left" || right.Editor.String() != "x" {
+				t.Fatalf("first edit after menu navigation: left=%q right=%q, %v", left.Editor.String(), right.Editor.String(), err)
+			}
+		})
+	}
+}
+
 func TestStaleResultNavigationLeavesSelectionAndIndexUntouched(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()

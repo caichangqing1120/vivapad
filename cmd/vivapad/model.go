@@ -2600,6 +2600,7 @@ func (state *model) goToLine() {
 
 func (state *model) command(command string) {
 	doc := state.space.Current()
+	fromSearchMenu := state.menuOpen == 2
 	// Clear refuses a live composition without mutating anything, so its preflight
 	// must run before the generic composition cancel below.
 	historyNotice := false
@@ -3331,10 +3332,11 @@ func (state *model) command(command string) {
 		state.selectedFind(false, true)
 	case "Find (Volatile) Previous":
 		state.selectedFind(true, true)
-	case "Next Search Result":
-		state.navigateFileResult(false)
-	case "Previous Search Result":
-		state.navigateFileResult(true)
+	case "Next Search Result", "Previous Search Result":
+		if state.navigateFileResult(command == "Previous Search Result") && fromSearchMenu {
+			state.resultFocusMode = false
+			state.requestNativeChooserFocus()
+		}
 	case "Search Results Window":
 		if !state.resultsOpen || len(state.fileResults.Matches) == 0 {
 			state.notice = "No search results"
