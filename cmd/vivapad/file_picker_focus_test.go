@@ -133,6 +133,15 @@ func TestWorkspaceAndSessionChoosersRestoreEditorFocus(t *testing.T) {
 }
 
 func TestSaveAsChooserReturnsToActiveEditor(t *testing.T) {
+	testSaveChooserReturnsToActiveEditor(t, "Save As", 3, false)
+}
+
+func TestSaveCopyChooserReturnsToActiveEditor(t *testing.T) {
+	testSaveChooserReturnsToActiveEditor(t, "Save a Copy As", 4, true)
+}
+
+func testSaveChooserReturnsToActiveEditor(t *testing.T, title string, menuIndex int, copyOnly bool) {
+	t.Helper()
 	for _, size := range []struct {
 		name          string
 		width, height int
@@ -196,18 +205,18 @@ func TestSaveAsChooserReturnsToActiveEditor(t *testing.T) {
 						t.Fatal(err)
 					}
 					clickID(t, driver, menuScope.At(0))
-					revealFileMenuItem(t, driver, 3)
-					clickID(t, driver, menuItemScope.At(3))
-					if request, ok := driver.LastSaveFileRequest(); !ok || request.Title != "Save As" || request.SuggestedName != suggestedName || request.DefaultExtension != "txt" {
-						t.Fatalf("Save As picker request = %+v, present=%v", request, ok)
+					revealFileMenuItem(t, driver, menuIndex)
+					clickID(t, driver, menuItemScope.At(menuIndex))
+					if request, ok := driver.LastSaveFileRequest(); !ok || request.Title != title || request.SuggestedName != suggestedName || request.DefaultExtension != "txt" {
+						t.Fatalf("%s picker request = %+v, present=%v", title, request, ok)
 					}
 					requireEditorCommandFocus(t, driver, focus)
 					if state.activePane != expectedPane || state.space.Current() != doc || doc.Editor.String() != "basex" || doc.Editor.Selection() != selection || doc.Editor.Caret() != caret {
 						t.Fatal("Save As changed the active pane, text, selection or caret")
 					}
-					if result == "cancel" {
+					if result == "cancel" || copyOnly {
 						if doc.Path != oldPath || !doc.Dirty() {
-							t.Fatal("Cancel changed source path or dirty state")
+							t.Fatal("chooser changed source path or dirty state")
 						}
 					} else {
 						canonical, err := filepath.EvalSymlinks(target)
@@ -220,8 +229,10 @@ func TestSaveAsChooserReturnsToActiveEditor(t *testing.T) {
 					}
 					if result == "save" {
 						if disk, err := os.ReadFile(target); err != nil || string(disk) != "basex" {
-							t.Fatalf("Save As target bytes = %q, %v", disk, err)
+							t.Fatalf("%s target bytes = %q, %v", title, disk, err)
 						}
+					} else if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("canceled chooser created a target: %v", err)
 					}
 					if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || doc.Editor.String() != "base" {
 						t.Fatalf("first Undo after chooser = %q, handled=%v, err=%v", doc.Editor.String(), handled, err)
@@ -430,6 +441,15 @@ func TestCanceledSaveAsFromDirtyCloseDoesNotStealDialogFocus(t *testing.T) {
 }
 
 func TestOpenChooserReturnsToActiveEditor(t *testing.T) {
+	testOpenChooserReturnsToActiveEditor(t, "Open", 1, "new\r\nfile\n", "new\nfile\n", document.UTF8)
+}
+
+func TestOpenWithEncodingChooserReturnsToActiveEditor(t *testing.T) {
+	testOpenChooserReturnsToActiveEditor(t, "Open as Windows-1252", 8, "caf\xe9\r\n", "caf\u00e9\n", document.Windows1252)
+}
+
+func testOpenChooserReturnsToActiveEditor(t *testing.T, title string, menuIndex int, targetBytes, targetText string, encoding document.Encoding) {
+	t.Helper()
 	for _, size := range []struct {
 		name          string
 		width, height int
@@ -452,7 +472,7 @@ func TestOpenChooserReturnsToActiveEditor(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-					if err := os.WriteFile(openedPath, []byte("new\r\nfile\n"), 0600); err != nil {
+					if err := os.WriteFile(openedPath, []byte(targetBytes), 0600); err != nil {
 						t.Fatal(err)
 					}
 					sessionPath := filepath.Join(root, "session.json")
@@ -494,10 +514,10 @@ func TestOpenChooserReturnsToActiveEditor(t *testing.T) {
 						t.Fatal(err)
 					}
 					clickID(t, driver, menuScope.At(0))
-					revealFileMenuItem(t, driver, 1)
-					clickID(t, driver, menuItemScope.At(1))
-					if request, ok := driver.LastOpenFilesRequest(); !ok || request.Title != "Open" || !request.AllowMultiple {
-						t.Fatalf("Open picker request = %+v, present=%v", request, ok)
+					revealFileMenuItem(t, driver, menuIndex)
+					clickID(t, driver, menuItemScope.At(menuIndex))
+					if request, ok := driver.LastOpenFilesRequest(); !ok || request.Title != title || !request.AllowMultiple {
+						t.Fatalf("%s picker request = %+v, present=%v", title, request, ok)
 					}
 					requireEditorCommandFocus(t, driver, focus)
 					if state.activePane != expectedPane || original.Editor.String() != "basex" || original.Editor.Selection() != selection || original.Editor.Caret() != caret || !original.Dirty() {
@@ -513,21 +533,21 @@ func TestOpenChooserReturnsToActiveEditor(t *testing.T) {
 					} else {
 						opened := state.space.Current()
 						canonical, err := filepath.EvalSymlinks(openedPath)
-						if err != nil || opened == original || opened.Path != canonical || opened.Editor.String() != "new\nfile\n" || state.paneDocs[state.activePane] != opened {
+						if err != nil || opened == original || opened.Path != canonical || opened.Editor.String() != targetText || opened.Encoding() != encoding || state.paneDocs[state.activePane] != opened {
 							t.Fatalf("Open result = %q, pane=%d, path=%q", opened.Editor.String(), state.activePane, opened.Path)
 						}
 						opened.Editor.MoveTo(opened.Editor.RuneCount(), false)
-						if err := driver.Type("x"); err != nil || opened.Editor.String() != "new\nfile\nx" {
+						if err := driver.Type("x"); err != nil || opened.Editor.String() != targetText+"x" {
 							t.Fatalf("first typing after Open = %q, %v", opened.Editor.String(), err)
 						}
-						if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || opened.Editor.String() != "new\nfile\n" {
+						if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || opened.Editor.String() != targetText {
 							t.Fatalf("first Undo after Open = %q, handled=%v, err=%v", opened.Editor.String(), handled, err)
 						}
 					}
 					if disk, err := os.ReadFile(original.Path); err != nil || string(disk) != "base" {
 						t.Fatalf("Open changed original disk bytes: %q, %v", disk, err)
 					}
-					if disk, err := os.ReadFile(openedPath); err != nil || string(disk) != "new\r\nfile\n" {
+					if disk, err := os.ReadFile(openedPath); err != nil || string(disk) != targetBytes {
 						t.Fatalf("Open changed target disk bytes: %q, %v", disk, err)
 					}
 					if pane.right && (left.Editor.String() != "base" || left.Dirty() || state.paneDocs[0] != left) {

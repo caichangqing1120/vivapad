@@ -2187,6 +2187,7 @@ func (state *model) openFiles() {
 
 func (state *model) openFilesWithEncoding(encoding document.Encoding) {
 	state.cancelFileCommandComposition(state.space.Current())
+	defer state.requestNativeChooserFocus()
 	spec, _ := encoding.LegacySpec()
 	title := "Open as " + spec.Label
 	paths, err := app.OpenFiles(app.OpenFileOptions{Title: title, AllowMultiple: true})
@@ -2248,6 +2249,7 @@ func (state *model) save(index int, saveAs bool) bool {
 func (state *model) saveCopy(index int) bool {
 	doc := state.space.Documents[index]
 	state.cancelFileCommandComposition(doc)
+	defer state.requestNativeChooserFocus()
 	path, err := app.SaveFile(app.SaveFileOptions{Title: "Save a Copy As", SuggestedName: doc.Name, DefaultExtension: "txt"})
 	if err != nil {
 		if !errors.Is(err, app.ErrCanceled) {
