@@ -65,7 +65,7 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 			continue
 		}
 		if err := candidate.ValidateEncoding(); err != nil {
-			return nil, fmt.Errorf("%s cannot be saved after replacement: %w", doc.Name, err)
+			return nil, fmt.Errorf("%w (%s cannot be saved after replacement)", err, doc.Name)
 		}
 		plan.Changes = append(plan.Changes, OpenChange{
 			Doc: doc, Name: doc.Name, Count: count, Edits: append([]document.ReplacementEdit(nil), edits...),

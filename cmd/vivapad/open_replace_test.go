@@ -225,3 +225,29 @@ func TestReplaceAllOpenDocumentsInvalidatesOldFindResults(t *testing.T) {
 		t.Fatalf("replace left stale results: open=%v sources=%d text=%q", state.resultsOpen, len(state.resultDocuments), state.space.Current().Editor.String())
 	}
 }
+
+func TestCompactOpenReplacementShowsMixedEOLRefusalReason(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mixed-line-endings-document.txt")
+	if err := os.WriteFile(path, []byte("first\rmiddle\nlast"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{path})
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer driver.Close()
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	state.query.Insert("middle")
+	clickID(t, driver, menuScope.At(2))
+	revealSearchMenuItem(t, driver, searchCommandIndex(t, "Replace All in Open Documents"))
+	clickID(t, driver, searchCommandID(t, "Replace All in Open Documents"))
+	for _, label := range driver.Snapshot().Texts {
+		if strings.Contains(label.Value, "adjacent CR and LF would merge") {
+			return
+		}
+	}
+	t.Fatalf("compact status hid the preflight reason: %q", state.notice)
+}
