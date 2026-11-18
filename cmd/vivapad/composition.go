@@ -67,6 +67,29 @@ func (state *model) documentTextInput(pane int) *app.TextInput {
 	if input == nil {
 		return nil
 	}
+	if handle := input.OnEvent; handle != nil {
+		input.OnEvent = func(event app.TextEvent) (app.TextState, error) {
+			if event.Kind != app.TextSetMarked || event.CompositionPhase != text.CompositionNone {
+				return handle(event)
+			}
+			if _, composing := doc.Editor.Composition(); composing {
+				return handle(event)
+			}
+			var tab *recovery.Tab
+			if doc.Dirty() {
+				before := state.recoveryTab(doc)
+				tab = &before
+			}
+			next, err := handle(event)
+			if _, composing := doc.Editor.Composition(); composing {
+				if state.legacyRecovery == nil {
+					state.legacyRecovery = make(map[*document.Document]*recovery.Tab)
+				}
+				state.legacyRecovery[doc] = tab
+			}
+			return next, err
+		}
+	}
 	if !enabled {
 		input.State = app.TextStateOf(doc.Editor)
 	}
@@ -289,6 +312,7 @@ func (state *model) cancelEditorComposition(editor *text.Editor) bool {
 }
 
 func (state *model) releaseDocumentComposition(doc *document.Document) {
+	delete(state.legacyRecovery, doc)
 	if doc == nil || doc.Editor == nil {
 		return
 	}

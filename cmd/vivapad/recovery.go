@@ -139,23 +139,38 @@ func (state *model) currentRecovery() recovery.State {
 		result.Split, result.ActivePane, result.Divider = true, state.activePane, state.splitRatio
 	}
 	for _, doc := range state.space.Documents {
-		if state.provisional.doc == doc {
-			// The visible text and its selection/EOL labels change together during preedit.
-			if state.provisional.recoveryTab == nil {
-				continue
+		if tab, ok := state.recoverySnapshot(doc); ok {
+			result.Tabs = append(result.Tabs, tab)
+			if result.Active == -1 || doc == state.space.Current() {
+				result.Active = len(result.Tabs) - 1
 			}
-			result.Tabs = append(result.Tabs, *state.provisional.recoveryTab)
-		} else {
-			if !doc.Dirty() {
-				continue
-			}
-			result.Tabs = append(result.Tabs, state.recoveryTab(doc))
-		}
-		if result.Active == -1 || doc == state.space.Current() {
-			result.Active = len(result.Tabs) - 1
 		}
 	}
 	return result
+}
+
+func (state *model) recoverySnapshot(doc *document.Document) (recovery.Tab, bool) {
+	// Text, selection and EOL labels must all come from the same side of preedit.
+	if state.provisional.doc == doc {
+		if tab := state.provisional.recoveryTab; tab != nil {
+			return *tab, true
+		}
+		return recovery.Tab{}, false
+	}
+	if tab, tracked := state.legacyRecovery[doc]; tracked {
+		if _, composing := doc.Editor.Composition(); composing {
+			if tab != nil {
+				return *tab, true
+			}
+			return recovery.Tab{}, false
+		}
+		// Editor commands can settle a legacy mark outside the native event handler.
+		delete(state.legacyRecovery, doc)
+	}
+	if !doc.Dirty() {
+		return recovery.Tab{}, false
+	}
+	return state.recoveryTab(doc), true
 }
 
 func recoveryEqual(first, second recovery.State) bool {

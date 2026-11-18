@@ -82,6 +82,100 @@ func TestRecoveryExcludesTentativeComposition(t *testing.T) {
 	}
 }
 
+func TestRecoveryExcludesLegacyMarkedText(t *testing.T) {
+	for _, name := range []string{"clean/insert", "dirty/unmark", "dirty/empty-update-then-cancel", "dirty/reload"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			path, sessionPath := filepath.Join(root, "source.txt"), filepath.Join(root, "state", "session.json")
+			const original = "one\r\ntwo\nthree\rfour"
+			if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			state := newStartupModel([]string{path}, sessionPath)
+			doc := state.space.Current()
+			dirty := name != "clean/insert"
+			if dirty {
+				doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+				doc.Editor.Insert(" edit")
+			}
+			doc.Editor.SetSelection(text.Range{Start: 8, End: 4})
+			before := state.currentRecovery()
+			input := documentCompositionInput(t, state, 0)
+			send := func(event app.TextEvent) app.TextState {
+				t.Helper()
+				next, err := input.OnEvent(event)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return next
+			}
+			backup := func() recovery.State {
+				t.Helper()
+				state.snapshotRecovery()
+				if err := state.recoveryWriter.Wait(); err != nil {
+					t.Fatal(err)
+				}
+				stored, err := recovery.Load(state.recoveryPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return stored
+			}
+			wantFinal := before
+			for _, value := range []string{"p\nq\n", "pin"} {
+				if next := send(app.TextEvent{Kind: app.TextSetMarked, Text: value}); !next.Composing {
+					t.Fatal("fixture did not establish legacy marked text")
+				}
+				if got := backup(); !recoveryEqual(got, before) {
+					t.Fatalf("legacy preedit %q leaked into recovery: got %+v, want %+v", value, got, before)
+				}
+			}
+			if dirty {
+				restored := newStartupModel(nil, sessionPath).space.Current()
+				if restored.Editor.String() != "one\ntwo\nthree\nfour edit" || restored.EOLSequence() != "WLM" ||
+					restored.Editor.Selection() != (text.Range{Start: 4, End: 8}) {
+					t.Fatalf("restored text %q, separators %q, selection %v", restored.Editor.String(), restored.EOLSequence(), restored.Editor.Selection())
+				}
+			}
+			switch name {
+			case "clean/insert":
+				send(app.TextEvent{Kind: app.TextInsert, Text: "confirmed"})
+				wantFinal = recovery.State{Active: 0, Tabs: []recovery.Tab{state.recoveryTab(doc)}}
+				if wantFinal.Tabs[0].Content != "one\nconfirmedthree\nfour" {
+					t.Fatalf("legacy insert = %q", wantFinal.Tabs[0].Content)
+				}
+			case "dirty/unmark":
+				send(app.TextEvent{Kind: app.TextUnmark})
+				wantFinal = recovery.State{Active: 0, Tabs: []recovery.Tab{state.recoveryTab(doc)}}
+				if wantFinal.Tabs[0].Content != "one\npinthree\nfour edit" {
+					t.Fatalf("legacy unmark = %q", wantFinal.Tabs[0].Content)
+				}
+			case "dirty/empty-update-then-cancel":
+				if next := send(app.TextEvent{Kind: app.TextSetMarked}); !next.Composing {
+					t.Fatal("an empty legacy update did not retain the mark")
+				}
+				if got := backup(); !recoveryEqual(got, before) {
+					t.Fatalf("empty legacy update changed recovery: got %+v, want %+v", got, before)
+				}
+				send(app.TextEvent{Kind: app.TextCancelComposition})
+			case "dirty/reload":
+				current := state.reloadDocument(0, true)
+				if current == nil || current == doc || current.Dirty() {
+					t.Fatal("reload did not replace the marked editor with the clean disk document")
+				}
+				current.Editor.Insert("new edit ")
+				wantFinal = recovery.State{Active: 0, Tabs: []recovery.Tab{state.recoveryTab(current)}}
+			}
+			if got := backup(); !recoveryEqual(got, wantFinal) {
+				t.Fatalf("recovery did not follow the settled input: got %+v, want %+v", got, wantFinal)
+			}
+			if disk, err := os.ReadFile(path); err != nil || string(disk) != original {
+				t.Fatalf("recovery touched the original file: %q, %v", disk, err)
+			}
+		})
+	}
+}
+
 // TestProvisionalCompositionFreezesEditTrackedIndicators proves that a paint
 // during a live tentative update does not advance or drop the edit-tracked
 // indicator groups (fold markers, hidden lines, Find Mark spans, user styles)

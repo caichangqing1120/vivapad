@@ -350,6 +350,7 @@ type model struct {
 	compositionOwner              compositionOwner
 	compositionGeneration         uint64
 	provisional                   provisionalComposition
+	legacyRecovery                map[*document.Document]*recovery.Tab // nil tab means clean before preedit
 	compositionFallback           map[*text.Editor]bool
 	splitRatio                    float32
 	splitDragging                 bool
