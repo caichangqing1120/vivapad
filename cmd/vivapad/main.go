@@ -27,7 +27,7 @@ func main() {
 		log.Printf("session storage unavailable: %v", err)
 	}
 	state := newStartupModel(os.Args[1:], sessionPath)
-	config := newConfig(state)
+	config := newNativeConfig(state)
 	if err := app.RunApplication(func(application *app.Application) error {
 		window, err := application.OpenWindow(config, &canvas)
 		if err != nil {
@@ -50,4 +50,9 @@ func main() {
 	}); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func newNativeConfig(state *model) app.Config {
+	state.requestX11Composition = directX11Composition
+	return newConfig(state)
 }

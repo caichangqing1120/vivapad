@@ -352,6 +352,7 @@ type model struct {
 	provisional                   provisionalComposition
 	legacyRecovery                map[*document.Document]*recovery.Tab // nil tab means clean before preedit
 	compositionFallback           map[*text.Editor]bool
+	requestX11Composition         bool
 	splitRatio                    float32
 	splitDragging                 bool
 	splitWidth                    float32

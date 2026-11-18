@@ -33,8 +33,7 @@ type provisionalComposition struct {
 }
 
 // documentTextInput resolves one of VivaPad's two document editor surfaces. It
-// opts the editor into tentative composition only on Darwin and only after the
-// capability succeeds; every other field remains legacy.
+// requests tentative composition for this document; other fields remain legacy.
 func (state *model) documentTextInput(pane int) *app.TextInput {
 	if pane < 0 || pane > 1 {
 		return nil
@@ -304,7 +303,7 @@ func (state *model) pointerCompositionAway(target gfx.ID) {
 }
 
 func (state *model) enableDocumentComposition(doc *document.Document) bool {
-	if runtime.GOOS != "darwin" || doc == nil || doc.Editor == nil {
+	if (runtime.GOOS != "darwin" && !state.requestX11Composition) || doc == nil || doc.Editor == nil {
 		return false
 	}
 	if doc.Editor.TentativeCompositionEnabled() {
