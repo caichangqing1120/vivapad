@@ -436,10 +436,6 @@ func (state *model) replaceAllOpenDocuments() {
 			state.notice = "Read-only document in replacement plan"
 			return
 		}
-		if change.Doc.Editor.CompositionActive() {
-			state.notice = "Cannot replace during composition (" + change.Name + ")"
-			return
-		}
 	}
 	for _, change := range plan.Changes {
 		state.bookmarkLines(change.Doc)

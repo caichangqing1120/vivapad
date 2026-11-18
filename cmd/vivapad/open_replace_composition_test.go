@@ -19,13 +19,19 @@ func TestOpenReplacementPreservesLiveDocumentComposition(t *testing.T) {
 		{"menu command", func(state *model) { state.command("Replace All in Open Documents") }},
 		{"find strip action", (*model).replaceAllOpenDocuments},
 	} {
-		for _, source := range []string{"cat\nanchor", "dog\nanchor"} {
-			busy := strings.HasPrefix(source, "cat")
-			name := "skipped composing tab"
-			if busy {
-				name = "affected composing tab"
-			}
-			t.Run(entry.name+"/"+name, func(t *testing.T) {
+		for _, scenario := range []struct {
+			name, source, marked string
+			caret                int
+			busy                 bool
+		}{
+			{name: "affected composing tab", source: "cat\nanchor", marked: "pending", caret: -1, busy: true},
+			{name: "skipped composing tab", source: "dog\nanchor", marked: "pending", caret: -1},
+			{name: "provisional match in mixed EOL tab", source: "dog\r\nanchor\nend", marked: "\ncat", caret: -1},
+			{name: "committed match hidden by preedit", source: "cat\nanchor", marked: "pending", caret: 1, busy: true},
+		} {
+			t.Run(entry.name+"/"+scenario.name, func(t *testing.T) {
+				source := scenario.source
+				committed := strings.ReplaceAll(source, "\r\n", "\n")
 				root := t.TempDir()
 				peerPath, activePath := filepath.Join(root, "peer.txt"), filepath.Join(root, "active.txt")
 				for path, value := range map[string]string{peerPath: "cat peer", activePath: source} {
@@ -41,18 +47,30 @@ func TestOpenReplacementPreservesLiveDocumentComposition(t *testing.T) {
 				state.setBookmarkLines(active, []int{1})
 				state.query.Insert("cat")
 				state.replacement.Insert("fox")
-				active.Editor.MoveTo(active.Editor.RuneCount(), false)
+				caret := scenario.caret
+				if caret < 0 {
+					caret = active.Editor.RuneCount()
+				}
+				active.Editor.MoveTo(caret, false)
 				input := liveDocumentCompositionInput(t, state, 1)
-				sendComposition(t, input, text.CompositionUpdate, "pending")
+				sendComposition(t, input, text.CompositionUpdate, scenario.marked)
 				assertLiveComposition(t, active)
+				if got := active.Editor.CommittedString(); got != committed {
+					t.Fatalf("fixture changed committed text: %q", got)
+				}
+				visible := committed[:caret] + scenario.marked + committed[caret:]
+				if got := active.Editor.String(); got != visible {
+					t.Fatalf("fixture did not show its preedit: got %q want %q", got, visible)
+				}
 				before, cursor := captureComposition(state, active), active.Editor.TrackLineEdits()
+				lineEndings := active.EOLSequence()
 
 				entry.run(state)
 
-				if after := captureComposition(state, active); !reflect.DeepEqual(after, before) || active.Editor.TrackLineEdits() != cursor {
+				if after := captureComposition(state, active); !reflect.DeepEqual(after, before) || active.Editor.TrackLineEdits() != cursor || active.EOLSequence() != lineEndings {
 					t.Fatalf("replacement changed the live document: before=%+v after=%+v", before, after)
 				}
-				if busy {
+				if scenario.busy {
 					if !strings.Contains(state.notice, "composition") || peer.Editor.String() != "cat peer" || peer.Editor.CanUndo() {
 						t.Fatalf("batch did not refuse atomically: peer=%q notice=%q", peer.Editor.String(), state.notice)
 					}
@@ -60,10 +78,10 @@ func TestOpenReplacementPreservesLiveDocumentComposition(t *testing.T) {
 					t.Fatalf("unaffected composing tab blocked its peer: peer=%q notice=%q", peer.Editor.String(), state.notice)
 				}
 				sendComposition(t, input, text.CompositionCancel, "")
-				if active.Editor.String() != source || active.Dirty() {
+				if active.Editor.String() != committed || active.Dirty() {
 					t.Fatalf("composition can no longer roll back: %q", active.Editor.String())
 				}
-				if busy {
+				if scenario.busy {
 					entry.run(state)
 					if active.Editor.String() != "fox\nanchor" || peer.Editor.String() != "fox peer" {
 						t.Fatal("replacement could not be retried after composition ended")

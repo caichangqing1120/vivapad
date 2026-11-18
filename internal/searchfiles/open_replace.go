@@ -47,22 +47,33 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 			return nil, fmt.Errorf("distinct open documents share one editor")
 		}
 		seen[doc], editors[doc.Editor] = true, doc
-		before := doc.Editor.String()
-		ending, sequence := doc.LineEnding(), doc.EOLSequence()
+		composing := doc.Editor.CompositionActive()
+		before := doc.Editor.CommittedString()
+		ending := doc.LineEnding()
+		var sequence string
 		// A replacement preview is a transient wrapper, not a document: it must
 		// not bind a history producer to a blank editor it then replaces.
 		candidate := document.NewDraft(doc.Name, text.NewEditor(before))
 		candidate.Editor.SetSavePoint()
 		candidate.SetEncoding(doc.Encoding())
-		if err := candidate.RestoreLineEndings(ending, sequence); err != nil {
-			return nil, fmt.Errorf("%s cannot preview replacement: %w", doc.Name, err)
+		if !composing {
+			sequence = doc.EOLSequence()
+			if err := candidate.RestoreLineEndings(ending, sequence); err != nil {
+				return nil, fmt.Errorf("%s cannot preview replacement: %w", doc.Name, err)
+			}
 		}
+		// During composition the live LF labels may describe the provisional
+		// text. A draft with uniform LF only determines whether the committed
+		// text would change; it cannot authorize edits to a composing document.
 		count, edits, err := candidate.ReplaceAllWithEdits(query, replacement, options)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", doc.Name, err)
 		}
 		if count == 0 || candidate.Editor.String() == before {
 			continue
+		}
+		if composing {
+			return nil, fmt.Errorf("cannot replace during composition (%s)", doc.Name)
 		}
 		if err := candidate.ValidateEncoding(); err != nil {
 			return nil, fmt.Errorf("%w (%s cannot be saved after replacement)", err, doc.Name)
