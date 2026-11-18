@@ -87,6 +87,38 @@ func TestFullScreenSystemTransitionAndRejectedRequest(t *testing.T) {
 	}
 }
 
+func TestFullScreenCommandsReturnFocusToTheEditor(t *testing.T) {
+	for _, exit := range []string{"Escape", "restore button"} {
+		t.Run(exit, func(t *testing.T) {
+			state, driver := startDriver(t)
+			state.requestFullscreen = driver.SetFullscreen
+			clickID(t, driver, editorID)
+			if err := driver.Type("draft"); err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			doc.Editor.MoveTo(2, false)
+			clickID(t, driver, menuScope.At(3))
+			clickID(t, driver, menuItemScope.At(27))
+			requireEditorCommandFocus(t, driver, editorID)
+			if exit == "Escape" {
+				if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				clickID(t, driver, fullscreenRestoreID)
+			}
+			requireEditorCommandFocus(t, driver, editorID)
+			if state.fullscreen {
+				t.Fatal("fullscreen remained active")
+			}
+			if err := driver.Type("!"); err != nil || doc.Editor.String() != "dr!aft" {
+				t.Fatalf("first key after fullscreen = %q, %v", doc.Editor.String(), err)
+			}
+		})
+	}
+}
+
 func TestFullScreenCompactSplitDocksKeepRestoreReachable(t *testing.T) {
 	state, driver := startDriver(t)
 	state.requestFullscreen = driver.SetFullscreen
