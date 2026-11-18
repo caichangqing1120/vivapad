@@ -13,6 +13,15 @@ import (
 
 type Encoding uint8
 
+// DecodeError identifies a file that was read but could not be decoded as text.
+type DecodeError struct {
+	Path string
+	Err  error
+}
+
+func (err *DecodeError) Error() string { return fmt.Sprintf("%s: %v", err.Path, err.Err) }
+func (err *DecodeError) Unwrap() error { return err.Err }
+
 const (
 	UTF8 Encoding = iota
 	UTF8BOM

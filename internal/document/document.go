@@ -107,7 +107,7 @@ func open(path string, selected *Encoding) (*Document, error) {
 		value, encoding, err = decodeLegacy(data, *selected)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", absolute, err)
+		return nil, &DecodeError{Path: absolute, Err: err}
 	}
 	value, newline, breaks := normalizeLineEndings(value)
 	// Build the final editor first: there is no empty editor to replace and

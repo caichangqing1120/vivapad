@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/vivaui/viva/gfx"
@@ -67,7 +68,12 @@ func (state *model) reloadDocumentWithHistory(index int, discard bool) (*documen
 		_, oldErr = state.space.Reload(index)
 	}
 	if oldErr != nil {
-		state.notice = "Reload failed: " + oldErr.Error()
+		var decodeErr *document.DecodeError
+		if errors.As(oldErr, &decodeErr) {
+			state.notice = fmt.Sprintf("Reload failed: %v (%s)", decodeErr.Err, decodeErr.Path)
+		} else {
+			state.notice = "Reload failed: " + oldErr.Error()
+		}
 		return nil, nil
 	}
 	current := state.space.Documents[index]

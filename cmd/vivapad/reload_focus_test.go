@@ -4,12 +4,53 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/vivaui/viva/app"
 	"vivapad/internal/document"
 )
+
+func TestCompactReloadShowsDecodeFailureBeforePath(t *testing.T) {
+	root := filepath.Join(t.TempDir(), strings.Repeat("legacy-directory-", 8))
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(path, []byte{0xaa, 0xa1}, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state, driver := startDriver(t)
+	if err := state.space.OpenWithEncoding(path, document.GB18030); err != nil {
+		t.Fatal(err)
+	}
+	doc := state.space.Current()
+	state.showInActivePane(doc)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte{0x81}, 0600); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(0))
+	reload := slices.Index(menuCommands[0], "Reload from Disk")
+	revealFileMenuItem(t, driver, reload)
+	clickID(t, driver, menuItemScope.At(reload))
+	if state.space.Current() != doc || doc.Editor.String() != "\ue000" || doc.Dirty() || doc.Editor.CanUndo() {
+		t.Fatal("failed reload changed the original GB18030 document")
+	}
+	if data, err := os.ReadFile(path); err != nil || !slices.Equal(data, []byte{0x81}) {
+		t.Fatalf("failed reload wrote to disk: %x, %v", data, err)
+	}
+	const cause = "Reload failed: invalid GB18030 sequence"
+	for _, label := range driver.Snapshot().Texts {
+		if strings.Contains(label.Value, cause) {
+			return
+		}
+	}
+	t.Fatalf("compact status hid the decode error: %q", state.notice)
+}
 
 func TestReloadReturnsKeyboardToActiveSource(t *testing.T) {
 	for _, size := range []struct {
