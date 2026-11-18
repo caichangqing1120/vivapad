@@ -33,6 +33,13 @@ func (state *model) clearResultFocus() {
 	state.resultFocusArmed, state.resultReturnToEditor = false, false
 }
 
+func (state *model) discardFileResults() {
+	state.fileResults = searchfiles.Result{}
+	state.resultQuery, state.resultOffset, state.resultSelected = "", 0, -1
+	state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
+	state.clearResultFocus()
+}
+
 func (state *model) browseFilesDirectory() {
 	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "Find in Files"})
 	if err != nil {
@@ -141,10 +148,8 @@ func (state *model) consumeFileSearch() {
 					continue
 				}
 				state.filesApplying, state.replaceConfirmOpen = false, false
-				state.replacePlan, state.resultsOpen = nil, false
-				state.resultSelected = -1
-				state.clearResultFocus()
-				state.resultDocument, state.resultDocuments, state.resultOpenDocuments = nil, nil, false
+				state.replacePlan = nil
+				state.discardFileResults()
 				reloadErr := state.refreshReplacedTabs(reply.applied)
 				if reply.err != nil {
 					state.notice = reply.err.Error()
@@ -175,9 +180,7 @@ func (state *model) consumeFileSearch() {
 				}
 				state.replacePlan = reply.plan
 				state.replaceConfirmOpen, state.filesDialogOpen = true, false
-				state.resultsOpen = false
-				state.clearResultFocus()
-				state.resultDocument, state.resultDocuments, state.resultOpenDocuments = nil, nil, false
+				state.discardFileResults()
 				state.notice = fmt.Sprintf("Preview: %d matches in %d files", reply.plan.Replacements, len(reply.plan.Changes))
 				continue
 			}
@@ -280,9 +283,7 @@ func (state *model) openFileResult(index int) bool {
 	if doc != nil {
 		position := state.documentIndex(doc)
 		if position < 0 {
-			state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
-			state.resultSelected = -1
-			state.clearResultFocus()
+			state.discardFileResults()
 			state.notice = "Search result document is closed"
 			return false
 		}
@@ -362,7 +363,7 @@ func (state *model) findAllCurrent() {
 	query := state.query.String()
 	result, err := searchfiles.FindDocument(doc, query, state.searchOptions, 2000)
 	if err != nil {
-		state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
+		state.discardFileResults()
 		state.notice = err.Error()
 		return
 	}
@@ -389,7 +390,7 @@ func (state *model) findAllOpenDocuments() {
 		}
 		part, err := searchfiles.FindDocument(doc, query, state.searchOptions, remaining)
 		if err != nil {
-			state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
+			state.discardFileResults()
 			state.notice = err.Error()
 			return
 		}
@@ -459,9 +460,7 @@ func (state *model) replaceAllOpenDocuments() {
 		}
 		return
 	}
-	state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
-	state.fileResults, state.resultQuery, state.resultOffset, state.resultSelected = searchfiles.Result{}, "", 0, -1
-	state.clearResultFocus()
+	state.discardFileResults()
 	state.marks = searchMarkCache{}
 	state.notice = fmt.Sprintf("Unsaved: %d matches replaced in %d open tabs", plan.Replacements, len(plan.Changes))
 	if historyErr != nil {

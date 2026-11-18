@@ -1696,8 +1696,7 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.resultsOpen {
-				state.resultsOpen = false
-				state.clearResultFocus()
+				state.discardFileResults()
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.pendingClose >= 0 {
@@ -2363,9 +2362,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	}
 	delete(state.styledMarks, doc)
 	if state.resultDocument == doc {
-		state.resultDocument, state.resultsOpen = nil, false
-		state.resultSelected = -1
-		state.clearResultFocus()
+		state.discardFileResults()
 	}
 	if state.resultOpenDocuments {
 		matches := state.fileResults.Matches[:0]
@@ -2396,9 +2393,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 		state.resultOffset = min(state.resultOffset, max(0, len(matches)-1))
 		if len(sources) < previousCount {
 			if len(sources) == 0 {
-				state.resultOpenDocuments, state.resultsOpen = false, false
-				state.resultSelected = -1
-				state.clearResultFocus()
+				state.discardFileResults()
 				state.notice = "No search results remain"
 			} else if state.fileResults.Truncated {
 				state.notice = strconv.Itoa(len(matches)) + " matches remain from a truncated search"

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 )
@@ -82,6 +83,45 @@ func TestFindAllCurrentCapsResultsAndReleasesClosedDocument(t *testing.T) {
 	clickID(t, driver, discardID)
 	if state.resultsOpen || state.resultDocument != nil {
 		t.Fatal("closed document left active search results")
+	}
+	if state.fileResults.Matches != nil || state.resultQuery != "" {
+		t.Fatal("closing the source retained its search snapshot")
+	}
+}
+
+func TestDismissFinderReleasesSearchSnapshot(t *testing.T) {
+	for _, closeWith := range []string{"close button", "Escape"} {
+		t.Run(closeWith, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			doc.Editor.Insert("cat cat")
+			state.query.Insert("cat")
+			state.findAllOpenDocuments()
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, resultScope.At(0))
+			before := doc.Editor.Selection()
+			if state.resultSelected != 0 || len(state.fileResults.Matches) != 2 || len(state.resultDocuments) != 2 {
+				t.Fatal("fixture did not select a source-backed result")
+			}
+			if closeWith == "close button" {
+				clickID(t, driver, resultsCloseID)
+			} else if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+				t.Fatal(err)
+			}
+			if state.resultsOpen || state.resultSelected != -1 || state.fileResults.Matches != nil ||
+				state.resultDocuments != nil || state.resultQuery != "" || state.resultOpenDocuments {
+				t.Fatal("dismissed Finder retained the source snapshot or navigation state")
+			}
+			if err := driver.Key(gfx.KeyF4, 0); err != nil {
+				t.Fatal(err)
+			}
+			if doc.Editor.Selection() != before || doc.Editor.String() != "cat cat" || state.space.Current() != doc {
+				t.Fatal("dismissing Finder or navigating afterward changed the editor")
+			}
+		})
 	}
 }
 
