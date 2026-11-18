@@ -26,6 +26,7 @@ func (state *model) requestRename() {
 		return
 	}
 	extension := strings.TrimPrefix(filepath.Ext(doc.Name), ".")
+	defer state.requestNativeChooserFocus()
 	path, err := app.SaveFile(app.SaveFileOptions{Title: "Rename", SuggestedName: doc.Name, DefaultExtension: extension})
 	if err != nil {
 		if !errors.Is(err, app.ErrCanceled) {
@@ -81,6 +82,9 @@ func (state *model) applyRenamePlan(plan *document.RenamePlan, replace bool) {
 	state.configureCode(doc)
 	state.notice = "Renamed to " + doc.Name
 	state.rememberRecent(doc)
+	if replace {
+		state.requestNativeChooserFocus()
+	}
 }
 
 func (state *model) applyUntitledRename() {
@@ -106,8 +110,12 @@ func (state *model) applyUntitledRename() {
 }
 
 func (state *model) cancelRename() {
+	wasConfirmingReplace := state.renamePlan != nil
 	state.renameDoc, state.renameSource, state.renameField, state.renamePlan = nil, nil, nil, nil
 	state.renameFocus = false
+	if wasConfirmingReplace {
+		state.requestNativeChooserFocus()
+	}
 }
 
 func (state *model) paintRenameDialog(canvas *gfx.Canvas, size gfx.Size) {

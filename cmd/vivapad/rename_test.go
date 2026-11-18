@@ -10,6 +10,7 @@ import (
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
+	"vivapad/internal/document"
 	"vivapad/internal/session"
 )
 
@@ -51,6 +52,100 @@ func TestRenameSavedDirtyFileMovesDiskWithoutSavingBuffer(t *testing.T) {
 		if entry.Path == oldPath {
 			t.Fatal("old path stayed in recent files")
 		}
+	}
+}
+
+func TestRenameChooserReturnsToEditor(t *testing.T) {
+	for _, trial := range []struct {
+		name            string
+		cancelPicker    bool
+		replace, accept bool
+	}{
+		{name: "picker-cancel", cancelPicker: true},
+		{name: "new-destination", accept: true},
+		{name: "replace-cancel", replace: true},
+		{name: "replace-confirm", replace: true, accept: true},
+	} {
+		t.Run(trial.name, func(t *testing.T) {
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			leftPath, source, target := filepath.Join(root, "left.txt"), filepath.Join(root, "old.txt"), filepath.Join(root, "new.txt")
+			files := map[string]string{leftPath: "left", source: "base"}
+			if trial.replace {
+				files[target] = "previous"
+			}
+			for path, value := range files {
+				if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			state := newModelWithFiles([]string{leftPath, source})
+			left, doc := state.space.Documents[0], state.space.Documents[1]
+			state.splitEnabled, state.activePane = true, 1
+			state.paneDocs = [2]*document.Document{left, doc}
+			state.paneOwner[doc] = 1
+			state.space.Select(1)
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer driver.Close()
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, rightEditorID)
+			doc.Editor.MoveTo(4, false)
+			if err := driver.Type("x"); err != nil || doc.Editor.String() != "basex" {
+				t.Fatalf("initial edit = %q, %v", doc.Editor.String(), err)
+			}
+			var response error
+			if trial.cancelPicker {
+				response = app.ErrCanceled
+			}
+			if err := driver.QueueSaveFile(target, response); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuScope.At(0))
+			revealFileMenuItem(t, driver, 14)
+			clickID(t, driver, menuItemScope.At(14))
+			if trial.replace {
+				if state.renamePlan == nil || state.focusViewRequested || driver.Snapshot().Focused == rightEditorID {
+					t.Fatal("editor focus bypassed the overwrite confirmation")
+				}
+				if trial.accept {
+					clickID(t, driver, renameConfirmID)
+				} else {
+					clickID(t, driver, renameCancelID)
+				}
+			}
+			wantPath := source
+			if trial.accept {
+				wantPath = target
+				files[target] = "base"
+				delete(files, source)
+				if _, err := os.Stat(source); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("accepted rename left source in place: %v", err)
+				}
+			} else if !trial.replace {
+				if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("canceled chooser created destination: %v", err)
+				}
+			}
+			if doc.Path != wantPath || state.activePane != 1 || state.space.Current() != doc || !doc.Dirty() || doc.Editor.String() != "basex" || doc.Editor.Caret() != 5 {
+				t.Fatal("rename changed the active editor, dirty buffer or caret")
+			}
+			requireEditorCommandFocus(t, driver, rightEditorID)
+			if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || doc.Editor.String() != "base" || left.Editor.String() != "left" {
+				t.Fatalf("first Undo = %q, handled=%v, %v", doc.Editor.String(), handled, err)
+			}
+			for path, want := range files {
+				if bytes, err := os.ReadFile(path); err != nil || string(bytes) != want {
+					t.Fatalf("%s = %q, %v; want %q", path, bytes, err, want)
+				}
+			}
+		})
 	}
 }
 
