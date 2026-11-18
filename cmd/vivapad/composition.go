@@ -174,10 +174,8 @@ func (state *model) resolveTextInput(context app.TextInputContext) *app.TextInpu
 	if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
 		return nil
 	}
-	if state.filesDialogOpen && context.ID != queryID && context.ID != filesRootID && context.ID != filesPatternID {
-		if !state.filesReplaceMode || context.ID != replacementID {
-			return nil
-		}
+	if state.filesDialogOpen && !state.filesDialogField(context.ID) {
+		return nil
 	}
 	if state.functionListVisible && state.activeDock() == "functions" && context.ID == functionFilterID {
 		return &app.TextInput{Editor: state.functionFilter}

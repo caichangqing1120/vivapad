@@ -1360,7 +1360,13 @@ func newConfig(state *model) app.Config {
 		if state.renamePlan != nil || state.pendingTrash != nil {
 			return gfx.EventResult{Handled: true}
 		}
-		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen {
+		if state.filesDialogOpen {
+			if state.filesDialogField(event.Target) && event.Key == gfx.KeyUnknown && event.Text != "" && event.Modifiers&^gfx.ModifierShift == 0 {
+				return gfx.EventResult{}
+			}
+			return gfx.EventResult{Handled: true}
+		}
+		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
 			return gfx.EventResult{Handled: true}
 		}
 		if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) &&
@@ -1844,7 +1850,7 @@ func newConfig(state *model) app.Config {
 			return gfx.EventResult{Handled: true}
 		}
 		if state.filesDialogOpen {
-			if event.Key == gfx.KeyEnter && (event.Target == queryID || event.Target == replacementID || event.Target == filesRootID || event.Target == filesPatternID) {
+			if event.Key == gfx.KeyEnter && state.filesDialogField(event.Target) {
 				if state.filesReplaceMode {
 					state.startReplacePreview()
 				} else {

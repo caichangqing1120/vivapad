@@ -7,10 +7,16 @@ import (
 	"path/filepath"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 	"vivapad/internal/searchfiles"
 )
+
+func (state *model) filesDialogField(id gfx.ID) bool {
+	return id == queryID || id == filesRootID || id == filesPatternID ||
+		state.filesReplaceMode && id == replacementID
+}
 
 func (state *model) openFilesDialog() {
 	state.closeIncrementalSearch()

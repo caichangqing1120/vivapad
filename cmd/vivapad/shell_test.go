@@ -1840,6 +1840,31 @@ func TestLanguageMenuOverridesSyntaxPerTab(t *testing.T) {
 	}
 }
 
+func TestFilesDialogPassesPrintableKeysToItsFields(t *testing.T) {
+	for _, command := range []string{"Find in Files...", "Replace in Files..."} {
+		t.Run(command, func(t *testing.T) {
+			state, driver := startDriver(t)
+			clickID(t, driver, menuScope.At(2))
+			clickID(t, driver, searchCommandID(t, command))
+			fields := []gfx.ID{queryID, filesRootID, filesPatternID}
+			if state.filesReplaceMode {
+				fields = append(fields, replacementID)
+			}
+			for _, field := range fields {
+				clickID(t, driver, field)
+				for _, modifiers := range []gfx.Modifiers{0, gfx.ModifierShift} {
+					if handled, err := driver.ShortcutChord(modifiers, 'a'); err != nil || handled {
+						t.Fatalf("field %v swallowed a printable key: handled=%v, error=%v", field, handled, err)
+					}
+				}
+				if handled, err := driver.ShortcutChord(primary(), 'n'); err != nil || !handled || len(state.space.Documents) != 1 {
+					t.Fatalf("New escaped the files dialog: handled=%v, error=%v", handled, err)
+				}
+			}
+		})
+	}
+}
+
 func TestFindInFilesOpensExactResult(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "example.go")
