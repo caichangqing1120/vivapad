@@ -84,6 +84,54 @@ func TestFileCommandsDoNotPersistLegacyPreedit(t *testing.T) {
 	}
 }
 
+func TestWorkspaceAndSessionChoosersRestoreEditorFocus(t *testing.T) {
+	for _, command := range []string{"folder", "session"} {
+		for _, canceled := range []bool{true, false} {
+			outcome := "confirm"
+			if canceled {
+				outcome = "cancel"
+			}
+			t.Run(command+"/"+outcome, func(t *testing.T) {
+				root := t.TempDir()
+				source := filepath.Join(root, "source.txt")
+				if err := os.WriteFile(source, []byte("cat"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				state := newModelWithFiles([]string{source})
+				driver, err := app.NewDriver(newConfig(state), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer driver.Close()
+				clickID(t, driver, editorID)
+				state.space.Current().Editor.MoveTo(3, false)
+				var response error
+				if canceled {
+					response = app.ErrCanceled
+				}
+				clickID(t, driver, menuScope.At(0))
+				if command == "folder" {
+					if err := driver.QueueOpenDirectory(root, response); err != nil {
+						t.Fatal(err)
+					}
+					clickID(t, driver, menuItemScope.At(16))
+				} else {
+					state.saveSessionPicker = app.SaveFileWithCheckbox
+					if err := driver.QueueSaveFileWithCheckbox(filepath.Join(root, "session.xml"), false, response); err != nil {
+						t.Fatal(err)
+					}
+					clickID(t, driver, menuItemScope.At(13))
+					clickID(t, driver, sessionScope.At(1))
+				}
+				requireEditorCommandFocus(t, driver, editorID)
+				if err := driver.Type("x"); err != nil || state.space.Current().Editor.String() != "catx" {
+					t.Fatalf("first key after chooser: %q, %v", state.space.Current().Editor.String(), err)
+				}
+			})
+		}
+	}
+}
+
 func TestSaveAsChooserReturnsToActiveEditor(t *testing.T) {
 	for _, size := range []struct {
 		name          string

@@ -56,6 +56,7 @@ func (state *model) addFolderRoot(path string) error {
 }
 
 func (state *model) chooseFolderRoot() {
+	defer state.requestNativeChooserFocus()
 	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "Open Folder as Workspace"})
 	if errors.Is(err, app.ErrCanceled) {
 		return

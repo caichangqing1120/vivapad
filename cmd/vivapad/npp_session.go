@@ -167,6 +167,7 @@ func (state *model) saveNPPSession(includeWorkspace bool) {
 		return
 	}
 	state.saveSessionOptionsOpen = false
+	defer state.requestNativeChooserFocus()
 	path, err := app.SaveFile(app.SaveFileOptions{Title: "Save Session", SuggestedName: "session.xml", DefaultExtension: "xml"})
 	if err != nil {
 		if !errors.Is(err, app.ErrCanceled) {

@@ -13,6 +13,7 @@ func (state *model) openSaveSessionOptions() {
 		return
 	}
 	if state.saveSessionPicker != nil {
+		defer state.requestNativeChooserFocus()
 		selection, err := state.saveSessionPicker(
 			app.SaveFileOptions{Title: "Save Session", SuggestedName: "session.xml", DefaultExtension: "xml"},
 			app.SaveFileCheckbox{Label: "Save Folder as Workspace", Checked: state.folderVisible},
