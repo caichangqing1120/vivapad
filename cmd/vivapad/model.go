@@ -2621,19 +2621,29 @@ func (state *model) command(command string) {
 		// notice, which a bookmark synchronization must not overwrite.
 		historyNotice = true
 	}
-	state.cancelLiveComposition()
-	state.bookmarkLines(doc)
+	openReplacement := command == "Replace All in Open Documents"
+	if !openReplacement {
+		state.cancelLiveComposition()
+	}
+	// Batch replacement validates composition before changing an affected tab.
+	// Do not map bookmarks or selection anchors against a provisional buffer.
+	trackActiveSource := !openReplacement || !doc.Editor.CompositionActive()
+	if trackActiveSource {
+		state.bookmarkLines(doc)
+	}
 	before := doc.Editor.String()
 	editStart := doc.Editor.Selection().Start
 	defer func() {
 		notice := state.notice
-		state.bookmarkLines(doc)
+		if trackActiveSource {
+			state.bookmarkLines(doc)
+			state.relocateSelectAnchors(doc, before, doc.Editor.String(), editStart)
+		}
 		if historyNotice {
 			// Bookmark synchronisation has its own warnings; a change-history command
 			// owns its result (success, refusal or unavailable reason).
 			state.notice = notice
 		}
-		state.relocateSelectAnchors(doc, before, doc.Editor.String(), editStart)
 		state.restoreEditorCommandFocus(command)
 	}()
 	state.menuOpen = -1

@@ -422,7 +422,7 @@ func (state *model) findAllOpenDocuments() {
 func (state *model) replaceAllOpenDocuments() {
 	state.cancelMacroForCommand()
 	state.cancelFileSearch()
-	plan, err := searchfiles.PreviewOpenReplace(state.space.Documents, state.query.String(), state.replacement.String(), state.searchOptions)
+	plan, err := searchfiles.PreviewOpenReplace(state.space.Documents, state.query.CommittedString(), state.replacement.CommittedString(), state.searchOptions)
 	if err != nil {
 		state.notice = err.Error()
 		return
@@ -434,6 +434,10 @@ func (state *model) replaceAllOpenDocuments() {
 	for _, change := range plan.Changes {
 		if state.isReadOnly(change.Doc) {
 			state.notice = "Read-only document in replacement plan"
+			return
+		}
+		if change.Doc.Editor.CompositionActive() {
+			state.notice = "Cannot replace during composition (" + change.Name + ")"
 			return
 		}
 	}
