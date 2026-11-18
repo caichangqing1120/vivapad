@@ -181,6 +181,44 @@ func TestOpenBufferPreviewRejectsUnmappableAndInvalidPatterns(t *testing.T) {
 	}
 }
 
+func TestOpenBufferPreviewKeepsMixedLineEndingsForSavePreflight(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mixed.txt")
+	const original = "first\rmiddle\nlast"
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	mixed, err := document.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := document.New("plain")
+	plain.Editor.Insert("prefix middle suffix")
+	docs := []*document.Document{plain, mixed}
+	plan, err := PreviewOpenReplace(docs, "middle", "", document.SearchOptions{})
+	if plan != nil || err == nil || !strings.Contains(err.Error(), "CR and LF") {
+		t.Fatalf("lossy mixed-EOL preview = %+v, %v", plan, err)
+	}
+	if plain.Editor.String() != "prefix middle suffix" || mixed.Editor.String() != "first\nmiddle\nlast" || mixed.EOLSequence() != "ML" || mixed.Dirty() || mixed.Editor.CanUndo() {
+		t.Fatal("refused preview changed a live document")
+	}
+	if disk, err := os.ReadFile(path); err != nil || string(disk) != original {
+		t.Fatalf("refused preview touched disk: %q, %v", disk, err)
+	}
+	plan, err = PreviewOpenReplace(docs, "middle", "kept", document.SearchOptions{})
+	if err != nil || plan.Replacements != 2 {
+		t.Fatalf("safe preview = %+v, %v", plan, err)
+	}
+	if err := plan.Apply(docs); err != nil || mixed.EOLSequence() != "ML" {
+		t.Fatalf("safe replacement lost mixed separators: %q, %v", mixed.EOLSequence(), err)
+	}
+	if err := mixed.Save(""); err != nil {
+		t.Fatal(err)
+	}
+	if disk, err := os.ReadFile(path); err != nil || string(disk) != "first\rkept\nlast" {
+		t.Fatalf("saved mixed bytes = %q, %v", disk, err)
+	}
+}
+
 func TestOpenBufferApplyPreflightsEverySource(t *testing.T) {
 	first, second := document.New("new 1"), document.New("new 2")
 	first.Editor.Insert("cat")

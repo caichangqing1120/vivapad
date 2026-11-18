@@ -48,12 +48,15 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 		}
 		seen[doc], editors[doc.Editor] = true, doc
 		before := doc.Editor.String()
+		ending, sequence := doc.LineEnding(), doc.EOLSequence()
 		// A replacement preview is a transient wrapper, not a document: it must
 		// not bind a history producer to a blank editor it then replaces.
 		candidate := document.NewDraft(doc.Name, text.NewEditor(before))
 		candidate.Editor.SetSavePoint()
 		candidate.SetEncoding(doc.Encoding())
-		candidate.SetLineEnding(doc.LineEnding())
+		if err := candidate.RestoreLineEndings(ending, sequence); err != nil {
+			return nil, fmt.Errorf("%s cannot preview replacement: %w", doc.Name, err)
+		}
 		count, edits, err := candidate.ReplaceAllWithEdits(query, replacement, options)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", doc.Name, err)
@@ -66,7 +69,7 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 		}
 		plan.Changes = append(plan.Changes, OpenChange{
 			Doc: doc, Name: doc.Name, Count: count, Edits: append([]document.ReplacementEdit(nil), edits...),
-			before: before, encoding: doc.Encoding(), ending: doc.LineEnding(), eolSequence: doc.EOLSequence(),
+			before: before, encoding: doc.Encoding(), ending: ending, eolSequence: sequence,
 			source: doc, editor: doc.Editor, targets: edits,
 		})
 		plan.Replacements += count
