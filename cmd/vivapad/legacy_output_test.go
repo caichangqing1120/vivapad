@@ -9,9 +9,86 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 )
+
+func TestSaveAllReturnsFocusAfterEncodingRefusalAndRetry(t *testing.T) {
+	for _, split := range []bool{false, true} {
+		t.Run(fmt.Sprintf("split=%t", split), func(t *testing.T) {
+			root := t.TempDir()
+			firstPath, peerPath := filepath.Join(root, "first.txt"), filepath.Join(root, "peer.txt")
+			firstBytes, peerBytes := []byte("A\r\n\u4e2d\nB\r"), []byte("peer\r\n")
+			for path, value := range map[string][]byte{firstPath: firstBytes, peerPath: peerBytes} {
+				if err := os.WriteFile(path, value, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			state := newModelWithFiles([]string{firstPath, peerPath})
+			first, peer := state.space.Documents[0], state.space.Documents[1]
+			focus := editorID
+			if split {
+				state.toggleSplit()
+				state.paneDocs = [2]*document.Document{first, peer}
+				state.paneOwner[first], state.paneOwner[peer] = 0, 1
+				state.activePane = 1
+				focus = rightEditorID
+			}
+			state.space.Select(1)
+			first.Editor.MoveTo(first.Editor.RuneCount(), false)
+			first.Editor.Insert("x")
+			first.SetEncoding(document.Windows1252)
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer driver.Close()
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, focus)
+			peer.Editor.MoveTo(peer.Editor.RuneCount(), false)
+			if err := driver.Type("y"); err != nil {
+				t.Fatal(err)
+			}
+			peer.Editor.SetSelection(text.Range{Start: 6, End: 5})
+			before, caret := peer.Editor.Selection(), peer.Editor.Caret()
+			saveAll := func() {
+				clickID(t, driver, menuScope.At(0))
+				clickID(t, driver, menuItemScope.At(5))
+			}
+			checkDisk := func(path string, want []byte) {
+				t.Helper()
+				if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, want) {
+					t.Fatalf("%s = %q, %v; want %q", filepath.Base(path), got, err, want)
+				}
+			}
+			saveAll()
+			checkDisk(firstPath, firstBytes)
+			checkDisk(peerPath, peerBytes)
+			if !strings.Contains(state.notice, "Windows-1252") || !first.Dirty() || !peer.Dirty() ||
+				state.space.Current() != peer || peer.Editor.Selection() != before || peer.Editor.Caret() != caret {
+				t.Fatal("encoding refusal changed the active tab, selection or drafts")
+			}
+			requireEditorCommandFocus(t, driver, focus)
+			if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || peer.Editor.String() != "peer\n" || first.Editor.String() != "A\n\u4e2d\nB\nx" {
+				t.Fatalf("Undo after refused Save All reached the wrong target: %q/%q, %v", first.Editor.String(), peer.Editor.String(), err)
+			}
+			if !peer.Editor.Redo() {
+				t.Fatal("refusal lost peer Redo history")
+			}
+			first.SetEncoding(document.UTF8)
+			saveAll()
+			checkDisk(firstPath, append(firstBytes, 'x'))
+			checkDisk(peerPath, append(peerBytes, 'y'))
+			if first.Dirty() || peer.Dirty() || state.space.Current() != peer {
+				t.Fatal("successful Save All did not preserve the active tab and mark both saved")
+			}
+			requireEditorCommandFocus(t, driver, focus)
+		})
+	}
+}
 
 func TestLegacyUnrepresentableMenuSavePreservesSource(t *testing.T) {
 	for _, operation := range []string{"Save", "Save As...", "Save a Copy As..."} {

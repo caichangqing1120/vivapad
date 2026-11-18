@@ -2826,6 +2826,7 @@ func (state *model) command(command string) {
 	case "Rename...":
 		state.requestRename()
 	case "Save All":
+		state.requestEditorCommandFocus()
 		for index, openDocument := range state.space.Documents {
 			if openDocument.Dirty() && !state.save(index, false) {
 				break
