@@ -866,6 +866,10 @@ func newStartupModel(paths []string, sessionPath string) *model {
 		state.applySessionView(stored.View)
 	}
 	state.restoreRecovery(nil)
+	if state.splitEnabled {
+		// The restored active view should accept input on the first frame.
+		state.focusViewRequested, state.focusViewArmed = true, true
+	}
 	return state
 }
 

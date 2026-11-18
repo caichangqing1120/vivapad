@@ -490,6 +490,20 @@ func TestSplitSessionRestoresPerViewTabsAndDivider(t *testing.T) {
 		restored.paneDocs[1].Name != "third.txt" || restored.paneOwner[restored.space.Documents[1]] != 1 || restored.splitRatio != 0.37 {
 		t.Fatalf("restored split = %+v owners=%+v ratio=%g active=%d", restored.paneDocs, restored.paneOwner, restored.splitRatio, restored.activePane)
 	}
+	driver, err := app.NewDriver(newConfig(restored), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer driver.Close()
+	if focus := driver.Snapshot().Focused; focus != rightEditorID {
+		t.Fatalf("restored keyboard focus = %v, want right editor", focus)
+	}
+	if err := driver.Type("x"); err != nil {
+		t.Fatal(err)
+	}
+	if left, right := restored.paneDocs[0].Editor.String(), restored.paneDocs[1].Editor.String(); left != "first.txt" || right != "xthird.txt" {
+		t.Fatalf("first key after reopening: left=%q right=%q", left, right)
+	}
 }
 
 func TestRecoveredUntitledBufferReturnsToRightView(t *testing.T) {
