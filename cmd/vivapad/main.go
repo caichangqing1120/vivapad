@@ -53,6 +53,6 @@ func main() {
 }
 
 func newNativeConfig(state *model) app.Config {
-	state.requestX11Composition = directX11Composition
+	state.requestLinuxComposition = runtime.GOOS == "linux"
 	return newConfig(state)
 }

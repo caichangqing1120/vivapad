@@ -303,7 +303,7 @@ func (state *model) pointerCompositionAway(target gfx.ID) {
 }
 
 func (state *model) enableDocumentComposition(doc *document.Document) bool {
-	if (runtime.GOOS != "darwin" && !state.requestX11Composition) || doc == nil || doc.Editor == nil {
+	if (runtime.GOOS != "darwin" && !state.requestLinuxComposition) || doc == nil || doc.Editor == nil {
 		return false
 	}
 	if doc.Editor.TentativeCompositionEnabled() {

@@ -1,5 +1,3 @@
-//go:build linux && !vivagtk
-
 package main
 
 import (
@@ -11,7 +9,7 @@ import (
 	"github.com/vivaui/viva/text"
 )
 
-func TestNativeX11RequestsTentativeCompositionWithLegacyFallback(t *testing.T) {
+func TestNativeLinuxRequestsTentativeCompositionWithLegacyFallback(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "input.txt")
 	if err := os.WriteFile(path, []byte("cat\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -22,7 +20,7 @@ func TestNativeX11RequestsTentativeCompositionWithLegacyFallback(t *testing.T) {
 	doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
 	input := config.TextInput(app.TextInputContext{ID: editorID, Multiline: true})
 	if input == nil || !input.State.TentativeComposition || !doc.Editor.TentativeCompositionEnabled() {
-		t.Fatal("direct X11 startup did not request tentative input for the document")
+		t.Fatal("native Linux startup did not request tentative input for the document")
 	}
 	if state.query.TentativeCompositionEnabled() {
 		t.Fatal("document startup request changed the search field")
