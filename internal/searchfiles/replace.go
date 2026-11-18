@@ -87,7 +87,7 @@ func (plan *ReplacePlan) Apply(ctx context.Context) (ApplyResult, error) {
 		}
 		current, err := openWithEncoding(change.Path, change.Encoding)
 		if err != nil || current.Path != change.Path || current.DiskDigest() != change.digest {
-			return result, fmt.Errorf("%s changed after preview; no files were written", change.Path)
+			return result, fmt.Errorf("file changed after preview; no files written: %s", change.Path)
 		}
 	}
 	for _, change := range plan.Changes {

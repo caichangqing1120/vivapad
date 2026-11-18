@@ -2290,7 +2290,11 @@ func TestReplaceInFilesRefusesStalePreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer driver.Close()
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
 	clickID(t, driver, menuScope.At(2))
+	revealSearchMenuItem(t, driver, searchCommandIndex(t, "Replace in Files..."))
 	clickID(t, driver, searchCommandID(t, "Replace in Files..."))
 	clickID(t, driver, queryID)
 	if err := driver.Type("cat"); err != nil {
@@ -2326,6 +2330,12 @@ func TestReplaceInFilesRefusesStalePreview(t *testing.T) {
 	if data, _ := os.ReadFile(path); string(data) != "external cat" || !strings.Contains(state.notice, "changed after preview") {
 		t.Fatalf("stale preview = disk:%q notice:%q", data, state.notice)
 	}
+	for _, label := range driver.Snapshot().Texts {
+		if strings.Contains(label.Value, "changed after preview; no files written") {
+			return
+		}
+	}
+	t.Fatalf("compact status hid the stale-preview refusal: %q", state.notice)
 }
 
 func TestReplaceInFilesEnterOpensPreviewWithoutWriting(t *testing.T) {
