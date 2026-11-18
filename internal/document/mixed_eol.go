@@ -303,6 +303,9 @@ func (doc *Document) physicalValue(value string) (string, error) {
 	line, start := 0, 0
 	for index := 0; index < len(value); index++ {
 		if value[index] == '\n' {
+			if index == start && line > 0 && breaks[line-1] == "\r" && breaks[line] == "\n" {
+				return "", fmt.Errorf("adjacent CR and LF would merge; convert line endings before saving")
+			}
 			physical.WriteString(value[start:index])
 			physical.WriteString(breaks[line])
 			line++

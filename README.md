@@ -577,7 +577,9 @@ VIVA_HEADLESS=1 /tmp/vivapad-head
   sessions retain registered code pages. Binary files are rejected. Mixed
   LF/CRLF/CR files retain their physical separators across ordinary edits,
   Save Copy, recovery and directory replacement; new breaks use the first
-  file break. Explicit Edit > EOL Conversion homogenizes them, including
+  file break. If an edit makes a standalone CR immediately precede a standalone
+  LF, Save and Save Copy refuse to write until the separators can be preserved.
+  Explicit Edit > EOL Conversion makes the separators uniform, including
   Macintosh (CR), and Show End of Line labels each real break. Complex line
   reordering still needs original Scintilla comparison. Save refuses to
   overwrite a file modified externally after opening;
