@@ -218,6 +218,7 @@ type preparedNPPFile struct {
 }
 
 func (state *model) loadNPPSession() {
+	defer state.requestNativeChooserFocus()
 	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "Load Session"})
 	if err != nil {
 		if !errors.Is(err, app.ErrCanceled) {

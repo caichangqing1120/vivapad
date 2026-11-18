@@ -10,6 +10,7 @@ import (
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
+	"vivapad/internal/session"
 )
 
 func TestFileCommandsDoNotPersistLegacyPreedit(t *testing.T) {
@@ -126,6 +127,92 @@ func TestWorkspaceAndSessionChoosersRestoreEditorFocus(t *testing.T) {
 				requireEditorCommandFocus(t, driver, editorID)
 				if err := driver.Type("x"); err != nil || state.space.Current().Editor.String() != "catx" {
 					t.Fatalf("first key after chooser: %q, %v", state.space.Current().Editor.String(), err)
+				}
+			})
+		}
+	}
+}
+
+func TestLoadSessionChooserRestoresActiveEditor(t *testing.T) {
+	for _, size := range []struct {
+		name          string
+		width, height int
+	}{{"desktop", 1280, 800}, {"compact", 640, 400}} {
+		for _, outcome := range []string{"cancel", "invalid", "load"} {
+			t.Run(size.name+"/"+outcome, func(t *testing.T) {
+				root := t.TempDir()
+				source, right := filepath.Join(root, "source.txt"), filepath.Join(root, "right.txt")
+				for path, value := range map[string]string{source: "left", right: "right"} {
+					if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				state := newModelWithFiles([]string{source})
+				driver, err := app.NewDriver(newConfig(state), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer driver.Close()
+				if err := driver.Resize(size.width, size.height); err != nil {
+					t.Fatal(err)
+				}
+				clickID(t, driver, editorID)
+				original := state.space.Current()
+				original.Editor.MoveTo(4, false)
+				if err := driver.Type("!"); err != nil || original.Editor.String() != "left!" {
+					t.Fatalf("initial edit = %q, %v", original.Editor.String(), err)
+				}
+				original.Editor.BreakUndoGroup()
+				xml := filepath.Join(root, "session.xml")
+				var paths []string
+				var response error
+				switch outcome {
+				case "cancel":
+					response = app.ErrCanceled
+				case "invalid":
+					if err := os.WriteFile(xml, []byte("<NotepadPlus><Session"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					paths = []string{xml}
+				case "load":
+					if err := session.SaveNPP(xml, session.NPPState{
+						Main:       []session.NPPFile{{Path: source, Encoding: -1}},
+						Sub:        []session.NPPFile{{Path: right, Encoding: -1, StartPos: 5, EndPos: 5}},
+						ActiveView: 1,
+					}); err != nil {
+						t.Fatal(err)
+					}
+					paths = []string{xml}
+				}
+				if err := driver.QueueOpenFiles(paths, response); err != nil {
+					t.Fatal(err)
+				}
+				clickID(t, driver, menuScope.At(0))
+				revealFileMenuItem(t, driver, 13)
+				clickID(t, driver, menuItemScope.At(13))
+				clickID(t, driver, sessionScope.At(0))
+				if req, ok := driver.LastOpenFilesRequest(); !ok || req.Title != "Load Session" || req.AllowMultiple {
+					t.Fatalf("load request = %+v, present=%v", req, ok)
+				}
+				active := state.space.Current()
+				focus, before := editorID, "left!"
+				if outcome == "load" {
+					focus, before = rightEditorID, "right"
+					if !state.splitEnabled || state.activePane != 1 || state.paneDocs[0] != original || state.paneDocs[1] != active || active == original {
+						t.Fatal("load did not activate the session's right document")
+					}
+				} else if active != original || state.splitEnabled || len(state.space.Documents) != 1 || active.Editor.Caret() != 5 {
+					t.Fatal("canceled or rejected session changed the current view")
+				}
+				requireEditorCommandFocus(t, driver, focus)
+				if err := driver.Type("x"); err != nil || active.Editor.String() != before+"x" {
+					t.Fatalf("first key = %q, %v", active.Editor.String(), err)
+				}
+				if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || active.Editor.String() != before {
+					t.Fatalf("Undo = %q, handled=%v, %v", active.Editor.String(), handled, err)
+				}
+				if original.Editor.String() != "left!" || !original.Dirty() {
+					t.Fatal("session picker changed the original unsaved edit")
 				}
 			})
 		}
