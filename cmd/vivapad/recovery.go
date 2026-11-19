@@ -101,6 +101,9 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 	} else if recoveredActive != nil {
 		state.splitEnabled, state.activePane = false, 0
 		state.paneDocs = [2]*document.Document{recoveredActive}
+		if explicitActive == nil {
+			state.focusViewRequested, state.focusViewArmed = true, true
+		}
 	}
 	selected := recoveredActive
 	if stored.Split {
@@ -140,6 +143,10 @@ func (state *model) currentRecovery() recovery.State {
 	}
 	for _, doc := range state.space.Documents {
 		if tab, ok := state.recoverySnapshot(doc); ok {
+			if !result.Split {
+				// The live owner still determines where this tab goes if split view returns.
+				tab.Pane = 0
+			}
 			result.Tabs = append(result.Tabs, tab)
 			if result.Active == -1 || doc == state.space.Current() {
 				result.Active = len(result.Tabs) - 1
@@ -199,10 +206,7 @@ func (state *model) snapshotRecovery() {
 		return
 	}
 	state.lastRecovery = current
-	if err := state.recoveryWriter.Submit(current); err != nil {
-		state.notice = "Recovery failed: " + err.Error()
-		state.invalidator.Invalidate()
-	}
+	state.recoveryWriter.Submit(current)
 }
 
 func (state *model) observeRecoveryError() {

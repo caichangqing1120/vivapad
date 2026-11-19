@@ -145,12 +145,8 @@ func TestWriterCoalescesLatestAndClearWaits(t *testing.T) {
 	writer := NewWriter(path, nil)
 	first := State{Active: 0, Tabs: []Tab{{Name: "new 1", Content: "first"}}}
 	latest := State{Active: 0, Tabs: []Tab{{Name: "new 1", Content: "latest"}}}
-	if err := writer.Submit(first); err != nil {
-		t.Fatal(err)
-	}
-	if err := writer.Submit(latest); err != nil {
-		t.Fatal(err)
-	}
+	writer.Submit(first)
+	writer.Submit(latest)
 	if err := writer.Wait(); err != nil {
 		t.Fatal(err)
 	}

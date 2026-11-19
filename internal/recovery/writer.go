@@ -2,6 +2,7 @@ package recovery
 
 import (
 	"errors"
+	"slices"
 	"sync"
 )
 
@@ -21,11 +22,13 @@ func NewWriter(path string, onDone func()) *Writer {
 	return &Writer{path: path, onDone: onDone}
 }
 
-func (writer *Writer) Submit(state State) error {
-	if err := validate(state); err != nil {
-		return err
+// Submit queues a snapshot. Validation and write errors are delivered through
+// Wait and LastError for the same generation.
+func (writer *Writer) Submit(state State) {
+	state.Tabs = slices.Clone(state.Tabs)
+	for i := range state.Tabs {
+		state.Tabs[i].FoldedHeaders = slices.Clone(state.Tabs[i].FoldedHeaders)
 	}
-	state.Tabs = append([]Tab(nil), state.Tabs...)
 	writer.mutex.Lock()
 	writer.latest = state
 	writer.generation++
@@ -35,7 +38,6 @@ func (writer *Writer) Submit(state State) error {
 		go writer.flush()
 	}
 	writer.mutex.Unlock()
-	return nil
 }
 
 func (writer *Writer) flush() {
@@ -45,8 +47,8 @@ func (writer *Writer) flush() {
 		writer.mutex.Unlock()
 		err := Save(writer.path, state)
 		writer.mutex.Lock()
-		writer.lastError = err
 		if generation == writer.generation {
+			writer.lastError = err
 			writer.running = false
 			close(writer.done)
 			writer.mutex.Unlock()
