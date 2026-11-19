@@ -89,7 +89,7 @@ func (plan *ReplacePlan) Apply(ctx context.Context) (ApplyResult, error) {
 		}
 		info, err := os.Lstat(change.Path)
 		if err != nil || !info.Mode().IsRegular() {
-			return result, fmt.Errorf("%s is no longer a regular file", change.Path)
+			return result, fmt.Errorf("target not a regular file; no files written: %s", change.Path)
 		}
 		current, err := document.ReadSearchSource(change.Path, change.Encoding, plan.maxFileBytes)
 		if errors.Is(err, document.ErrSearchFileTooLarge) {
