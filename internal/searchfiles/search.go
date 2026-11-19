@@ -130,11 +130,12 @@ func Find(ctx context.Context, root, query string, search document.SearchOptions
 			return nil
 		}
 		result.FilesSearched++
-		spans, truncated, err := doc.MatchesWithLimitContext(ctx, query, search, options.MaxMatches-len(result.Matches))
+		value := doc.Editor.String()
+		spans, truncated, err := document.MatchesInTextWithLimit(ctx, value, query, search, options.MaxMatches-len(result.Matches))
 		if err != nil {
 			return err
 		}
-		if err := appendMatches(ctx, &result, doc, spans, options.MaxMatches); err != nil {
+		if err := appendMatches(ctx, &result, doc, value, spans, options.MaxMatches); err != nil {
 			return err
 		}
 		if truncated {
@@ -156,20 +157,21 @@ func FindDocument(doc *document.Document, query string, search document.SearchOp
 	if maxMatches <= 0 {
 		maxMatches = 2000
 	}
-	spans, truncated, err := doc.MatchesWithLimit(query, search, maxMatches)
+	ctx := context.Background()
+	value := doc.Editor.CommittedString()
+	spans, truncated, err := document.MatchesInTextWithLimit(ctx, value, query, search, maxMatches)
 	if err != nil {
 		return Result{}, err
 	}
 	result := Result{FilesSearched: 1}
-	if err := appendMatches(context.Background(), &result, doc, spans, maxMatches); err != nil && !errors.Is(err, errLimit) {
+	if err := appendMatches(ctx, &result, doc, value, spans, maxMatches); err != nil && !errors.Is(err, errLimit) {
 		return Result{}, err
 	}
 	result.Truncated = result.Truncated || truncated
 	return result, nil
 }
 
-func appendMatches(ctx context.Context, result *Result, doc *document.Document, spans []text.Span, maxMatches int) error {
-	value := doc.Editor.String()
+func appendMatches(ctx context.Context, result *Result, doc *document.Document, value string, spans []text.Span, maxMatches int) error {
 	line, column, lineStart, scanned, lineEnd, cachedLineStart := 1, 1, 0, 0, 0, -1
 	for _, span := range spans {
 		if err := ctx.Err(); err != nil {

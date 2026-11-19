@@ -70,6 +70,43 @@ func TestFindAllCurrentRejectsStaleResultAndInvalidPattern(t *testing.T) {
 	}
 }
 
+func TestSearchResultRefusesPreeditThatResemblesItsSnapshot(t *testing.T) {
+	state, _ := startDriver(t)
+	doc := state.space.Current()
+	doc.Editor.Insert("cat cat")
+	state.query.Insert("cat")
+	state.findAllCurrent()
+	if !state.openFileResult(0) {
+		t.Fatal("precondition: could not navigate the original result")
+	}
+	doc.Editor.ReplaceRange(text.Range{Start: 0, End: 3}, "dog")
+	doc.Editor.SetSelection(text.Range{Start: 0, End: 3})
+	doc.Editor.SetMarkedText("cat", text.Range{Start: 2, End: 2})
+	if doc.Editor.String() != "cat cat" || doc.Editor.CommittedString() != "dog cat" {
+		t.Fatal("precondition: preedit does not resemble the old source")
+	}
+	selection, caret := doc.Editor.Selection(), doc.Editor.Caret()
+	if state.openFileResult(1) || state.resultSelected != 0 || state.space.Current() != doc ||
+		!doc.Editor.CompositionActive() || doc.Editor.Selection() != selection || doc.Editor.Caret() != caret ||
+		doc.Editor.CommittedString() != "dog cat" || state.notice != staleSearchResultNotice {
+		t.Fatalf("stale result changed the composing source: selected=%d, text=%q, committed=%q, notice=%q",
+			state.resultSelected, doc.Editor.String(), doc.Editor.CommittedString(), state.notice)
+	}
+	if !doc.Editor.CancelComposition() || !doc.Editor.Undo() || doc.Editor.String() != "cat cat" {
+		t.Fatal("refused navigation changed the cancel or Undo path")
+	}
+	doc.Editor.MoveTo(0, false)
+	doc.Editor.SetMarkedText("x", text.Range{})
+	if state.openFileResult(1) || state.notice != composingResultNotice || state.resultSelected != 0 ||
+		!doc.Editor.CompositionActive() || doc.Editor.CommittedString() != "cat cat" {
+		t.Fatalf("unchanged source did not keep its composition: %q", state.notice)
+	}
+	if !doc.Editor.CancelComposition() || !state.openFileResult(1) || state.resultSelected != 1 ||
+		doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) || state.notice != "" {
+		t.Fatalf("restored source could not reuse the old result: %q", state.notice)
+	}
+}
+
 func TestFindAllCurrentCapsResultsAndReleasesClosedDocument(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()

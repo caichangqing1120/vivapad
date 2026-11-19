@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 )
 
@@ -206,6 +207,41 @@ func TestFindDocumentIncludesUnsavedTextAndUnicodePositions(t *testing.T) {
 	}
 	if _, err := FindDocument(doc, "", document.SearchOptions{}, 2); err == nil {
 		t.Fatal("empty in-memory search accepted")
+	}
+}
+
+func TestFindDocumentUsesCommittedSnapshotDuringPreedit(t *testing.T) {
+	for _, tc := range []struct {
+		name, query string
+		options     document.SearchOptions
+	}{
+		{"literal", "cat", document.SearchOptions{}},
+		{"bounded regex", "c.t", document.SearchOptions{Regex: true}},
+		{"zero width regex fallback", `cat|(?m:^$)`, document.SearchOptions{Regex: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := document.New("draft")
+			const committed = "猫 cat\ncat"
+			doc.Editor.Insert(committed)
+			doc.Editor.SetSelection(text.Range{Start: 2, End: 5})
+			doc.Editor.SetMarkedText("dog\ncat cat", text.Range{})
+			visible := doc.Editor.String()
+			if visible == committed || doc.Editor.CommittedString() != committed {
+				t.Fatal("precondition: marked text did not replace the first match")
+			}
+			result, err := FindDocument(doc, tc.query, tc.options, 2)
+			if err != nil || result.Truncated || len(result.Matches) != 2 {
+				t.Fatalf("results from the committed snapshot = %+v, %v", result, err)
+			}
+			first, second := result.Matches[0], result.Matches[1]
+			if first.Source != committed || first.Start != len("猫 ") || first.Line != 1 || first.Column != 3 || first.Text != "cat" ||
+				second.Source != committed || second.Start != len("猫 cat\n") || second.Line != 2 || second.Text != "cat" {
+				t.Fatalf("matches used provisional text or offsets: %+v", result.Matches)
+			}
+			if !doc.Editor.CompositionActive() || doc.Editor.String() != visible {
+				t.Fatal("search altered the live preedit")
+			}
+		})
 	}
 }
 

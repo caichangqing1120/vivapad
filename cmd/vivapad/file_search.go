@@ -18,6 +18,7 @@ import (
 const (
 	missingSearchResultPrefix = "Search result file is missing: "
 	staleSearchResultNotice   = "Search result changed; run the search again"
+	composingResultNotice     = "Finish composing before opening this result"
 )
 
 func (state *model) filesDialogField(id gfx.ID) bool {
@@ -327,6 +328,13 @@ func (state *model) openFileResult(index int) bool {
 			}
 		}
 	}
+	if doc.Editor.CompositionActive() {
+		state.notice = composingResultNotice
+		if match.Source != doc.Editor.CommittedString() {
+			state.notice = staleSearchResultNotice
+		}
+		return false
+	}
 	value := doc.Editor.String()
 	if match.Source != value || match.Start < 0 || match.End > len(value) || match.Start >= match.End || value[match.Start:match.End] != match.Text {
 		state.notice = staleSearchResultNotice
@@ -358,7 +366,7 @@ func (state *model) openFileResult(index int) bool {
 	doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
 	state.codeEditor().Reveal(match.End)
 	state.selectFileResult(index)
-	if state.notice == staleSearchResultNotice || strings.HasPrefix(state.notice, missingSearchResultPrefix) {
+	if state.notice == staleSearchResultNotice || state.notice == composingResultNotice || strings.HasPrefix(state.notice, missingSearchResultPrefix) {
 		state.notice = ""
 	}
 	return true

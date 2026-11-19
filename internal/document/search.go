@@ -151,12 +151,16 @@ func (doc *Document) MatchesWith(query string, options SearchOptions) ([]text.Sp
 	if err != nil || expression == nil {
 		return nil, err
 	}
-	matches := searchMatches(doc.Editor.String(), expression, options)
+	return searchSpans(doc.Editor.String(), expression, options), nil
+}
+
+func searchSpans(value string, expression *regexp.Regexp, options SearchOptions) []text.Span {
+	matches := searchMatches(value, expression, options)
 	spans := make([]text.Span, 0, len(matches))
 	for _, match := range matches {
 		spans = append(spans, text.Span{Start: match[0], End: match[1]})
 	}
-	return spans, nil
+	return spans
 }
 
 // MatchesWithLimit collects up to limit matches and reports whether more exist.
@@ -170,6 +174,12 @@ func (doc *Document) MatchesWithLimit(query string, options SearchOptions, limit
 // MatchesWithLimitContext also checks cancellation while scanning rejected
 // literal candidates, which is important for directory searches with no hits.
 func (doc *Document) MatchesWithLimitContext(ctx context.Context, query string, options SearchOptions, limit int) ([]text.Span, bool, error) {
+	return MatchesInTextWithLimit(ctx, doc.Editor.String(), query, options, limit)
+}
+
+// MatchesInTextWithLimit searches one text snapshot so callers can build previews
+// and byte offsets from the same value.
+func MatchesInTextWithLimit(ctx context.Context, value, query string, options SearchOptions, limit int) ([]text.Span, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
@@ -179,7 +189,7 @@ func (doc *Document) MatchesWithLimitContext(ctx context.Context, query string, 
 	}
 	if options.Regex {
 		if !options.WholeWord && regexAlwaysConsumes(expression) {
-			matches := expression.FindAllStringIndex(doc.Editor.String(), limit+1)
+			matches := expression.FindAllStringIndex(value, limit+1)
 			if err := ctx.Err(); err != nil {
 				return nil, false, err
 			}
@@ -194,17 +204,16 @@ func (doc *Document) MatchesWithLimitContext(ctx context.Context, query string, 
 			return spans, truncated, nil
 		}
 		if !options.WholeWord || !regexCanResumeOnSuffix(expression) {
-			spans, err := doc.MatchesWith(query, options)
+			spans := searchSpans(value, expression, options)
 			if canceled := ctx.Err(); canceled != nil {
 				return nil, false, canceled
 			}
-			if err != nil || len(spans) <= limit {
-				return spans, false, err
+			if len(spans) <= limit {
+				return spans, false, nil
 			}
 			return spans[:limit], true, nil
 		}
 	}
-	value := doc.Editor.String()
 	spans := make([]text.Span, 0, min(limit, 64))
 	inspected := 0
 	collect := func(start, end int) (bool, error) {
