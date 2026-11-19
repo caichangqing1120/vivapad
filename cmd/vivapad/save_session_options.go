@@ -19,7 +19,7 @@ func (state *model) openSaveSessionOptions() {
 			app.SaveFileCheckbox{Label: "Save Folder as Workspace", Checked: state.folderVisible},
 		)
 		if err == nil {
-			state.saveNPPSessionNative(selection)
+			state.saveNPPSessionSelection(selection)
 			return
 		}
 		if errors.Is(err, app.ErrCanceled) {

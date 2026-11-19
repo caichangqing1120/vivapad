@@ -163,8 +163,7 @@ func (state *model) nppSessionStateWithFolders(includeWorkspace bool) (session.N
 }
 
 func (state *model) saveNPPSession(includeWorkspace bool) {
-	stored, err := state.nppSessionStateWithFolders(includeWorkspace)
-	if err != nil {
+	if _, err := state.nppSessionStateWithFolders(includeWorkspace); err != nil {
 		state.saveSessionError = err.Error()
 		return
 	}
@@ -177,10 +176,10 @@ func (state *model) saveNPPSession(includeWorkspace bool) {
 		}
 		return
 	}
-	state.writeNPPSession(path, stored)
+	state.saveNPPSessionSelection(app.SaveFileSelection{Path: path, Checked: includeWorkspace})
 }
 
-func (state *model) saveNPPSessionNative(selection app.SaveFileSelection) {
+func (state *model) saveNPPSessionSelection(selection app.SaveFileSelection) {
 	stored, err := state.nppSessionStateWithFolders(selection.Checked)
 	if err != nil {
 		state.notice = err.Error()

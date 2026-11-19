@@ -21,6 +21,9 @@ func (state *model) exportNPPFolders(result *session.NPPState) error {
 		if err != nil {
 			return fmt.Errorf("folder unavailable for session export: %w", err)
 		}
+		if root != path {
+			return fmt.Errorf("folder unavailable for session export: path now points elsewhere: %s", path)
+		}
 		folder := session.NPPFolderRoot{Path: root}
 		for expanded, enabled := range state.folderExpanded {
 			if !enabled {
