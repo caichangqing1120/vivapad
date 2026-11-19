@@ -12,6 +12,7 @@ import (
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
+	"golang.org/x/text/unicode/norm"
 	"vivapad/internal/document"
 	"vivapad/internal/searchfiles"
 )
@@ -284,9 +285,10 @@ func (state *model) directoryResultTab(path string) *document.Document {
 			return doc
 		}
 	}
+	spelling := norm.NFC.String(path)
 	var target os.FileInfo
 	for _, doc := range state.space.Documents {
-		if !strings.EqualFold(doc.Path, path) {
+		if !strings.EqualFold(norm.NFC.String(doc.Path), spelling) {
 			continue
 		}
 		if target == nil {
@@ -296,7 +298,7 @@ func (state *model) directoryResultTab(path string) *document.Document {
 				return nil
 			}
 		}
-		// A case match alone would also accept distinct files on a case-sensitive volume.
+		// Case and Unicode spelling variants can also name distinct files.
 		if info, err := os.Stat(doc.Path); err == nil && os.SameFile(target, info) {
 			return doc
 		}

@@ -239,8 +239,17 @@ func TestFinderSourceSnapshotUnopenedDirectoryRefusalIsAtomic(t *testing.T) {
 }
 
 func TestFinderDirectoryResultUsesOpenFileIdentityAcrossCaseSpellings(t *testing.T) {
+	testFinderDirectoryResultPathSpellings(t, "source.txt", "SOURCE.TXT")
+}
+
+func TestFinderDirectoryResultUsesOpenFileIdentityAcrossUnicodeSpellings(t *testing.T) {
+	testFinderDirectoryResultPathSpellings(t, "caf\u00e9.txt", "cafe\u0301.txt")
+}
+
+func testFinderDirectoryResultPathSpellings(t *testing.T, name, alternate string) {
+	t.Helper()
 	root := t.TempDir()
-	path, other := filepath.Join(root, "source.txt"), filepath.Join(root, "SOURCE.TXT")
+	path, other := filepath.Join(root, name), filepath.Join(root, alternate)
 	const saved = "cat cat\r\n"
 	if err := os.WriteFile(path, []byte(saved), 0600); err != nil {
 		t.Fatal(err)
@@ -271,13 +280,13 @@ func TestFinderDirectoryResultUsesOpenFileIdentityAcrossCaseSpellings(t *testing
 	state.query.Insert("cat")
 	collectFinderSnapshot(t, state, "directory", root)
 	index := slices.IndexFunc(state.fileResults.Matches, func(match searchfiles.Match) bool {
-		return filepath.Base(match.Path) == "source.txt" && match.Start == 4
+		return filepath.Base(match.Path) == name && match.Start == 4
 	})
 	if index < 0 {
-		t.Fatal("fixture did not find the second occurrence in source.txt")
+		t.Fatalf("fixture did not find the second occurrence in %q", name)
 	}
 	if alias && opened.Path == state.fileResults.Matches[index].Path {
-		t.Skip("this filesystem normalizes the two case spellings at open")
+		t.Skip("this filesystem resolves both spellings to the same path string")
 	}
 	opened.Editor.MoveTo(0, false)
 	opened.Editor.Insert("cat ")
@@ -295,8 +304,8 @@ func TestFinderDirectoryResultUsesOpenFileIdentityAcrossCaseSpellings(t *testing
 			t.Fatalf("stale aliased directory result opened another document: tabs=%d selection=%d notice=%q", len(state.space.Documents), state.resultSelected, state.notice)
 		}
 	} else if len(state.space.Documents) != 2 || state.space.Current() == opened || state.resultSelected != index ||
-		filepath.Base(state.space.Current().Path) != "source.txt" {
-		t.Fatal("distinct files on a case-sensitive volume were treated as aliases")
+		filepath.Base(state.space.Current().Path) != name {
+		t.Fatal("distinct files were treated as aliases")
 	}
 	if opened.Editor.String() != draft || opened.Editor.Selection() != selection || opened.Editor.Caret() != caret || !opened.Dirty() {
 		t.Fatal("result activation changed the open draft, caret or selection")
