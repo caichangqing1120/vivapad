@@ -55,6 +55,7 @@ func (state *model) stopFolderWatching() {
 		state.folderWatcher = nil
 	}
 	clear(state.folderWatching)
+	clear(state.folderCache)
 }
 
 func (state *model) consumeFolderChanges() {

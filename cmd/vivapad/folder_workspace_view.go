@@ -42,6 +42,7 @@ func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 				} else {
 					state.activeLeftDock = ""
 				}
+				return
 			}
 		}
 	}

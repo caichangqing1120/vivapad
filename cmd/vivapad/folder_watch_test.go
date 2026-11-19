@@ -150,3 +150,47 @@ func TestFolderRefreshWorksAfterWatcherFailure(t *testing.T) {
 	}
 	state.stopFolderWatching()
 }
+
+func TestWorkspaceReopenRefreshesChangesWhileUnwatched(t *testing.T) {
+	root := t.TempDir()
+	oldPath, newPath := filepath.Join(root, "old.txt"), filepath.Join(root, "new.txt")
+	if err := os.WriteFile(oldPath, []byte("saved"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModel()
+	if err := state.addFolderRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	canonical := state.folderRoots[0]
+	state.folderExpanded[canonical] = true
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	rows := func() (old, fresh bool) {
+		for _, hit := range driver.Snapshot().Hits {
+			old = old || hit.Label == "Open old.txt"
+			fresh = fresh || hit.Label == "Open new.txt"
+		}
+		return old, fresh
+	}
+	if old, fresh := rows(); !old || fresh || !state.folderWatching[canonical] {
+		t.Fatal("initial expanded tree was not shown and watched")
+	}
+	clickID(t, driver, folderCloseID)
+	if state.folderVisible || state.folderWatcher != nil {
+		t.Fatal("closing the dock did not stop watching")
+	}
+	if err := os.Rename(oldPath, newPath); err != nil {
+		t.Fatal(err)
+	}
+	state.command("Folder as Workspace")
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if old, fresh := rows(); old || !fresh || !state.folderWatching[canonical] {
+		t.Fatalf("reopened dock used stale rows: old=%v new=%v watched=%v", old, fresh, state.folderWatching[canonical])
+	}
+}
