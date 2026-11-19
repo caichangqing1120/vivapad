@@ -227,6 +227,7 @@ func (doc *Document) Save(path string) error {
 	if err != nil {
 		return err
 	}
+	sameSource := doc.Path != "" && absolute == doc.Path
 	if doc.Path != "" && absolute != doc.Path {
 		requested, err := filepath.Abs(path)
 		if err != nil {
@@ -235,8 +236,11 @@ func (doc *Document) Save(path string) error {
 		if requested == doc.Path {
 			return fmt.Errorf("%s no longer resolves to its original path; use Save As", doc.Name)
 		}
+		source, sourceErr := os.Stat(doc.Path)
+		target, targetErr := os.Stat(absolute)
+		sameSource = sourceErr == nil && targetErr == nil && os.SameFile(source, target)
 	}
-	if doc.Path != "" && absolute == doc.Path {
+	if sameSource {
 		matches, err := diskBytesMatch(absolute, doc.savedDisk)
 		if err != nil {
 			return err

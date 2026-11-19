@@ -2219,7 +2219,8 @@ func (state *model) save(index int, saveAs bool) bool {
 	doc := state.space.Documents[index]
 	state.cancelFileCommandComposition(doc)
 	path := doc.Path
-	if saveAs || path == "" {
+	choosingPath := saveAs || path == ""
+	if choosingPath {
 		defer state.requestNativeChooserFocus()
 		chosen, err := app.SaveFile(app.SaveFileOptions{Title: "Save As", SuggestedName: doc.Name, DefaultExtension: "txt"})
 		if err != nil {
@@ -2235,8 +2236,12 @@ func (state *model) save(index int, saveAs bool) bool {
 		state.notice = err.Error()
 		return false
 	}
+	var target os.FileInfo
+	if choosingPath {
+		target, _ = os.Stat(absolute)
+	}
 	for _, other := range state.space.Documents {
-		if other != doc && other.Path == absolute {
+		if other != doc && other.Path != "" && destinationMatchesFile(absolute, target, other.Path) {
 			state.notice = "This file is already open in another tab"
 			return false
 		}
@@ -2270,8 +2275,9 @@ func (state *model) saveCopy(index int) bool {
 		state.notice = err.Error()
 		return false
 	}
+	target, _ := os.Stat(absolute)
 	for _, open := range state.space.Documents {
-		if open.Path != "" && open.Path == absolute {
+		if open.Path != "" && destinationMatchesFile(absolute, target, open.Path) {
 			state.notice = "Copy destination is already open in a tab"
 			return false
 		}
