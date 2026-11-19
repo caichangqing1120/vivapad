@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -64,12 +65,10 @@ func (state *model) browseFilesDirectory() {
 }
 
 func (state *model) startFileSearch() {
-	state.cancelFileSearch()
+	generation := state.cancelFileSearch()
 	state.clearResultFocus()
 	state.resultSelected = -1
 	state.filesMessage = ""
-	state.searchGeneration++
-	generation := state.searchGeneration
 	root, pattern, query, options := state.filesRoot.String(), state.filesPattern.String(), state.query.String(), state.searchOptions
 	recursive, encoding := state.filesRecursive, state.filesEncoding
 	ctx, cancel := context.WithCancel(context.Background())
@@ -84,10 +83,8 @@ func (state *model) startFileSearch() {
 }
 
 func (state *model) startReplacePreview() {
-	state.cancelFileSearch()
+	generation := state.cancelFileSearch()
 	state.filesMessage = ""
-	state.searchGeneration++
-	generation := state.searchGeneration
 	root, pattern, query, replacement, options := state.filesRoot.String(), state.filesPattern.String(), state.query.String(), state.replacement.String(), state.searchOptions
 	recursive, encoding := state.filesRecursive, state.filesEncoding
 	ctx, cancel := context.WithCancel(context.Background())
@@ -122,8 +119,7 @@ func (state *model) startReplaceApply() {
 			}
 		}
 	}
-	state.searchGeneration++
-	generation, plan := state.searchGeneration, state.replacePlan
+	generation, plan := state.searchReplies.advance(), state.replacePlan
 	state.filesApplying = true
 	state.notice = "Replacing files..."
 	go func() {
@@ -140,81 +136,99 @@ func (state *model) cancelReplacePreview() {
 	state.requestEditorCommandFocus()
 }
 
+// Each file job delivers one reply. Only the active generation can publish it.
+type fileSearchMailbox struct {
+	mu         sync.Mutex
+	generation uint64
+	pending    *fileSearchResponse
+}
+
+func (mailbox *fileSearchMailbox) advance() uint64 {
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	mailbox.generation++
+	mailbox.pending = nil
+	return mailbox.generation
+}
+
+func (mailbox *fileSearchMailbox) publish(reply fileSearchResponse) bool {
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	if reply.generation != mailbox.generation {
+		return false
+	}
+	mailbox.pending = &reply
+	return true
+}
+
+func (mailbox *fileSearchMailbox) take() *fileSearchResponse {
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	reply := mailbox.pending
+	mailbox.pending = nil
+	return reply
+}
+
 func (state *model) sendFileReply(reply fileSearchResponse) {
-	for {
-		select {
-		case state.searchReplies <- reply:
-			state.invalidator.Invalidate()
-			return
-		default:
-			select {
-			case <-state.searchReplies:
-			default:
-			}
-		}
+	if state.searchReplies.publish(reply) {
+		state.invalidator.Invalidate()
 	}
 }
 
 func (state *model) consumeFileSearch() {
-	for {
-		select {
-		case reply := <-state.searchReplies:
-			if reply.generation != state.searchGeneration {
-				continue
-			}
-			if reply.kind == fileJobReplaceApply {
-				if !state.filesApplying {
-					continue
-				}
-				state.filesApplying, state.replaceConfirmOpen = false, false
-				state.replacePlan = nil
-				state.discardFileResults()
-				reloadErr := state.refreshReplacedTabs(reply.applied)
-				if reply.err != nil {
-					state.notice = reply.err.Error()
-				} else {
-					state.notice = fmt.Sprintf("Replaced %d matches in %d files", reply.applied.Replacements, reply.applied.FilesChanged)
-				}
-				if reloadErr != nil {
-					state.notice += "; tab reload failed: " + reloadErr.Error()
-				}
-				state.requestEditorCommandFocus()
-				continue
-			}
-			if !state.filesSearching {
-				continue
-			}
-			state.filesSearching = false
-			state.searchCancel()
-			state.searchCancel = nil
-			if reply.err != nil {
-				state.notice = reply.err.Error()
-				state.filesMessage = reply.err.Error()
-				return
-			}
-			if reply.kind == fileJobReplacePreview {
-				if len(reply.plan.Changes) == 0 {
-					state.notice = "No changes to preview"
-					state.filesMessage = state.notice
-					return
-				}
-				state.replacePlan = reply.plan
-				state.replaceConfirmOpen, state.filesDialogOpen = true, false
-				state.discardFileResults()
-				state.notice = fmt.Sprintf("Preview: %d matches in %d files", reply.plan.Replacements, len(reply.plan.Changes))
-				continue
-			}
-			state.fileResults, state.resultOffset, state.resultSelected = reply.result, 0, -1
-			state.clearResultFocus()
-			state.resultDocument = nil
-			state.resultDocuments, state.resultOpenDocuments = nil, false
-			state.resultQuery = reply.query
-			state.resultsOpen, state.filesDialogOpen = true, false
-			state.notice = fmt.Sprintf("%d matches in %d files (%d skipped)", len(reply.result.Matches), reply.result.FilesSearched, reply.result.FilesSkipped)
-		default:
+	reply := state.searchReplies.take()
+	if reply == nil {
+		return
+	}
+	if reply.kind == fileJobReplaceApply {
+		if !state.filesApplying {
 			return
 		}
+		state.filesApplying, state.replaceConfirmOpen = false, false
+		state.replacePlan = nil
+		state.discardFileResults()
+		reloadErr := state.refreshReplacedTabs(reply.applied)
+		if reply.err != nil {
+			state.notice = reply.err.Error()
+		} else {
+			state.notice = fmt.Sprintf("Replaced %d matches in %d files", reply.applied.Replacements, reply.applied.FilesChanged)
+		}
+		if reloadErr != nil {
+			state.notice += "; tab reload failed: " + reloadErr.Error()
+		}
+		state.requestEditorCommandFocus()
+		return
 	}
+	if !state.filesSearching {
+		return
+	}
+	state.filesSearching = false
+	state.searchCancel()
+	state.searchCancel = nil
+	if reply.err != nil {
+		state.notice = reply.err.Error()
+		state.filesMessage = reply.err.Error()
+		return
+	}
+	if reply.kind == fileJobReplacePreview {
+		if len(reply.plan.Changes) == 0 {
+			state.notice = "No changes to preview"
+			state.filesMessage = state.notice
+			return
+		}
+		state.replacePlan = reply.plan
+		state.replaceConfirmOpen, state.filesDialogOpen = true, false
+		state.discardFileResults()
+		state.notice = fmt.Sprintf("Preview: %d matches in %d files", reply.plan.Replacements, len(reply.plan.Changes))
+		return
+	}
+	state.fileResults, state.resultOffset, state.resultSelected = reply.result, 0, -1
+	state.clearResultFocus()
+	state.resultDocument = nil
+	state.resultDocuments, state.resultOpenDocuments = nil, false
+	state.resultQuery = reply.query
+	state.resultsOpen, state.filesDialogOpen = true, false
+	state.notice = fmt.Sprintf("%d matches in %d files (%d skipped)", len(reply.result.Matches), reply.result.FilesSearched, reply.result.FilesSkipped)
 }
 
 func (state *model) refreshReplacedTabs(result searchfiles.ApplyResult) error {
@@ -240,13 +254,13 @@ func (state *model) refreshReplacedTabs(result searchfiles.ApplyResult) error {
 	return errors.Join(reloadErrors...)
 }
 
-func (state *model) cancelFileSearch() {
+func (state *model) cancelFileSearch() uint64 {
 	if state.searchCancel != nil {
 		state.searchCancel()
 		state.searchCancel = nil
 	}
-	state.searchGeneration++
 	state.filesSearching = false
+	return state.searchReplies.advance()
 }
 
 func (state *model) navigateFileResult(previous bool) bool {

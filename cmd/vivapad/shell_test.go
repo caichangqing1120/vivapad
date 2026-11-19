@@ -2468,13 +2468,13 @@ func TestReplaceReportsTabReloadFailureAfterDiskWrite(t *testing.T) {
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	state.searchGeneration = 1
+	generation := state.searchReplies.advance()
 	state.filesApplying = true
 	state.replaceConfirmOpen = true
-	state.searchReplies <- fileSearchResponse{
-		kind: fileJobReplaceApply, generation: 1,
+	state.sendFileReply(fileSearchResponse{
+		kind: fileJobReplaceApply, generation: generation,
 		applied: searchfiles.ApplyResult{FilesChanged: 1, Replacements: 1, Paths: []string{state.space.Current().Path}},
-	}
+	})
 	state.consumeFileSearch()
 	if !strings.Contains(state.notice, "reload failed") {
 		t.Fatalf("successful write hid reload failure: %q", state.notice)

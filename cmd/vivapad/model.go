@@ -488,9 +488,8 @@ type model struct {
 	resultFocusArmed              bool
 	resultFocusMode               bool
 	resultReturnToEditor          bool
-	searchGeneration              uint64
 	searchCancel                  context.CancelFunc
-	searchReplies                 chan fileSearchResponse
+	searchReplies                 fileSearchMailbox
 	menuOpen                      int
 	fileMenuOffset                int
 	fileMenuVisible               int
@@ -755,8 +754,8 @@ func newModel() *model {
 		query:              text.NewEditor(""), incrementQuery: text.NewEditor(""), incrementCount: true,
 		replacement: text.NewEditor(""), goToField: text.NewEditor(""),
 		filesRoot: text.NewEditor(workingDirectory), filesPattern: text.NewEditor("*"),
-		filesRecursive: true, searchReplies: make(chan fileSearchResponse, 16),
-		menuOpen: -1, pendingClose: -1, pendingReload: -1, resultSelected: -1, showLineNumbers: true, changeHistoryView: "margin", showIndentGuides: true, showControls: true, markWrap: true, markMode: "normal", fontSize: 13, subFontSize: 13,
+		filesRecursive: true,
+		menuOpen:       -1, pendingClose: -1, pendingReload: -1, resultSelected: -1, showLineNumbers: true, changeHistoryView: "margin", showIndentGuides: true, showControls: true, markWrap: true, markMode: "normal", fontSize: 13, subFontSize: 13,
 		tabWidth: 4, indentMode: "language", autoIndent: true, autoClose: true, npcMode: "abbreviation",
 		printSettings:  printing.DefaultSettings(),
 		dateTimeFormat: datetime.DefaultFormat, clock: time.Now,
