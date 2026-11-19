@@ -54,6 +54,8 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 		doc.Editor.SetSelection(text.Range{Start: 0, End: doc.Editor.RuneCount()})
 		doc.Editor.Insert(tab.Content)
 		doc.Editor.SetSelection(text.Range{Start: tab.SelectionStart, End: tab.SelectionEnd})
+		// A caret already at the end does not separate recovery from the next keystroke.
+		doc.Editor.BreakUndoGroup()
 		doc.SetEncoding(tab.Encoding)
 		if err := doc.RestoreLineEndings(tab.LineEnding, tab.LineEndings); err != nil {
 			state.notice = "Recovery EOL unavailable: " + err.Error()

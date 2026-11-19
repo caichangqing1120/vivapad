@@ -48,6 +48,15 @@ func TestRecoveredTabClickFocusesEditorAfterOpeningExplicitFile(t *testing.T) {
 	if got := state.space.Current().Editor.String(); got != "draftx" || saved.Editor.String() != "saved\n" {
 		t.Fatalf("first key changed wrong text: recovered=%q, saved=%q", got, saved.Editor.String())
 	}
+	if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || state.space.Current().Editor.String() != "draft" || !state.space.Current().Dirty() {
+		t.Fatalf("Undo after first key = %q, dirty=%t, handled=%t, err=%v", state.space.Current().Editor.String(), state.space.Current().Dirty(), handled, err)
+	}
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'z'); err != nil || !handled || state.space.Current().Editor.String() != "draftx" {
+		t.Fatalf("Redo after first key = %q, handled=%t, err=%v", state.space.Current().Editor.String(), handled, err)
+	}
+	if data, err := os.ReadFile(savedPath); err != nil || string(data) != "saved\r\n" {
+		t.Fatalf("recovered tab edits changed the explicit file: %q, %v", data, err)
+	}
 }
 
 func TestSplitTabClickFocusesSelectedPane(t *testing.T) {
