@@ -138,6 +138,71 @@ func TestPathsTreatsTrailingSeparatorAsDirectory(t *testing.T) {
 	}
 }
 
+func TestPathsClassifiesSymlinksByTheirTargets(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "target")
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(directory, "child.txt")
+	if err := os.WriteFile(file, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, link := range []struct{ name, target string }{
+		{"link-dir", directory},
+		{"link-file", file},
+		{"link-missing", filepath.Join(root, "missing")},
+	} {
+		if err := os.Symlink(link.target, filepath.Join(root, link.name)); err != nil {
+			if runtime.GOOS == "windows" {
+				t.Skipf("cannot create symlink: %v", err)
+			}
+			t.Fatal(err)
+		}
+	}
+	sep := string(filepath.Separator)
+	for _, tc := range []struct {
+		input string
+		want  []string
+	}{
+		{"li", []string{"link-dir" + sep, "link-file"}},
+		{"link-dir" + sep + "ch", []string{"link-dir" + sep + "child.txt"}},
+	} {
+		result, err := Paths(tc.input, len(tc.input), root)
+		if err != nil || !reflect.DeepEqual(result.Candidates, tc.want) {
+			t.Errorf("Paths(%q) = %v, %v; want %v", tc.input, result.Candidates, err, tc.want)
+		}
+	}
+}
+
+func TestPathCandidateUnavailableWhenFileBecomesDirectory(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "target")
+	if err := os.WriteFile(path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Paths("tar", 3, root)
+	if err != nil || !reflect.DeepEqual(result.Candidates, []string{"target"}) {
+		t.Fatalf("expected a regular-file candidate, got %v, %v", result.Candidates, err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if available, err := PathCandidateAvailable(result.Candidates[0], root); err != nil || available {
+		t.Fatalf("old file candidate = %v, %v; want unavailable", available, err)
+	}
+	result, err = Paths("tar", 3, root)
+	if err != nil || !reflect.DeepEqual(result.Candidates, []string{"target" + string(filepath.Separator)}) {
+		t.Fatalf("expected a refreshed directory candidate, got %v, %v", result.Candidates, err)
+	}
+	if available, err := PathCandidateAvailable(result.Candidates[0], root); err != nil || !available {
+		t.Fatalf("refreshed directory candidate = %v, %v; want available", available, err)
+	}
+}
+
 func TestPathsBoundsDirectoryEntries(t *testing.T) {
 	root := t.TempDir()
 	for index := range 2001 {

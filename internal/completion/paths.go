@@ -102,7 +102,17 @@ func Paths(value string, caret int, base string) (Result, error) {
 		if entry.Name() == "." || entry.Name() == ".." || !pathPrefix(entry.Name(), suffix) {
 			continue
 		}
-		matches = append(matches, candidate{name: entry.Name(), directory: entry.IsDir()})
+		mode := entry.Type()
+		if mode&os.ModeSymlink != 0 {
+			info, err := os.Stat(filepath.Join(parent, entry.Name()))
+			if err != nil {
+				continue
+			}
+			mode = info.Mode()
+		}
+		if mode.IsDir() || mode.IsRegular() {
+			matches = append(matches, candidate{name: entry.Name(), directory: mode.IsDir()})
+		}
 	}
 	slices.SortFunc(matches, func(first, second candidate) int {
 		if first.directory != second.directory {
@@ -141,7 +151,7 @@ func PathCandidateAvailable(raw, base string) (bool, error) {
 	if raw != "" && os.IsPathSeparator(raw[len(raw)-1]) {
 		return info.IsDir(), nil
 	}
-	return info.Mode().IsRegular() || info.IsDir(), nil
+	return info.Mode().IsRegular(), nil
 }
 
 func pathInfo(raw, base string) (os.FileInfo, error) {
