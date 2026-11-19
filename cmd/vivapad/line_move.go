@@ -4,9 +4,23 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 )
+
+func editorCodeCommandForKey(event gfx.KeyEvent) (components.CodeEditorCommand, bool) {
+	if !event.Release && event.Modifiers == gfx.ModifierControl|gfx.ModifierShift {
+		switch event.Key {
+		case gfx.KeyUp:
+			return components.CodeEditorMoveLinesUp, true
+		case gfx.KeyDown:
+			return components.CodeEditorMoveLinesDown, true
+		}
+	}
+	return components.CodeEditorCommandForKey(event)
+}
 
 func (state *model) moveLinesWithBookmarks(doc *document.Document, up bool) {
 	before := doc.Editor.String()

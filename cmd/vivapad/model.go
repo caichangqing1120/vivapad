@@ -2024,7 +2024,7 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
-		if command, ok := components.CodeEditorCommandForKey(event); ok {
+		if command, ok := editorCodeCommandForKey(event); ok {
 			if state.isReadOnly(doc) {
 				state.notice = "Read-only document"
 				return gfx.EventResult{Handled: true, Repaint: true}
