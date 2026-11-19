@@ -29,23 +29,26 @@ func changeMarginDocument(t *testing.T, value string) *model {
 }
 
 func TestChangeMarginLinesFollowTheRealConsumer(t *testing.T) {
-	state := changeMarginDocument(t, "one\ntwo\nthree\n")
+	state := changeMarginDocument(t, "\u4e00\r\ntw\u00f6\nthree\n")
 	doc := state.space.Current()
 	if lines := state.changeMarginLines(doc); len(lines) != 0 {
 		t.Fatalf("a freshly opened document painted %v", lines)
 	}
-	doc.Editor.MoveTo(len([]rune("one\n")), false)
+	doc.Editor.MoveTo(len([]rune("\u4e00\n")), false)
 	doc.Editor.Insert("X")
 	lines := state.changeMarginLines(doc)
 	if len(lines) != 1 || lines[0].Line != 1 || lines[0].Fill != palette.changeModified {
 		t.Fatalf("modified line decorations = %+v", lines)
 	}
 	// The cache must follow the text: another edit adds another decorated line.
-	doc.Editor.MoveTo(len([]rune("oneX\ntwo\n")), false)
+	doc.Editor.MoveTo(len([]rune("\u4e00\nXtw\u00f6\n")), false)
 	doc.Editor.Insert("Y")
 	lines = state.changeMarginLines(doc)
 	if len(lines) != 2 || lines[0].Line != 1 || lines[1].Line != 2 {
 		t.Fatalf("two modified lines decorations = %+v", lines)
+	}
+	if lines[0].JoinBefore || !lines[0].JoinAfter || !lines[1].JoinBefore || lines[1].JoinAfter {
+		t.Fatalf("adjacent lines did not join only along their shared edge: %+v", lines)
 	}
 	// Undoing everything returns to the saved bytes and must clear the margin.
 	doc.Editor.Undo()

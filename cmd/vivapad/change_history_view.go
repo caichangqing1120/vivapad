@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
@@ -28,14 +30,18 @@ func (state *model) changeDecorations(doc *document.Document) *changeViewCache {
 	if ok && cached.value == value && cached.consumer == consumer && cached.atSave == atSave && cached.revision == revision {
 		return cached
 	}
-	starts, ends, nexts := changeHistoryLineBounds(value)
-	masks := make([]uint8, len(starts))
-	for line := range starts {
-		masks[line], err = consumer.LineMask(starts[line], ends[line], nexts[line])
+	masks := make([]uint8, strings.Count(value, "\n")+1)
+	line, start := 0, 0
+	for content := range strings.SplitSeq(value, "\n") {
+		end := start + len(content)
+		next := min(end+1, len(value))
+		masks[line], err = consumer.LineMask(start, end, next)
 		if err != nil {
 			delete(state.changeView, doc)
 			return nil
 		}
+		line++
+		start = next
 	}
 	colors := changeMarginColors()
 	var bars []components.CodeEditorGutterBar
