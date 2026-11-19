@@ -198,8 +198,9 @@ func (state *model) writeNPPSession(path string, stored session.NPPState) {
 		state.notice = "Session destination is an internal VivaPad data file"
 		return
 	}
+	target, _ := os.Stat(absolute)
 	for _, doc := range state.space.Documents {
-		if doc.Path != "" && doc.Path == absolute {
+		if doc.Path != "" && destinationMatchesFile(absolute, target, doc.Path) {
 			state.notice = "Session destination is already open in a tab"
 			return
 		}
