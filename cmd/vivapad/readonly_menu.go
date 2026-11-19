@@ -54,7 +54,7 @@ func (state *model) textMutation(command string) bool {
 		"Unix (LF)", "Windows (CR LF)", "Macintosh (CR)",
 		"Toggle Single Line Comment", "Single Line Comment", "Single Line Uncomment", "Block Comment", "Block Uncomment",
 		"Date Time (short)", "Date Time (long)", "Date Time (customized)",
-		"Join Lines", "Reverse Line Order", "Insert Blank Line Above Current", "Insert Blank Line Below Current", "Split Lines",
+		"Join Lines", "Reverse Line Order", "Insert Blank Line Above Current", "Insert Blank Line Below Current", "Split Lines", "Move Up Current Line", "Move Down Current Line",
 		"Sort In Locale Order Ascending", "Sort In Locale Order Descending", "Randomize Line Order",
 		"UPPERCASE", "lowercase", "Proper Case", "Proper Case (blend)", "Sentence case", "Sentence case (blend)", "Invert Case", "Random Case", "Sort Lines Ascending", "Sort Lines Descending", "Remove Duplicate Lines",
 		"Sort Ascending (Ignore Case)", "Sort Descending (Ignore Case)", "Remove Empty Lines", "Remove Blank Lines",

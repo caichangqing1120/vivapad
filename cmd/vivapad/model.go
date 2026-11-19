@@ -3001,6 +3001,8 @@ func (state *model) command(command string) {
 	case "Unindent Lines":
 		doc.UnindentLines()
 		state.recordMacro(doc, macro.Step{Kind: macro.LineStep, Line: command})
+	case "Move Up Current Line", "Move Down Current Line":
+		state.moveLinesWithBookmarks(doc, command == "Move Up Current Line")
 	case "Line Operations":
 		state.menuOpen, state.lineMenuOpen, state.lineMenuOffset = 1, true, 0
 	case "Insert":

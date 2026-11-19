@@ -15,6 +15,7 @@ var lineCommands = [...]string{
 	"Sort As Decimals (Comma) Ascending", "Sort As Decimals (Comma) Descending",
 	"Sort As Decimals (Dot) Ascending", "Sort As Decimals (Dot) Descending",
 	"Sort By Length Ascending", "Sort By Length Descending",
+	"Move Up Current Line", "Move Down Current Line",
 	"Sort In Locale Order Ascending", "Sort In Locale Order Descending", "Randomize Line Order",
 }
 
