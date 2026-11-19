@@ -497,6 +497,7 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 	if selected >= 0 {
 		state.space.Select(selected)
 		state.showInActivePane(state.space.Current())
+		state.requestEditorCommandFocus()
 	}
 	if closed >= 0 {
 		state.closeTab(closed)
