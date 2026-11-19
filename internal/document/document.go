@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -236,11 +237,11 @@ func (doc *Document) Save(path string) error {
 		}
 	}
 	if doc.Path != "" && absolute == doc.Path {
-		current, err := os.ReadFile(absolute)
+		matches, err := diskBytesMatch(absolute, doc.savedDisk)
 		if err != nil {
 			return err
 		}
-		if !bytes.Equal(current, doc.savedDisk) {
+		if !matches {
 			return fmt.Errorf("%s changed on disk; use Save As", doc.Name)
 		}
 	}
@@ -260,6 +261,41 @@ func (doc *Document) Save(path string) error {
 	doc.recovered = false
 	doc.Editor.SetSavePoint()
 	return nil
+}
+
+func diskBytesMatch(path string, expected []byte) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() || info.Size() != int64(len(expected)) {
+		return false, nil
+	}
+	var buffer [32 << 10]byte
+	for len(expected) != 0 {
+		chunk := buffer[:min(len(expected), len(buffer))]
+		if _, err := io.ReadFull(file, chunk); err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				return false, nil
+			}
+			return false, err
+		}
+		if !bytes.Equal(chunk, expected[:len(chunk)]) {
+			return false, nil
+		}
+		expected = expected[len(chunk):]
+	}
+	// Check for growth after Stat as well as changes within the saved length.
+	_, err = io.ReadFull(file, buffer[:1])
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err
 }
 
 func (doc *Document) SaveCopy(path string) error {

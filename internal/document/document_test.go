@@ -141,6 +141,60 @@ func TestSaveRefusesToOverwriteExternallyChangedFile(t *testing.T) {
 	}
 }
 
+func TestSaveChecksDiskBytesBeyondFirstBlock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shared.txt")
+	original := strings.Repeat("a", 100_000)
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.Editor.Insert("local ")
+	const suffix = "z"
+	external := original[:len(original)-len(suffix)] + suffix
+	if err := os.WriteFile(path, []byte(external), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Save(""); err == nil || !strings.Contains(err.Error(), "changed on disk") || !doc.Dirty() {
+		t.Fatalf("same-length disk edit did not stop Save: %v", err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != external {
+		t.Fatal("refused Save changed the external edit")
+	}
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Save(""); err != nil || doc.Dirty() {
+		t.Fatalf("restoring the original bytes should allow Save: %v", err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "local "+original {
+		t.Fatal("successful retry did not save the local edit")
+	}
+}
+
+func BenchmarkSaveRefusesGrownDiskFile(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "shared.txt")
+	if err := os.WriteFile(path, []byte("saved"), 0600); err != nil {
+		b.Fatal(err)
+	}
+	doc, err := Open(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	doc.Editor.Insert("local ")
+	if err := os.Truncate(path, 8<<20); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := doc.Save(""); err == nil || !strings.Contains(err.Error(), "changed on disk") {
+			b.Fatalf("grown file did not stop Save: %v", err)
+		}
+	}
+}
+
 func TestSearchWrapsOverUnicodeAndReplaceUndoesAsOneEdit(t *testing.T) {
 	doc := New("new 1")
 	doc.Editor.Insert("alpha 中\nALPHA 中\n")
