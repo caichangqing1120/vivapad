@@ -218,11 +218,7 @@ func (doc *Document) Save(path string) error {
 		}
 	}
 	value := doc.Editor.String()
-	physical, err := doc.physicalValue(value)
-	if err != nil {
-		return err
-	}
-	data, err := encodeText(physical, doc.encoding)
+	data, err := doc.encodeForSave(value)
 	if err != nil {
 		return err
 	}
@@ -247,11 +243,7 @@ func (doc *Document) SaveCopy(path string) error {
 	if doc.Path != "" && absolute == doc.Path {
 		return fmt.Errorf("copy destination is the active document; use Save")
 	}
-	physical, err := doc.physicalValue(doc.Editor.String())
-	if err != nil {
-		return err
-	}
-	data, err := encodeText(physical, doc.encoding)
+	data, err := doc.encodeForSave(doc.Editor.String())
 	if err != nil {
 		return err
 	}
@@ -288,12 +280,26 @@ func CanonicalSavePath(path string) (string, error) {
 }
 
 func (doc *Document) ValidateEncoding() error {
-	physical, err := doc.physicalValue(doc.Editor.String())
-	if err != nil {
-		return err
-	}
-	_, err = encodeText(physical, doc.encoding)
+	_, err := doc.encodeForSave(doc.Editor.String())
 	return err
+}
+
+// SaveDiffersFromSnapshot compares save output with the captured disk bytes
+// without reading or writing the current file.
+func (doc *Document) SaveDiffersFromSnapshot() (bool, error) {
+	data, err := doc.encodeForSave(doc.Editor.String())
+	if err != nil {
+		return false, err
+	}
+	return !bytes.Equal(data, doc.savedDisk), nil
+}
+
+func (doc *Document) encodeForSave(value string) ([]byte, error) {
+	physical, err := doc.physicalValue(value)
+	if err != nil {
+		return nil, err
+	}
+	return encodeText(physical, doc.encoding)
 }
 
 func writeAtomic(path string, data []byte) (err error) {

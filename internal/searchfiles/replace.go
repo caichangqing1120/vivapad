@@ -60,11 +60,15 @@ func PreviewReplace(ctx context.Context, root, query, replacement string, search
 		if err != nil {
 			return nil, err
 		}
-		if count == 0 || !doc.Dirty() {
+		if count == 0 {
 			continue
 		}
-		if err := doc.ValidateEncoding(); err != nil {
+		changed, err := doc.SaveDiffersFromSnapshot()
+		if err != nil {
 			return nil, fmt.Errorf("%w (%s cannot be replaced)", err, match.Path)
+		}
+		if !changed {
+			continue
 		}
 		plan.Changes = append(plan.Changes, FileChange{Path: match.Path, Count: count, Preview: match.Preview, Encoding: match.Encoding, digest: match.DiskDigest, doc: doc})
 		plan.Replacements += count

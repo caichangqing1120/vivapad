@@ -36,6 +36,67 @@ func TestReplacePreviewDoesNotWriteAndApplyPreservesFormat(t *testing.T) {
 	}
 }
 
+func TestDirectoryPreviewOmitsByteIdenticalReplacement(t *testing.T) {
+	for _, test := range []struct {
+		name, query, replacement string
+		regex                    bool
+	}{
+		{"literal", "cat", "cat", false},
+		{"regex capture", "(cat)", "$1", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "identity.txt")
+			const original = "\xef\xbb\xbfcat\r\ncat\ncat\r"
+			writeTestFile(t, path, []byte(original))
+			plan, err := PreviewReplace(context.Background(), root, test.query, test.replacement,
+				document.SearchOptions{MatchCase: true, Regex: test.regex}, Options{Pattern: "*.txt"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.Changes) != 0 || plan.Replacements != 0 || plan.FilesSearched != 1 {
+				t.Fatalf("byte-identical preview reported %d files and %d replacements: %+v", len(plan.Changes), plan.Replacements, plan)
+			}
+		})
+	}
+}
+
+func TestDirectoryReplaceKeepsUnchangedFileIdentityInMixedBatch(t *testing.T) {
+	root := t.TempDir()
+	unchanged, changed := filepath.Join(root, "a.txt"), filepath.Join(root, "z.txt")
+	const source = "\xef\xbb\xbfcat\r\ncat\nlast\r"
+	writeTestFile(t, unchanged, []byte(source))
+	writeTestFile(t, changed, []byte("cat CAT\r\nlast"))
+	before, err := os.Stat(unchanged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PreviewReplace(context.Background(), root, "cat", "cat", document.SearchOptions{}, Options{Pattern: "*.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Changes) != 1 || filepath.Base(plan.Changes[0].Path) != "z.txt" || plan.Replacements != 2 {
+		t.Fatalf("mixed batch preview = %+v", plan)
+	}
+	result, err := plan.Apply(context.Background())
+	if err != nil || result.FilesChanged != 1 || result.Replacements != 2 {
+		t.Fatalf("apply = %+v, %v", result, err)
+	}
+	after, err := os.Stat(unchanged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("applying the mixed batch touched the unchanged file")
+	}
+	if disk, err := os.ReadFile(unchanged); err != nil || string(disk) != source {
+		t.Fatalf("unchanged disk bytes = %x, %v", disk, err)
+	}
+	if disk, err := os.ReadFile(changed); err != nil || string(disk) != "cat cat\r\nlast" {
+		t.Fatalf("changed disk bytes = %q, %v", disk, err)
+	}
+}
+
 func TestReplaceInFilesPreservesMixedLineEndings(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "mixed.txt")
