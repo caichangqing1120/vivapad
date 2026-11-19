@@ -311,8 +311,15 @@ func testSaveChooserReturnsToActiveEditor(t *testing.T, title string, menuIndex 
 							t.Fatalf("Save As path/dirty = %q/%v, canonical=%q, err=%v", doc.Path, doc.Dirty(), canonical, err)
 						}
 					}
+					saved := result == "save" && !copyOnly
+					if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || doc.Editor.String() != "base" || doc.Dirty() != saved {
+						t.Fatalf("first Undo after chooser = %q, dirty=%v, handled=%v, err=%v", doc.Editor.String(), doc.Dirty(), handled, err)
+					}
+					if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'z'); err != nil || !handled || doc.Editor.String() != "basex" || doc.Dirty() == saved {
+						t.Fatalf("first Redo after chooser = %q, dirty=%v, handled=%v, err=%v", doc.Editor.String(), doc.Dirty(), handled, err)
+					}
 					if disk, err := os.ReadFile(oldPath); err != nil || string(disk) != "base" {
-						t.Fatalf("Save As changed source bytes: %q, %v", disk, err)
+						t.Fatalf("%s or Undo/Redo changed source bytes: %q, %v", title, disk, err)
 					}
 					if result == "save" {
 						if disk, err := os.ReadFile(target); err != nil || string(disk) != "basex" {
@@ -321,11 +328,8 @@ func testSaveChooserReturnsToActiveEditor(t *testing.T, title string, menuIndex 
 					} else if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
 						t.Fatalf("canceled chooser created a target: %v", err)
 					}
-					if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || doc.Editor.String() != "base" {
-						t.Fatalf("first Undo after chooser = %q, handled=%v, err=%v", doc.Editor.String(), handled, err)
-					}
 					if pane.right && (left.Editor.String() != "base" || left.Dirty() || state.paneDocs[0] != left || state.paneDocs[1] != doc) {
-						t.Fatal("Save As or Undo changed the inactive pane")
+						t.Fatalf("%s or Undo/Redo changed the inactive pane", title)
 					}
 					if _, err := os.Stat(sessionPath); !errors.Is(err, os.ErrNotExist) {
 						t.Fatalf("Save As wrote an early session: %v", err)
