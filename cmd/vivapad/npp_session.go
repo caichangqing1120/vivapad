@@ -11,6 +11,7 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/text"
+	"golang.org/x/text/unicode/norm"
 	"vivapad/internal/document"
 	"vivapad/internal/session"
 	"vivapad/internal/syntax"
@@ -220,12 +221,16 @@ type preparedNPPFile struct {
 
 type nppSessionPaths map[string][]string
 
+func nppSessionPathKey(path string) string {
+	return strings.ToLower(norm.NFC.String(path))
+}
+
 func (paths nppSessionPaths) resolve(path string) (string, error) {
 	canonical, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return "", err
 	}
-	key := strings.ToLower(canonical)
+	key := nppSessionPathKey(canonical)
 	var info os.FileInfo
 	for _, name := range paths[key] {
 		if name == canonical {
@@ -237,8 +242,8 @@ func (paths nppSessionPaths) resolve(path string) (string, error) {
 				return "", err
 			}
 		}
-		// A matching spelling is only a hint: on a case-sensitive volume
-		// two names that differ in case may still be separate files.
+		// A matching key only suggests an alias. The filesystem may keep
+		// case or Unicode spelling variants as separate files.
 		if other, err := os.Stat(name); err == nil && os.SameFile(info, other) {
 			return name, nil
 		}
@@ -270,7 +275,7 @@ func (state *model) loadNPPSession() {
 	resolvedPaths := make(nppSessionPaths)
 	for _, doc := range state.space.Documents {
 		if doc.Path != "" {
-			key := strings.ToLower(doc.Path)
+			key := nppSessionPathKey(doc.Path)
 			resolvedPaths[key] = append(resolvedPaths[key], doc.Path)
 		}
 	}

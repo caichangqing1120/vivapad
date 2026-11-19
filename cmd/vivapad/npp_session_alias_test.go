@@ -12,32 +12,35 @@ import (
 
 func TestLoadNPPCanonicalizesFileIdentityPerPane(t *testing.T) {
 	for _, tc := range []struct {
-		name                  string
-		split, caps, distinct bool
+		name, sharedName, aliasName string
+		split, distinct             bool
 	}{
-		{"duplicate within pane", false, false, false},
-		{"clone across panes", true, false, false},
-		{"case alias within pane", false, true, false},
-		{"case alias across panes", true, true, false},
-		{"distinct files with different case", false, true, true},
+		{"duplicate within pane", "shared.txt", "", false, false},
+		{"clone across panes", "shared.txt", "", true, false},
+		{"case alias within pane", "shared.txt", "SHARED.TXT", false, false},
+		{"case alias across panes", "shared.txt", "SHARED.TXT", true, false},
+		{"distinct files with different case", "shared.txt", "SHARED.TXT", false, true},
+		{"Unicode alias within pane", "caf\u00e9.txt", "cafe\u0301.txt", false, false},
+		{"Unicode alias across panes", "caf\u00e9.txt", "cafe\u0301.txt", true, false},
+		{"distinct files with different Unicode forms", "caf\u00e9.txt", "cafe\u0301.txt", false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
-			first, shared := filepath.Join(root, "first.txt"), filepath.Join(root, "shared.txt")
+			first, shared := filepath.Join(root, "first.txt"), filepath.Join(root, tc.sharedName)
 			for _, path := range []string{first, shared} {
 				if err := os.WriteFile(path, []byte("saved\r\n"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
 			sep := string(filepath.Separator)
-			alias := root + sep + "." + sep + "shared.txt"
-			if tc.caps {
-				alias = filepath.Join(root, "SHARED.TXT")
+			alias := root + sep + "." + sep + tc.sharedName
+			if tc.aliasName != "" {
+				alias = filepath.Join(root, tc.aliasName)
 			}
 			if tc.distinct {
 				file, err := os.OpenFile(alias, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 				if os.IsExist(err) {
-					t.Skip("temporary directory is case-insensitive")
+					t.Skip("temporary filesystem treats these names as aliases")
 				}
 				if err != nil {
 					t.Fatal(err)
@@ -45,17 +48,17 @@ func TestLoadNPPCanonicalizesFileIdentityPerPane(t *testing.T) {
 				if err := file.Close(); err != nil {
 					t.Fatal(err)
 				}
-			} else if tc.caps {
+			} else if tc.aliasName != "" {
 				info, err := os.Stat(alias)
 				if os.IsNotExist(err) {
-					t.Skip("temporary directory is case-sensitive")
+					t.Skip("temporary filesystem distinguishes these names")
 				}
 				if err != nil {
 					t.Fatal(err)
 				}
 				original, err := os.Stat(shared)
 				if err != nil || !os.SameFile(original, info) {
-					t.Fatalf("case alias does not name the fixture: %v", err)
+					t.Fatalf("alias does not name the fixture: %v", err)
 				}
 			}
 			entry := session.NPPFile{Path: alias, Encoding: -1}
@@ -88,7 +91,7 @@ func TestLoadNPPCanonicalizesFileIdentityPerPane(t *testing.T) {
 				t.Fatal("session import changed the existing draft")
 			}
 			if tc.distinct {
-				if len(state.space.Documents) != 4 || state.space.Current().Name != "SHARED.TXT" || state.splitEnabled {
+				if len(state.space.Documents) != 4 || state.space.Current().Name != tc.aliasName || state.splitEnabled {
 					t.Fatalf("distinct names did not open separately: %d tabs, %q", len(state.space.Documents), state.notice)
 				}
 				return
@@ -99,7 +102,7 @@ func TestLoadNPPCanonicalizesFileIdentityPerPane(t *testing.T) {
 				}
 				return
 			}
-			if len(state.space.Documents) != 3 || !state.splitEnabled || state.activePane != 1 || state.paneDocs[0] != state.paneDocs[1] || state.space.Current().Name != "shared.txt" {
+			if len(state.space.Documents) != 3 || !state.splitEnabled || state.activePane != 1 || state.paneDocs[0] != state.paneDocs[1] || state.space.Current().Name != tc.sharedName {
 				t.Fatalf("cross-pane alias did not restore a shared document: %d tabs, %q", len(state.space.Documents), state.notice)
 			}
 		})
