@@ -22,6 +22,13 @@ type Options struct {
 	Encoding     document.Encoding
 }
 
+func (options Options) fileByteLimit() int64 {
+	if options.MaxFileBytes > 0 {
+		return options.MaxFileBytes
+	}
+	return 8 << 20
+}
+
 type Match struct {
 	Path       string
 	DiskDigest string
@@ -71,9 +78,7 @@ func Find(ctx context.Context, root, query string, search document.SearchOptions
 			return Result{}, err
 		}
 	}
-	if options.MaxFileBytes <= 0 {
-		options.MaxFileBytes = 8 << 20
-	}
+	maxFileBytes := options.fileByteLimit()
 	if options.MaxMatches <= 0 {
 		options.MaxMatches = 2000
 	}
@@ -120,11 +125,11 @@ func Find(ctx context.Context, root, query string, search document.SearchOptions
 			return nil
 		}
 		info, err := entry.Info()
-		if err != nil || info.Size() > options.MaxFileBytes {
+		if err != nil || info.Size() > maxFileBytes {
 			result.FilesSkipped++
 			return nil
 		}
-		source, err := document.ReadSearchSource(path, options.Encoding)
+		source, err := document.ReadSearchSource(path, options.Encoding, maxFileBytes)
 		if err != nil {
 			result.FilesSkipped++
 			return nil
@@ -204,13 +209,6 @@ func appendMatches(ctx context.Context, result *Result, source document.SearchSo
 		})
 	}
 	return nil
-}
-
-func openWithEncoding(path string, encoding document.Encoding) (*document.Document, error) {
-	if encoding.IsLegacy() {
-		return document.OpenWithEncoding(path, encoding)
-	}
-	return document.Open(path)
 }
 
 func previewLine(line string, matchStart, matchEnd int) string {

@@ -138,6 +138,34 @@ func TestReplacePreflightRejectsChangedFileBeforeAnyWrite(t *testing.T) {
 	}
 }
 
+func TestReplacePreflightRetainsSearchFileLimit(t *testing.T) {
+	root := t.TempDir()
+	first, second := filepath.Join(root, "a.txt"), filepath.Join(root, "z.txt")
+	const original = "cat\r\n"
+	for _, path := range []string{first, second} {
+		writeTestFile(t, path, []byte(original))
+	}
+	plan, err := PreviewReplace(t.Context(), root, "cat", "dog", document.SearchOptions{}, Options{MaxFileBytes: int64(len(original))})
+	if err != nil || plan.Replacements != 2 {
+		t.Fatalf("files exactly at the byte limit must be included: %+v, %v", plan, err)
+	}
+	const expanded = original + "x"
+	writeTestFile(t, second, []byte(expanded))
+	result, err := plan.Apply(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "file exceeds search size limit") || result.FilesChanged != 0 || result.Replacements != 0 {
+		t.Fatalf("preflight did not enforce the scan's byte limit: %+v, %v", result, err)
+	}
+	for path, want := range map[string]string{first: original, second: expanded} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != want {
+			t.Fatalf("refused preflight changed %q: %q, %v", path, got, err)
+		}
+	}
+	writeTestFile(t, second, []byte(original))
+	if result, err := plan.Apply(t.Context()); err != nil || result.FilesChanged != 2 {
+		t.Fatalf("restoring the original file should allow a retry: %+v, %v", result, err)
+	}
+}
+
 func TestReplaceRegexCapturesAndTruncation(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "data.txt"), []byte("item-12 item-34"))

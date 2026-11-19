@@ -74,18 +74,18 @@ func newDocument(name string, editor *text.Editor) *Document {
 }
 
 func Open(path string) (*Document, error) {
-	return open(path, nil)
+	return open(path, nil, 0)
 }
 
 func OpenWithEncoding(path string, encoding Encoding) (*Document, error) {
 	if legacyCodec(encoding) == nil {
 		return nil, fmt.Errorf("unsupported explicit encoding %d", encoding)
 	}
-	return open(path, &encoding)
+	return open(path, &encoding, 0)
 }
 
-func open(path string, selected *Encoding) (*Document, error) {
-	file, err := readDecodedFile(path, selected)
+func open(path string, selected *Encoding, maxBytes int64) (*Document, error) {
+	file, err := readDecodedFile(path, selected, maxBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ type decodedFile struct {
 	encoding    Encoding
 }
 
-func readDecodedFile(path string, selected *Encoding) (decodedFile, error) {
+func readDecodedFile(path string, selected *Encoding, maxBytes int64) (decodedFile, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return decodedFile{}, err
@@ -129,7 +129,12 @@ func readDecodedFile(path string, selected *Encoding) (decodedFile, error) {
 	} else {
 		return decodedFile{}, err
 	}
-	data, err := os.ReadFile(absolute)
+	var data []byte
+	if maxBytes > 0 {
+		data, err = readSearchFile(absolute, maxBytes)
+	} else {
+		data, err = os.ReadFile(absolute)
+	}
 	if err != nil {
 		return decodedFile{}, err
 	}

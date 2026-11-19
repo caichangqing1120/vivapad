@@ -2,6 +2,7 @@ package searchfiles
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -22,6 +23,7 @@ type ReplacePlan struct {
 	Replacements  int
 	FilesSearched int
 	FilesSkipped  int
+	maxFileBytes  int64
 	applied       bool
 }
 
@@ -39,7 +41,7 @@ func PreviewReplace(ctx context.Context, root, query, replacement string, search
 	if found.Truncated {
 		return nil, fmt.Errorf("match limit reached; narrow the search before replacing")
 	}
-	plan := &ReplacePlan{FilesSearched: found.FilesSearched, FilesSkipped: found.FilesSkipped}
+	plan := &ReplacePlan{FilesSearched: found.FilesSearched, FilesSkipped: found.FilesSkipped, maxFileBytes: options.fileByteLimit()}
 	seen := make(map[string]bool)
 	for _, match := range found.Matches {
 		if err := ctx.Err(); err != nil {
@@ -49,7 +51,7 @@ func PreviewReplace(ctx context.Context, root, query, replacement string, search
 			continue
 		}
 		seen[match.Path] = true
-		doc, err := openWithEncoding(match.Path, match.Encoding)
+		doc, err := document.OpenSearchDocument(match.Path, match.Encoding, plan.maxFileBytes)
 		if err != nil {
 			return nil, fmt.Errorf("%s changed during preview: %w", match.Path, err)
 		}
@@ -89,8 +91,11 @@ func (plan *ReplacePlan) Apply(ctx context.Context) (ApplyResult, error) {
 		if err != nil || !info.Mode().IsRegular() {
 			return result, fmt.Errorf("%s is no longer a regular file", change.Path)
 		}
-		current, err := openWithEncoding(change.Path, change.Encoding)
-		if err != nil || current.Path != change.Path || current.DiskDigest() != change.digest {
+		current, err := document.ReadSearchSource(change.Path, change.Encoding, plan.maxFileBytes)
+		if errors.Is(err, document.ErrSearchFileTooLarge) {
+			return result, fmt.Errorf("%w; no files written: %s", err, change.Path)
+		}
+		if err != nil || current.Path != change.Path || current.DiskDigest != change.digest {
 			return result, fmt.Errorf("file changed after preview; no files written: %s", change.Path)
 		}
 	}
