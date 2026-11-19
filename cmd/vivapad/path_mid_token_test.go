@@ -11,21 +11,24 @@ import (
 
 func TestPathCompletionAtInteriorCaret(t *testing.T) {
 	for _, tc := range []struct {
-		name, typed, suffix string
-		noOp                bool
+		name, token, left, right string
+		caret                    int
+		noOp                     bool
 	}{
-		{"existing file", "al", "pha.txt", true},
-		{"unfinished final component", "al", "-old.txt", false},
-		{"exact filename prefix", "alpha.txt", "-old", false},
-		{"interior directory component", "al", "/child.txt", true},
+		{"existing file", "alpha.txt", `"`, `"`, len("al"), true},
+		{"unfinished final component", "al-old.txt", `"`, `"`, len("al"), false},
+		{"exact filename prefix", "alpha.txt-old", `"`, `"`, len("alpha.txt"), false},
+		{"interior directory component", "al/child.txt", `"`, `"`, len("al"), true},
+		{"square bracket wrapper", "al-old.txt", "[", "]", len("al"), false},
+		{"angle bracket wrapper", "al-old.txt", "<", ">", len("al"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
 			if err := os.WriteFile(filepath.Join(root, "alpha.txt"), nil, 0600); err != nil {
 				t.Fatal(err)
 			}
-			prefix := `open "` + tc.typed
-			before := prefix + tc.suffix + `" tail`
+			prefix := "open " + tc.left
+			before := prefix + tc.token + tc.right + " tail"
 			file := filepath.Join(root, "buffer.txt")
 			if err := os.WriteFile(file, []byte(before), 0600); err != nil {
 				t.Fatal(err)
@@ -38,7 +41,7 @@ func TestPathCompletionAtInteriorCaret(t *testing.T) {
 			}
 			t.Cleanup(driver.Close)
 			clickID(t, driver, editorID)
-			doc.Editor.MoveTo(len(prefix), false)
+			doc.Editor.MoveTo(len(prefix)+tc.caret, false)
 			if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, ' '); err != nil || !handled {
 				t.Fatalf("path shortcut handled=%v err=%v", handled, err)
 			}
@@ -54,7 +57,7 @@ func TestPathCompletionAtInteriorCaret(t *testing.T) {
 			if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 				t.Fatal(err)
 			}
-			if got := doc.Editor.String(); got != `open "alpha.txt" tail` {
+			if got, want := doc.Editor.String(), prefix+"alpha.txt"+tc.right+" tail"; got != want {
 				t.Fatalf("completion did not replace the old suffix: %q", got)
 			}
 			state.command("Undo")

@@ -12,6 +12,8 @@ import (
 	"unicode"
 )
 
+const pathPunctuation = "\"'()[]<>"
+
 func Paths(value string, caret int, base string) (Result, error) {
 	characters := []rune(value)
 	raw, start := pathAtCaret(characters, caret)
@@ -160,16 +162,16 @@ func pathAtCaret(characters []rune, caret int) (string, int) {
 			return raw, start
 		}
 	}
-	for index := caret - 3; index >= lineStart; index-- {
-		if !unicode.IsLetter(characters[index]) || characters[index+1] != ':' || characters[index+2] != '\\' && characters[index+2] != '/' {
+	for index := caret - 1; index >= lineStart && !strings.ContainsRune(pathPunctuation, characters[index]); index-- {
+		if index+2 >= caret || !unicode.IsLetter(characters[index]) || characters[index+1] != ':' || characters[index+2] != '\\' && characters[index+2] != '/' {
 			continue
 		}
-		if index == lineStart || unicode.IsSpace(characters[index-1]) || strings.ContainsRune("\"'(", characters[index-1]) {
+		if index == lineStart || barePathBoundary(characters[index-1]) {
 			return string(characters[index:caret]), index
 		}
 	}
 	start := caret
-	for start > lineStart && !unicode.IsSpace(characters[start-1]) && !strings.ContainsRune("\"'()", characters[start-1]) {
+	for start > lineStart && !barePathBoundary(characters[start-1]) {
 		start--
 	}
 	raw := string(characters[start:caret])
@@ -185,7 +187,7 @@ func PathTokenAtCaret(value string, caret int) (string, int, int) {
 		return "", 0, 0
 	}
 	_, start := pathAtCaret(characters, caret)
-	if caret == 0 || start == 0 && caret > 0 && (unicode.IsSpace(characters[caret-1]) || strings.ContainsRune("\"'()[]<>", characters[caret-1])) {
+	if caret == 0 || start == 0 && barePathBoundary(characters[caret-1]) {
 		start = caret
 	}
 	end := pathTokenEnd(characters, start, caret)
@@ -204,12 +206,16 @@ func pathTokenEnd(characters []rune, start, caret int) int {
 	for end < len(characters) {
 		character := characters[end]
 		if character == '\r' || character == '\n' || quote != 0 && character == quote ||
-			quote == 0 && (unicode.IsSpace(character) || strings.ContainsRune("\"'()[]<>", character)) {
+			quote == 0 && barePathBoundary(character) {
 			break
 		}
 		end++
 	}
 	return end
+}
+
+func barePathBoundary(character rune) bool {
+	return unicode.IsSpace(character) || strings.ContainsRune(pathPunctuation, character)
 }
 
 func pathLike(raw string) bool {
