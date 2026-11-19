@@ -13,7 +13,8 @@ import (
 )
 
 func Paths(value string, caret int, base string) (Result, error) {
-	raw, start := pathAtCaret(value, caret)
+	characters := []rune(value)
+	raw, start := pathAtCaret(characters, caret)
 	if raw == "" {
 		return Result{}, nil
 	}
@@ -23,21 +24,37 @@ func Paths(value string, caret int, base string) (Result, error) {
 	if runtime.GOOS != "windows" && len(raw) >= 3 && unicode.IsLetter(rune(raw[0])) && raw[1] == ':' && (raw[2] == '\\' || raw[2] == '/') {
 		return Result{}, fmt.Errorf("Windows path completion requires Windows")
 	}
-	resolved := raw
-	if strings.HasPrefix(raw, "~/") {
-		home, err := os.UserHomeDir()
+	end := pathTokenEnd(characters, start, caret)
+	result := Result{Start: start, End: end}
+	if end > caret {
+		tail := string(characters[caret:end])
+		if strings.ContainsRune(tail, '/') || runtime.GOOS == "windows" && strings.ContainsRune(tail, '\\') {
+			return result, nil
+		}
+		if len(raw)+len(tail) > 4096 {
+			return Result{}, fmt.Errorf("path token exceeds 4096 bytes")
+		}
+		full, err := resolvePath(raw+tail, base)
 		if err != nil {
 			return Result{}, err
 		}
-		resolved = filepath.Join(home, raw[2:])
-	} else if !filepath.IsAbs(raw) {
-		resolved = filepath.Join(base, raw)
+		if _, err := os.Stat(full); err == nil {
+			return result, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return Result{}, err
+		}
 	}
-	result := Result{Start: start, End: caret}
+	resolved, err := resolvePath(raw, base)
+	if err != nil {
+		return Result{}, err
+	}
 	parent, suffix, display := "", "", ""
 	info, err := os.Stat(resolved)
 	switch {
 	case err == nil && info.Mode().IsRegular():
+		if end > caret {
+			result.Candidates = []string{raw}
+		}
 		return result, nil
 	case err == nil && info.IsDir():
 		parent, display = resolved, raw
@@ -98,13 +115,26 @@ func Paths(value string, caret int, base string) (Result, error) {
 	return result, nil
 }
 
+func resolvePath(raw, base string) (string, error) {
+	if strings.HasPrefix(raw, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, raw[2:]), nil
+	}
+	if !filepath.IsAbs(raw) {
+		return filepath.Join(base, raw), nil
+	}
+	return raw, nil
+}
+
 func pathPrefix(name, prefix string) bool {
 	nameRunes, prefixRunes := []rune(name), []rune(prefix)
 	return len(nameRunes) >= len(prefixRunes) && strings.EqualFold(string(nameRunes[:len(prefixRunes)]), prefix)
 }
 
-func pathAtCaret(value string, caret int) (string, int) {
-	characters := []rune(value)
+func pathAtCaret(characters []rune, caret int) (string, int) {
 	if caret <= 0 || caret > len(characters) {
 		return "", 0
 	}
@@ -154,10 +184,18 @@ func PathTokenAtCaret(value string, caret int) (string, int, int) {
 	if caret < 0 || caret > len(characters) {
 		return "", 0, 0
 	}
-	_, start := pathAtCaret(value, caret)
+	_, start := pathAtCaret(characters, caret)
 	if caret == 0 || start == 0 && caret > 0 && (unicode.IsSpace(characters[caret-1]) || strings.ContainsRune("\"'()[]<>", characters[caret-1])) {
 		start = caret
 	}
+	end := pathTokenEnd(characters, start, caret)
+	if start >= end || end-start > 4096 {
+		return "", 0, 0
+	}
+	return string(characters[start:end]), start, end
+}
+
+func pathTokenEnd(characters []rune, start, caret int) int {
 	quote := rune(0)
 	if start > 0 && (characters[start-1] == '"' || characters[start-1] == '\'') {
 		quote = characters[start-1]
@@ -171,10 +209,7 @@ func PathTokenAtCaret(value string, caret int) (string, int, int) {
 		}
 		end++
 	}
-	if start >= end || end-start > 4096 {
-		return "", 0, 0
-	}
-	return string(characters[start:end]), start, end
+	return end
 }
 
 func pathLike(raw string) bool {

@@ -105,7 +105,7 @@ func TestPathsReportsMissingParentAndFollowsExplicitDirectoryLink(t *testing.T) 
 			t.Fatalf("explicit linked path candidates = %+v, %v", result, err)
 		}
 	}
-	if raw, start := pathAtCaret("before C:\\Wind", len([]rune("before C:\\Wind"))); raw != `C:\Wind` || start != len([]rune("before ")) {
+	if raw, start := pathAtCaret([]rune("before C:\\Wind"), len("before C:\\Wind")); raw != `C:\Wind` || start != len("before ") {
 		t.Fatalf("Windows drive extraction = %q at %d", raw, start)
 	}
 }

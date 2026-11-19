@@ -24,6 +24,7 @@ type wordCompletionState struct {
 	source   string
 	start    int
 	end      int
+	caret    int
 	items    []string
 	selected int
 	offset   int
@@ -55,7 +56,7 @@ func (state *model) startWordCompletion() {
 	}
 	state.wordCompletion = &wordCompletionState{
 		kind: completionWord, doc: doc, pane: state.activePane, source: value,
-		start: result.Start, end: result.End, items: result.Candidates,
+		start: result.Start, end: result.End, caret: doc.Editor.Caret(), items: result.Candidates,
 	}
 }
 
@@ -95,7 +96,7 @@ func (state *model) startPathCompletion() {
 	}
 	state.wordCompletion = &wordCompletionState{
 		kind: completionPath, doc: doc, pane: state.activePane, base: base, source: value,
-		start: result.Start, end: result.End, items: result.Candidates,
+		start: result.Start, end: result.End, caret: doc.Editor.Caret(), items: result.Candidates,
 	}
 	if result.Truncated {
 		state.notice = "Path completion limited to first 2000 entries"
@@ -106,7 +107,7 @@ func (state *model) validWordCompletion() bool {
 	current := state.wordCompletion
 	if current == nil || state.activePane != current.pane || state.paneDocument(current.pane) != current.doc ||
 		state.space.Current() != current.doc || state.isReadOnly(current.doc) || current.doc.Editor.String() != current.source ||
-		current.doc.Editor.Caret() != current.end {
+		current.doc.Editor.Caret() != current.caret {
 		return false
 	}
 	selection := current.doc.Editor.Selection()
@@ -153,7 +154,7 @@ func (state *model) updateWordCompletionAfterInput(doc *document.Document) {
 		state.wordCompletion = nil
 		return
 	}
-	current.source, current.start, current.end = value, result.Start, result.End
+	current.source, current.start, current.end, current.caret = value, result.Start, result.End, doc.Editor.Caret()
 	current.items, current.selected, current.offset = result.Candidates, 0, 0
 }
 
