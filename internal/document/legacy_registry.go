@@ -86,9 +86,12 @@ func (format Encoding) LegacySpec() (LegacySpec, bool) {
 
 func (format Encoding) EncodedLength(value string) (int, error) {
 	if format <= UTF16BE {
+		if err := validateOutputText(value); err != nil {
+			return 0, err
+		}
 		return len(value), nil
 	}
-	data, err := encodeLegacy(value, format)
+	data, err := encodeText(value, format)
 	return len(data), err
 }
 

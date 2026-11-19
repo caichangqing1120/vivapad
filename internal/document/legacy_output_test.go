@@ -4,10 +4,69 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/vivaui/viva/text"
 )
+
+func TestTextOutputRejectsNULBeforeWriting(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		format Encoding
+	}{
+		{"UTF-8", UTF8}, {"UTF-8 BOM", UTF8BOM}, {"UTF-16 LE", UTF16LE}, {"UTF-16 BE", UTF16BE},
+		{"Windows-1252", Windows1252}, {"GB18030", GB18030},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			source, copyPath := filepath.Join(root, "source.txt"), filepath.Join(root, "copy.txt")
+			const saved, existingCopy = "first\r\nsecond\nlast", "existing copy\r\n"
+			for name, value := range map[string]string{source: saved, copyPath: existingCopy} {
+				if err := os.WriteFile(name, []byte(value), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			doc, err := Open(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			doc.SetEncoding(tc.format)
+			editor := doc.Editor
+			editor.MoveTo(editor.RuneCount(), false)
+			editor.Insert("\x00")
+			editor.BreakUndoGroup()
+			editor.Insert("x")
+			if !editor.Undo() || !strings.ContainsRune(editor.String(), 0) || !editor.CanUndo() || !editor.CanRedo() {
+				t.Fatal("fixture must contain a NUL and Undo/Redo history")
+			}
+			editor.SetSelection(text.Range{Start: 3, End: 1})
+			before, selection, caret, endings := editor.String(), editor.Selection(), editor.Caret(), doc.EOLSequence()
+			for _, op := range []struct {
+				name string
+				run  func() error
+			}{
+				{"validation", doc.ValidateEncoding},
+				{"length", func() error { _, err := tc.format.EncodedLength(before); return err }},
+				{"Save Copy", func() error { return doc.SaveCopy(copyPath) }},
+				{"Save", func() error { return doc.Save("") }},
+			} {
+				if err := op.run(); err == nil || !strings.Contains(err.Error(), "NUL") {
+					t.Errorf("%s must refuse NUL before writing, got %v", op.name, err)
+				}
+			}
+			if editor.String() != before || editor.Selection() != selection || editor.Caret() != caret || doc.EOLSequence() != endings ||
+				!editor.CanUndo() || !editor.CanRedo() || editor.AtSavePoint() || !doc.Dirty() || doc.Encoding() != tc.format || doc.SavedEncoding() != UTF8 {
+				t.Error("refusal changed editor text, format, selection, history, or saved boundary")
+			}
+			for name, value := range map[string]string{source: saved, copyPath: existingCopy} {
+				if data, err := os.ReadFile(name); err != nil || string(data) != value {
+					t.Errorf("%s changed after refusal: %q, %v", filepath.Base(name), data, err)
+				}
+			}
+		})
+	}
+}
 
 func TestLegacyUnrepresentableOutputRejectedBeforeWrite(t *testing.T) {
 	for _, value := range []string{"\u4e2d", "\U0001f600"} {

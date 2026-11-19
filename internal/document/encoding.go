@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -207,7 +208,18 @@ func decodeText(data []byte) (string, Encoding, error) {
 	return string(utf16.Decode(units)), encoding, nil
 }
 
+func validateOutputText(value string) error {
+	// The text decoders refuse NUL. Do not write a file they cannot reopen.
+	if strings.IndexByte(value, 0) >= 0 {
+		return errors.New("text contains a binary NUL; remove it before saving")
+	}
+	return nil
+}
+
 func encodeText(value string, encoding Encoding) ([]byte, error) {
+	if err := validateOutputText(value); err != nil {
+		return nil, err
+	}
 	switch encoding {
 	case UTF8BOM:
 		return append([]byte{0xef, 0xbb, 0xbf}, value...), nil

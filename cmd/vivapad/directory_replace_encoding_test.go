@@ -12,6 +12,15 @@ import (
 )
 
 func TestCompactDirectoryReplaceShowsUnmappableEncodingCause(t *testing.T) {
+	testCompactDirectoryReplaceRefusal(t, "\ue000", "cannot save text as Windows-1252")
+}
+
+func TestCompactDirectoryReplaceRefusesBinaryNULBeforeConfirmation(t *testing.T) {
+	testCompactDirectoryReplaceRefusal(t, "dog\x00", "text contains a binary NUL")
+}
+
+func testCompactDirectoryReplaceRefusal(t *testing.T, replacement, cause string) {
+	t.Helper()
 	temp, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -43,8 +52,14 @@ func TestCompactDirectoryReplaceShowsUnmappableEncodingCause(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, replacementID)
-	if err := driver.Type("\ue000"); err != nil {
+	if strings.IndexByte(replacement, 0) >= 0 {
+		// Driver.Type filters control keys, so seed the replacement buffer directly.
+		state.replacement.Insert(replacement)
+	} else if err := driver.Type(replacement); err != nil {
 		t.Fatal(err)
+	}
+	if got := state.replacement.CommittedString(); got != replacement {
+		t.Fatalf("fixture replacement = %q, want %q", got, replacement)
 	}
 	clickID(t, driver, filesWindowsID)
 	clickID(t, driver, replacePreviewID)
@@ -57,7 +72,6 @@ func TestCompactDirectoryReplaceShowsUnmappableEncodingCause(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	const cause = "cannot save text as Windows-1252"
 	if state.filesSearching || !state.filesDialogOpen || state.replaceConfirmOpen || state.replacePlan != nil ||
 		!strings.Contains(state.filesMessage, cause) || !strings.Contains(state.filesMessage, path) {
 		t.Fatalf("unexpected preview state: searching=%v confirm=%v error=%q", state.filesSearching, state.replaceConfirmOpen, state.filesMessage)
