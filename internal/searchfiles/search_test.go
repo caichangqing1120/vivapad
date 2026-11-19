@@ -2,7 +2,9 @@ package searchfiles
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -72,6 +74,34 @@ func TestFindReadsUTF16AndRejectsInvalidInputs(t *testing.T) {
 	cancel()
 	if _, err := Find(contextValue, root, "中", document.SearchOptions{}, Options{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled search = %v", err)
+	}
+}
+
+func TestFindBindsMixedEOLResultToDecodedTextAndOriginalBytes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		bytes      string
+		read, want document.Encoding
+	}{
+		{"Unicode BOM", "\xef\xbb\xbfa\r\nb\rc\ncaf\xc3\xa9 cat", document.UTF8, document.UTF8BOM},
+		{"explicit Windows-1252", "a\r\nb\rc\ncaf\xe9 cat", document.Windows1252, document.Windows1252},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			file := filepath.Join(root, "source.txt")
+			writeTestFile(t, file, []byte(tc.bytes))
+			result, err := Find(t.Context(), root, "cat", document.SearchOptions{}, Options{Encoding: tc.read})
+			if err != nil || len(result.Matches) != 1 || result.FilesSkipped != 0 {
+				t.Fatalf("search result = %+v, %v", result, err)
+			}
+			match := result.Matches[0]
+			const prefix = "a\nb\nc\ncaf\u00e9 "
+			if match.Source != prefix+"cat" || match.Encoding != tc.want || match.Line != 4 || match.Column != 6 ||
+				match.Start != len(prefix) || match.End != len(prefix)+3 || match.Text != "cat" ||
+				match.DiskDigest != fmt.Sprintf("%x", sha256.Sum256([]byte(tc.bytes))) {
+				t.Fatalf("match lost its source coordinates, encoding or disk identity: %+v", match)
+			}
+		})
 	}
 }
 

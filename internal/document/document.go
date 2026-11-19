@@ -85,20 +85,54 @@ func OpenWithEncoding(path string, encoding Encoding) (*Document, error) {
 }
 
 func open(path string, selected *Encoding) (*Document, error) {
-	absolute, err := filepath.Abs(path)
+	file, err := readDecodedFile(path, selected)
 	if err != nil {
 		return nil, err
+	}
+	value, newline, breaks := normalizeLineEndings(file.value)
+	// Build the final editor first: there is no empty editor to replace and
+	// therefore no chance that a throwaway editor becomes the history source.
+	doc := newDocument(filepath.Base(file.path), text.NewEditor(value))
+	doc.Path, doc.newline, doc.encoding = file.path, newline, file.encoding
+	labels := bytes.Repeat([]byte{lineEndingCode(newline)}, strings.Count(value, "\n"))
+	for index, ending := range breaks {
+		labels[index] = lineEndingCode(ending)
+	}
+	if !doc.Editor.SetLFLabels(labels, lineEndingCode(newline)) {
+		return nil, fmt.Errorf("%s: cannot initialize EOL labels", file.path)
+	}
+	doc.Editor.MoveTo(0, false)
+	doc.Editor.SetSavePoint()
+	doc.Editor.TrackLineEdits()
+	doc.saved = value
+	doc.savedDisk = file.data
+	doc.savedDigest = digest(file.data)
+	doc.savedNewline, doc.savedEncoding = newline, file.encoding
+	// Bind only after the editor is final and before the first undoable edit.
+	doc.bindChangeHistory()
+	return doc, nil
+}
+
+type decodedFile struct {
+	path, value string
+	data        []byte
+	encoding    Encoding
+}
+
+func readDecodedFile(path string, selected *Encoding) (decodedFile, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return decodedFile{}, err
 	}
 	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
 		absolute = resolved
 	} else {
-		return nil, err
+		return decodedFile{}, err
 	}
 	data, err := os.ReadFile(absolute)
 	if err != nil {
-		return nil, err
+		return decodedFile{}, err
 	}
-	original := data
 	var value string
 	var encoding Encoding
 	if selected == nil {
@@ -107,30 +141,9 @@ func open(path string, selected *Encoding) (*Document, error) {
 		value, encoding, err = decodeLegacy(data, *selected)
 	}
 	if err != nil {
-		return nil, &DecodeError{Path: absolute, Err: err}
+		return decodedFile{}, &DecodeError{Path: absolute, Err: err}
 	}
-	value, newline, breaks := normalizeLineEndings(value)
-	// Build the final editor first: there is no empty editor to replace and
-	// therefore no chance that a throwaway editor becomes the history source.
-	doc := newDocument(filepath.Base(absolute), text.NewEditor(value))
-	doc.Path, doc.newline, doc.encoding = absolute, newline, encoding
-	labels := bytes.Repeat([]byte{lineEndingCode(newline)}, strings.Count(value, "\n"))
-	for index, ending := range breaks {
-		labels[index] = lineEndingCode(ending)
-	}
-	if !doc.Editor.SetLFLabels(labels, lineEndingCode(newline)) {
-		return nil, fmt.Errorf("%s: cannot initialize EOL labels", absolute)
-	}
-	doc.Editor.MoveTo(0, false)
-	doc.Editor.SetSavePoint()
-	doc.Editor.TrackLineEdits()
-	doc.saved = value
-	doc.savedDisk = original
-	doc.savedDigest = digest(original)
-	doc.savedNewline, doc.savedEncoding = newline, encoding
-	// Bind only after the editor is final and before the first undoable edit.
-	doc.bindChangeHistory()
-	return doc, nil
+	return decodedFile{path: absolute, value: value, data: data, encoding: encoding}, nil
 }
 
 func (doc *Document) Dirty() bool {

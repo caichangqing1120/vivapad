@@ -124,18 +124,17 @@ func Find(ctx context.Context, root, query string, search document.SearchOptions
 			result.FilesSkipped++
 			return nil
 		}
-		doc, err := openWithEncoding(path, options.Encoding)
+		source, err := document.ReadSearchSource(path, options.Encoding)
 		if err != nil {
 			result.FilesSkipped++
 			return nil
 		}
 		result.FilesSearched++
-		value := doc.Editor.String()
-		spans, truncated, err := document.MatchesInTextWithLimit(ctx, value, query, search, options.MaxMatches-len(result.Matches))
+		spans, truncated, err := document.MatchesInTextWithLimit(ctx, source.Text, query, search, options.MaxMatches-len(result.Matches))
 		if err != nil {
 			return err
 		}
-		if err := appendMatches(ctx, &result, doc, value, spans, options.MaxMatches); err != nil {
+		if err := appendMatches(ctx, &result, source, spans, options.MaxMatches); err != nil {
 			return err
 		}
 		if truncated {
@@ -158,20 +157,21 @@ func FindDocument(doc *document.Document, query string, search document.SearchOp
 		maxMatches = 2000
 	}
 	ctx := context.Background()
-	value := doc.Editor.CommittedString()
-	spans, truncated, err := document.MatchesInTextWithLimit(ctx, value, query, search, maxMatches)
+	source := document.SearchSource{Path: doc.Path, Text: doc.Editor.CommittedString(), DiskDigest: doc.DiskDigest(), Encoding: doc.Encoding()}
+	spans, truncated, err := document.MatchesInTextWithLimit(ctx, source.Text, query, search, maxMatches)
 	if err != nil {
 		return Result{}, err
 	}
 	result := Result{FilesSearched: 1}
-	if err := appendMatches(ctx, &result, doc, value, spans, maxMatches); err != nil && !errors.Is(err, errLimit) {
+	if err := appendMatches(ctx, &result, source, spans, maxMatches); err != nil && !errors.Is(err, errLimit) {
 		return Result{}, err
 	}
 	result.Truncated = result.Truncated || truncated
 	return result, nil
 }
 
-func appendMatches(ctx context.Context, result *Result, doc *document.Document, value string, spans []text.Span, maxMatches int) error {
+func appendMatches(ctx context.Context, result *Result, source document.SearchSource, spans []text.Span, maxMatches int) error {
+	value := source.Text
 	line, column, lineStart, scanned, lineEnd, cachedLineStart := 1, 1, 0, 0, 0, -1
 	for _, span := range spans {
 		if err := ctx.Err(); err != nil {
@@ -199,7 +199,7 @@ func appendMatches(ctx context.Context, result *Result, doc *document.Document, 
 		}
 		preview := previewLine(value[lineStart:lineEnd], span.Start-lineStart, min(span.End, lineEnd)-lineStart)
 		result.Matches = append(result.Matches, Match{
-			Path: doc.Path, DiskDigest: doc.DiskDigest(), Source: value, Encoding: doc.Encoding(), Line: line, Column: column,
+			Path: source.Path, DiskDigest: source.DiskDigest, Source: value, Encoding: source.Encoding, Line: line, Column: column,
 			Preview: preview, Text: value[span.Start:span.End], Start: span.Start, End: span.End,
 		})
 	}
