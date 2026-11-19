@@ -115,6 +115,12 @@ func TestMatchesWithLimitKeepsMatchSemantics(t *testing.T) {
 		{"regex whole word capture", "cat_dog cat dog DOG", `(cat|dog)`, SearchOptions{Regex: true, WholeWord: true}},
 		{"regex whole word anchored", "cat\ncat\ncat", `(?m)^cat`, SearchOptions{Regex: true, WholeWord: true}},
 		{"regex whole word boundary", "cat_cat cat", `\bcat`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex absolute start", "cat cat dog", `\Acat|dog`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex absolute end", "cat dog cat", `cat\z|dog`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex non-boundary", "猫cat xcat cat", `\Bcat|cat\z`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex empty moves by rune", "猫a猫aa", `a?|\z`, SearchOptions{Regex: true}},
+		{"regex empty alternative priority", "cat 猫cat cat", `\b|cat`, SearchOptions{Regex: true}},
+		{"regex with trailing quoted text", "cat cat ", `\b\Qcat`, SearchOptions{Regex: true, WholeWord: true}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -134,7 +140,30 @@ func TestMatchesWithLimitKeepsMatchSemantics(t *testing.T) {
 	}
 }
 
-func TestRegexWidthProofKeepsZeroWidthBranchesOnFullSearch(t *testing.T) {
+func FuzzLimitedRegexAgreesWithFullSearch(f *testing.F) {
+	f.Add(`(?m)^cat\b`, "cat_\ncat\ncat", uint8(2), true)
+	f.Add(`\b|cat`, "cat \u732bcat cat", uint8(1), false)
+	f.Add(`\Acat|cat\z`, "cat cat cat", uint8(3), true)
+	f.Add(`a?|\z`, "\u732ba\u732baa", uint8(1), false)
+	f.Fuzz(func(t *testing.T, pattern, value string, capHint uint8, wholeWord bool) {
+		if len(pattern) > 128 || len(value) > 256 {
+			return
+		}
+		options := SearchOptions{Regex: true, WholeWord: wholeWord}
+		expression, err := compileSearch(pattern, options)
+		if err != nil || expression == nil {
+			return
+		}
+		limit := int(capHint % 8)
+		all := searchSpans(value, expression, options)
+		spans, truncated, err := MatchesInTextWithLimit(t.Context(), value, pattern, options, limit)
+		if err != nil || truncated != (len(all) > limit) || !reflect.DeepEqual(spans, all[:min(limit, len(all))]) {
+			t.Fatalf("limit %d: spans=%+v truncated=%v err=%v; all=%+v", limit, spans, truncated, err, all)
+		}
+	})
+}
+
+func TestRegexWidthAndSuffixSafetyProofs(t *testing.T) {
 	tests := []struct {
 		pattern    string
 		consumes   bool

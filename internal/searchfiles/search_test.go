@@ -385,14 +385,20 @@ func TestLiteralWholeWordLimitCountsOnlyAcceptedMatches(t *testing.T) {
 
 func TestDirectorySearchCanCancelWithinOneFileWithoutAcceptedMatches(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, filepath.Join(root, "many.txt"), []byte(strings.Repeat("cat_", 200000)))
+	writeTestFile(t, filepath.Join(root, "many.txt"), []byte(strings.Repeat("cat_\n", 200000)))
 	for _, test := range []struct {
-		name  string
-		regex bool
-	}{{"literal", false}, {"regex", true}} {
+		name, query string
+		regex       bool
+		wholeWord   bool
+	}{
+		{"literal", "cat", false, true},
+		{"regex", "cat", true, true},
+		{"anchored regex", `(?m)^cat`, true, true},
+		{"zero-width regex", `\b`, true, false},
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := &cancelAfterChecks{limit: 20}
-			result, err := Find(ctx, root, "cat", document.SearchOptions{WholeWord: true, Regex: test.regex}, Options{MaxMatches: 2})
+			result, err := Find(ctx, root, test.query, document.SearchOptions{WholeWord: test.wholeWord, Regex: test.regex}, Options{MaxMatches: 2})
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("single-file search was not canceled: checks=%d searched=%d err=%v", ctx.calls, result.FilesSearched, err)
 			}

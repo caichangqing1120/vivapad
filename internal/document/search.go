@@ -187,6 +187,7 @@ func MatchesInTextWithLimit(ctx context.Context, value, query string, options Se
 	if err != nil || expression == nil {
 		return nil, false, err
 	}
+	var resumed *regexp.Regexp
 	if options.Regex {
 		if !options.WholeWord && regexAlwaysConsumes(expression) {
 			matches := expression.FindAllStringIndex(value, limit+1)
@@ -204,14 +205,15 @@ func MatchesInTextWithLimit(ctx context.Context, value, query string, options Se
 			return spans, truncated, nil
 		}
 		if !options.WholeWord || !regexCanResumeOnSuffix(expression) {
-			spans := searchSpans(value, expression, options)
-			if canceled := ctx.Err(); canceled != nil {
-				return nil, false, canceled
+			resumed = compileResumedRegex(expression)
+			if resumed == nil {
+				// A pattern at Go's compilation limits may not fit the wrapper.
+				spans := searchSpans(value, expression, options)
+				if canceled := ctx.Err(); canceled != nil {
+					return nil, false, canceled
+				}
+				return spans[:min(len(spans), limit)], len(spans) > limit, nil
 			}
-			if len(spans) <= limit {
-				return spans, false, nil
-			}
-			return spans[:limit], true, nil
 		}
 	}
 	spans := make([]text.Span, 0, min(limit, 64))
@@ -222,6 +224,9 @@ func MatchesInTextWithLimit(ctx context.Context, value, query string, options Se
 			if err := ctx.Err(); err != nil {
 				return false, err
 			}
+		}
+		if start == end {
+			return false, nil
 		}
 		if options.WholeWord {
 			before, after := rune(0), rune(0)
@@ -242,6 +247,28 @@ func MatchesInTextWithLimit(ctx context.Context, value, query string, options Se
 		return false, nil
 	}
 	for pos := 0; pos < len(value); {
+		if resumed != nil {
+			start, end, found := resumedRegexMatch(value, pos, expression, resumed)
+			if !found {
+				break
+			}
+			truncated, err := collect(start, end)
+			if err != nil {
+				return nil, false, err
+			}
+			if truncated {
+				return spans, true, nil
+			}
+			pos = end
+			if start == end {
+				if pos == len(value) {
+					break
+				}
+				_, width := utf8.DecodeRuneInString(value[pos:])
+				pos += width
+			}
+			continue
+		}
 		if options.Regex {
 			const batchSize = 256
 			matches := expression.FindAllStringIndex(value[pos:], batchSize)
@@ -279,6 +306,36 @@ func MatchesInTextWithLimit(ctx context.Context, value, query string, options Se
 		return nil, false, err
 	}
 	return spans, false, nil
+}
+
+func compileResumedRegex(expression *regexp.Regexp) *regexp.Regexp {
+	parsed, err := syntax.Parse(expression.String(), syntax.Perl)
+	if err != nil {
+		return nil
+	}
+	// Consume the previous rune, then find the earliest match. The single
+	// prefix rune preserves line and word context without creating a new \A
+	// position for the user's expression. Reprint the syntax so a trailing
+	// \Q in the original pattern cannot swallow the wrapper's parenthesis.
+	resumed, _ := regexp.Compile(`\A(?s:..*?)(` + parsed.String() + `)`)
+	return resumed
+}
+
+func resumedRegexMatch(value string, pos int, initial, resumed *regexp.Regexp) (int, int, bool) {
+	if pos == 0 {
+		match := initial.FindStringIndex(value)
+		if match == nil {
+			return 0, 0, false
+		}
+		return match[0], match[1], true
+	}
+	_, width := utf8.DecodeLastRuneInString(value[:pos])
+	origin := pos - width
+	match := resumed.FindStringSubmatchIndex(value[origin:])
+	if match == nil {
+		return 0, 0, false
+	}
+	return origin + match[2], origin + match[3], true
 }
 
 // A minimum positive width proves that FindAll's first limit+1 raw matches
