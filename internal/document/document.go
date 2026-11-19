@@ -208,6 +208,15 @@ func (doc *Document) Save(path string) error {
 	if err != nil {
 		return err
 	}
+	if doc.Path != "" && absolute != doc.Path {
+		requested, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		if requested == doc.Path {
+			return fmt.Errorf("%s no longer resolves to its original path; use Save As", doc.Name)
+		}
+	}
 	if doc.Path != "" && absolute == doc.Path {
 		current, err := os.ReadFile(absolute)
 		if err != nil {

@@ -244,6 +244,64 @@ func TestSaveRejectsPathReplacedWithSymlink(t *testing.T) {
 	}
 }
 
+func TestSaveRefusesWhenTheOriginalDirectoryWasReplaced(t *testing.T) {
+	for _, useExplicitPath := range []bool{false, true} {
+		name := "implicit path"
+		if useExplicitPath {
+			name = "explicit original path"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			originalDir := filepath.Join(root, "original")
+			otherDir := filepath.Join(root, "other")
+			for _, dir := range []string{originalDir, otherDir} {
+				if err := os.Mkdir(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			path, other := filepath.Join(originalDir, "sample.txt"), filepath.Join(otherDir, "sample.txt")
+			for path, contents := range map[string]string{path: "original\r\n", other: "unrelated\r\n"} {
+				if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			doc, err := Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			boundPath := doc.Path
+			before := doc.DiskDigest()
+			doc.Editor.Insert("draft")
+			draft := doc.Editor.String()
+			moved := filepath.Join(root, "moved")
+			if err := os.Rename(originalDir, moved); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(otherDir, originalDir); err != nil {
+				if os.IsPermission(err) {
+					t.Skipf("directory symlinks unavailable: %v", err)
+				}
+				t.Fatal(err)
+			}
+			destination := ""
+			if useExplicitPath {
+				destination = boundPath
+			}
+			if err := doc.Save(destination); err == nil {
+				t.Fatal("save followed the replaced original directory")
+			}
+			if doc.Path != boundPath || doc.DiskDigest() != before || doc.Editor.String() != draft || !doc.Dirty() {
+				t.Fatal("rejected save changed the document or saved baseline")
+			}
+			for path, want := range map[string]string{filepath.Join(moved, "sample.txt"): "original\r\n", other: "unrelated\r\n"} {
+				if got, err := os.ReadFile(path); err != nil || string(got) != want {
+					t.Fatalf("saved bytes at %q: %q, %v", path, got, err)
+				}
+			}
+		})
+	}
+}
+
 func TestNewSaveStoresCanonicalPathThroughAliasedParent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new.txt")
 	doc := New("new 1")
