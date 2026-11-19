@@ -137,7 +137,10 @@ func TestRecentSubmenuClosesWithEscapeWithoutChangingDocument(t *testing.T) {
 }
 
 func TestFileDropAndFindResultUpdateRecentHistory(t *testing.T) {
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	dropped, found := filepath.Join(root, "dropped.txt"), filepath.Join(root, "found.txt")
 	if err := os.WriteFile(dropped, []byte("drop"), 0600); err != nil {
 		t.Fatal(err)

@@ -367,7 +367,10 @@ func TestResultNavigationKeepsSelectedRowVisibleAndMenuReachable(t *testing.T) {
 }
 
 func TestResultNavigationOpensDirectoryMatchesAndRejectsMissingFile(t *testing.T) {
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	firstPath, secondPath := filepath.Join(root, "first.txt"), filepath.Join(root, "second.txt")
 	for _, path := range []string{firstPath, secondPath} {
 		if err := os.WriteFile(path, []byte("cat"), 0600); err != nil {

@@ -1178,7 +1178,11 @@ func TestClosingSplitDocumentRebindsBothViews(t *testing.T) {
 }
 
 func TestSplitSearchResultOpensInActivePane(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "result.txt")
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "result.txt")
 	if err := os.WriteFile(path, []byte("needle"), 0644); err != nil {
 		t.Fatal(err)
 	}

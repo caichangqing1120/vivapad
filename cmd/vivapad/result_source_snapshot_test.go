@@ -237,6 +237,71 @@ func TestFinderSourceSnapshotUnopenedDirectoryRefusalIsAtomic(t *testing.T) {
 	}
 }
 
+func TestFinderDoesNotFollowRedirectedDirectoryResult(t *testing.T) {
+	root := t.TempDir()
+	searchRoot := filepath.Join(root, "search")
+	if err := os.Mkdir(searchRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path, other := filepath.Join(searchRoot, "source.txt"), filepath.Join(root, "other.txt")
+	const contents = "prefix cat\r\n"
+	for _, name := range []string{path, other} {
+		if err := os.WriteFile(name, []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state, driver := startDriver(t)
+	clickID(t, driver, editorID)
+	if err := driver.Type("unsaved draft"); err != nil {
+		t.Fatal(err)
+	}
+	draft := state.space.Current()
+	draft.Editor.SetSelection(text.Range{Start: 0, End: 7})
+	before := draft.Editor.Selection()
+	recents := slices.Clone(state.recentEntries)
+	state.query.Insert("cat")
+	collectFinderSnapshot(t, state, "directory", searchRoot)
+	if len(state.fileResults.Matches) != 1 {
+		t.Fatal("fixture did not collect the original file")
+	}
+	parked := filepath.Join(root, "original.txt")
+	if err := os.Rename(path, parked); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, path); err != nil {
+		if os.IsPermission(err) {
+			t.Skipf("file symlinks are unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
+		t.Fatal(err)
+	}
+	if state.space.Current() != draft || len(state.space.Documents) != 1 || state.resultSelected != -1 ||
+		draft.Editor.String() != "unsaved draft" || draft.Editor.Selection() != before || !draft.Dirty() ||
+		!slices.Equal(state.recentEntries, recents) || state.notice != staleSearchResultNotice {
+		t.Fatalf("redirected result changed workspace or navigation: tabs=%d selected=%d notice=%q", len(state.space.Documents), state.resultSelected, state.notice)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(parked, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
+		t.Fatal(err)
+	}
+	if opened := state.space.Current(); opened == draft || opened.Path != state.fileResults.Matches[0].Path ||
+		opened.Editor.Selection() != (text.Range{Start: 7, End: 10}) || state.resultSelected != 0 || state.notice != "" {
+		t.Fatalf("restored path did not open its original match: %q, selected=%d notice=%q", opened.Path, state.resultSelected, state.notice)
+	}
+	for _, name := range []string{path, other} {
+		if data, err := os.ReadFile(name); err != nil || string(data) != contents {
+			t.Fatalf("result activation changed %q: %q, %v", name, data, err)
+		}
+	}
+}
+
 func TestFinderMissingDirectoryResultShowsCauseAndStaysRetryable(t *testing.T) {
 	root := filepath.Join(t.TempDir(), strings.Repeat("long-directory-", 8))
 	if err := os.Mkdir(root, 0700); err != nil {

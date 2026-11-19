@@ -299,8 +299,10 @@ func (state *model) openFileResult(index int) bool {
 			state.notice = err.Error()
 			return false
 		}
-		if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
-			absolute = resolved
+		// Directory results already carry the canonical path from collection.
+		if resolved, err := filepath.EvalSymlinks(absolute); err == nil && resolved != absolute {
+			state.notice = staleSearchResultNotice
+			return false
 		}
 		for _, opened := range state.space.Documents {
 			if opened.Path == absolute {
@@ -324,6 +326,10 @@ func (state *model) openFileResult(index int) bool {
 				} else {
 					state.notice = err.Error()
 				}
+				return false
+			}
+			if doc.Path != absolute {
+				state.notice = staleSearchResultNotice
 				return false
 			}
 		}
