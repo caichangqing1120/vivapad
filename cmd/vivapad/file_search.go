@@ -20,6 +20,7 @@ const (
 	missingSearchResultPrefix = "Search result file is missing: "
 	staleSearchResultNotice   = "Search result changed; run the search again"
 	composingResultNotice     = "Finish composing before opening this result"
+	resultDecodingNotice      = "Search result encoding differs from the open tab"
 )
 
 func (state *model) filesDialogField(id gfx.ID) bool {
@@ -356,6 +357,14 @@ func (state *model) openFileResult(index int) bool {
 				return false
 			}
 		}
+		// A pending save conversion does not change how the tab was decoded.
+		if doc.SavedEncoding() != match.Encoding {
+			state.notice = staleSearchResultNotice
+			if alreadyOpen {
+				state.notice = resultDecodingNotice
+			}
+			return false
+		}
 	}
 	if doc.Editor.CompositionActive() {
 		state.notice = composingResultNotice
@@ -398,7 +407,8 @@ func (state *model) openFileResult(index int) bool {
 	doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
 	state.codeEditor().Reveal(match.End)
 	state.selectFileResult(index)
-	if state.notice == staleSearchResultNotice || state.notice == composingResultNotice || strings.HasPrefix(state.notice, missingSearchResultPrefix) {
+	if state.notice == staleSearchResultNotice || state.notice == composingResultNotice ||
+		state.notice == resultDecodingNotice || strings.HasPrefix(state.notice, missingSearchResultPrefix) {
 		state.notice = ""
 	}
 	return true

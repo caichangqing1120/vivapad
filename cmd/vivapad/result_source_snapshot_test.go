@@ -465,3 +465,89 @@ func TestFinderSourceSnapshotDirectoryKeepsEncodingMismatchRefusal(t *testing.T)
 		t.Fatal("directory result lost the existing explicit-encoding refusal")
 	}
 }
+
+func TestFinderDirectoryResultKeepsSourceDecoding(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		t.Run(fmt.Sprintf("pendingUTF8=%t", pending), func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "source.txt")
+			const contents = "cat cat\r\n"
+			if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+				t.Fatal(err)
+			}
+			state, _ := startDriver(t)
+			if err := state.space.OpenWithEncoding(path, document.Windows1252); err != nil {
+				t.Fatal(err)
+			}
+			target := state.space.Current()
+			if pending {
+				target.SetEncoding(document.UTF8)
+			}
+			from := state.space.NewDocument()
+			from.Editor.Insert("private draft")
+			state.showInActivePane(from)
+			before := from.Editor.Selection()
+			targetBefore := target.Editor.Selection()
+			recents := slices.Clone(state.recentEntries)
+			state.query.Insert("cat")
+			collectFinderSnapshot(t, state, "directory", root)
+			if matches := state.fileResults.Matches; len(matches) != 2 || matches[1].Encoding != document.UTF8 || matches[1].Source != target.Editor.String() {
+				t.Fatalf("fixture must have equal text from a different decoder: %+v", matches)
+			}
+			if state.openFileResult(1) {
+				t.Error("Unicode-auto result navigated to a tab decoded as Windows-1252")
+			}
+			if state.space.Current() != from || len(state.space.Documents) != 2 || from.Editor.Selection() != before ||
+				from.Editor.String() != "private draft" || !from.Editor.CanUndo() || target.Editor.Selection() != targetBefore ||
+				state.resultSelected != -1 || !state.resultsOpen || !slices.Equal(state.recentEntries, recents) {
+				t.Error("refused activation changed the editor, result position or recent files")
+			}
+			if target.Dirty() != pending || target.SavedEncoding() != document.Windows1252 {
+				t.Error("result activation changed the pending save conversion")
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != contents {
+				t.Errorf("result activation changed disk bytes: %q, %v", data, err)
+			}
+
+			// Keep the same directory and text; use the tab's actual decoder.
+			target.SetEncoding(document.Windows1252)
+			result, err := searchfiles.Find(context.Background(), root, "cat", document.SearchOptions{}, searchfiles.Options{Encoding: document.Windows1252})
+			if err != nil || len(result.Matches) != 2 {
+				t.Fatalf("legacy directory fixture: %+v, %v", result, err)
+			}
+			state.fileResults = result
+			if !state.openFileResult(1) || state.space.Current() != target || state.resultSelected != 1 ||
+				target.Editor.Selection() != (text.Range{Start: 4, End: 7}) || state.notice != "" {
+				t.Errorf("matching decoder did not navigate to the second match: %q", state.notice)
+			}
+		})
+	}
+}
+
+func TestFinderUnopenedDirectoryResultRejectsChangedUnicodeEncoding(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	contents := []byte("cat cat\r\n")
+	if err := os.WriteFile(path, contents, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state, _ := startDriver(t)
+	from := state.space.Current()
+	from.Editor.Insert("private draft")
+	state.query.Insert("cat")
+	collectFinderSnapshot(t, state, "directory", root)
+	if err := os.WriteFile(path, []byte("\xef\xbb\xbfcat cat\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if state.openFileResult(1) {
+		t.Fatal("a new Unicode encoding reused the earlier directory result")
+	}
+	if state.space.Current() != from || len(state.space.Documents) != 1 || state.resultSelected != -1 || !state.resultsOpen {
+		t.Fatal("changed encoding altered tabs or result position")
+	}
+	collectFinderSnapshot(t, state, "directory", root)
+	if !state.openFileResult(1) || state.space.Current().SavedEncoding() != document.UTF8BOM ||
+		state.space.Current().Editor.Selection() != (text.Range{Start: 4, End: 7}) {
+		t.Fatalf("fresh BOM result did not select the second match: %q", state.notice)
+	}
+}
