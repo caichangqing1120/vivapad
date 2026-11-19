@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -101,5 +102,67 @@ func TestRecoveryValidationFailureRemainsVisibleUntilBackupSucceeds(t *testing.T
 	stored, err = recovery.Load(state.recoveryPath)
 	if state.notice != "" || err != nil || len(stored.Tabs) != 1 || stored.Tabs[0].Content != "original draft updated" || stored.Tabs[0].TabColor != 2 {
 		t.Fatalf("successful retry failed to replace the backup and clear the warning: notice=%q, backup=%+v, err=%v", state.notice, stored, err)
+	}
+}
+
+func TestWindowActivationRetriesFailedUnchangedRecovery(t *testing.T) {
+	root := t.TempDir()
+	settings := filepath.Join(root, "settings")
+	state := newStartupModel(nil, filepath.Join(settings, "session.json"))
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	clickID(t, driver, editorID)
+	if err := driver.Type("original draft"); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.recoveryWriter.Wait(); err != nil {
+		t.Fatal(err)
+	}
+
+	parked := filepath.Join(root, "last-good-settings")
+	if err := os.Rename(settings, parked); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settings, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Type(" updated"); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.recoveryWriter.Wait(); err == nil {
+		t.Fatal("recovery unexpectedly wrote through a non-directory")
+	}
+	state.observeRecoveryError()
+	if !strings.HasPrefix(state.notice, "Recovery failed: ") {
+		t.Fatalf("missing failure notice: %q", state.notice)
+	}
+	if err := os.Remove(settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(parked, settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := recovery.Load(state.recoveryPath)
+	if err != nil || len(stored.Tabs) != 1 || stored.Tabs[0].Content != "original draft" {
+		t.Fatalf("failure lost the last backup or an idle wake retried it: %+v, %v", stored, err)
+	}
+
+	want := state.currentRecovery()
+	if err := driver.ActivateWindow(); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.recoveryWriter.Wait(); err != nil {
+		t.Fatalf("activation did not retry recovery: %v", err)
+	}
+	state.observeRecoveryError()
+	stored, err = recovery.Load(state.recoveryPath)
+	if err != nil || !recoveryEqual(stored, want) || !recoveryEqual(state.currentRecovery(), want) || state.notice != "" {
+		t.Fatalf("retry changed the live state or failed to persist it: backup=%+v notice=%q err=%v", stored, state.notice, err)
 	}
 }

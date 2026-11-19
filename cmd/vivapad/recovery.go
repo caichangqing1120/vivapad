@@ -198,11 +198,18 @@ func recoveryEqual(first, second recovery.State) bool {
 }
 
 func (state *model) snapshotRecovery() {
+	state.queueRecovery(false)
+}
+
+func (state *model) queueRecovery(retry bool) {
 	if state.recoveryWriter == nil || state.closingAccepted {
 		return
 	}
 	current := state.currentRecovery()
 	if recoveryEqual(current, state.lastRecovery) {
+		if retry {
+			state.recoveryWriter.RetryFailed()
+		}
 		return
 	}
 	state.lastRecovery = current

@@ -30,14 +30,28 @@ func (writer *Writer) Submit(state State) {
 		state.Tabs[i].FoldedHeaders = slices.Clone(state.Tabs[i].FoldedHeaders)
 	}
 	writer.mutex.Lock()
+	defer writer.mutex.Unlock()
 	writer.latest = state
 	writer.generation++
 	if !writer.running {
-		writer.running = true
-		writer.done = make(chan struct{})
-		go writer.flush()
+		writer.startLocked()
 	}
-	writer.mutex.Unlock()
+}
+
+// RetryFailed retries the latest snapshot only after a completed failure.
+func (writer *Writer) RetryFailed() {
+	writer.mutex.Lock()
+	defer writer.mutex.Unlock()
+	if !writer.running && writer.lastError != nil {
+		writer.generation++
+		writer.startLocked()
+	}
+}
+
+func (writer *Writer) startLocked() {
+	writer.running = true
+	writer.done = make(chan struct{})
+	go writer.flush()
 }
 
 func (writer *Writer) flush() {

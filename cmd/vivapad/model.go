@@ -952,7 +952,12 @@ func newConfig(state *model) app.Config {
 		Icon:        assets.WindowIcon(),
 	}
 	config.Paint = state.paint
-	config.OnActivate = state.invalidator.Invalidate
+	config.OnActivate = func() {
+		if state.recoveryWriter != nil && state.recoveryWriter.LastError() != nil {
+			state.queueRecovery(true)
+		}
+		state.invalidator.Invalidate()
+	}
 	config.OnFullscreen = func(fullscreen bool) {
 		state.fullscreen = fullscreen
 		state.menuOpen, state.menuOverflowOpen = -1, false
