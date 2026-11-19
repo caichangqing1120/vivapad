@@ -149,6 +149,70 @@ func TestPathCompletionClearsPreviousNoMatchWhenPopupOpens(t *testing.T) {
 	}
 }
 
+func TestPathCompletionRejectsDirectorySuggestionReplacedByFile(t *testing.T) {
+	root := t.TempDir()
+	const before = `open "./al-old" tail`
+	const caret = len(`open "./al`)
+	source := filepath.Join(root, "buffer.txt")
+	if err := os.WriteFile(source, []byte(before), 0600); err != nil {
+		t.Fatal(err)
+	}
+	candidate := filepath.Join(root, "alpha")
+	if err := os.Mkdir(candidate, 0700); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{source})
+	doc := state.space.Current()
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	clickID(t, driver, editorID)
+	doc.Editor.MoveTo(caret, false)
+
+	openSuggestions := func(want string) {
+		t.Helper()
+		if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, ' '); err != nil || !handled {
+			t.Fatalf("path shortcut handled=%v err=%v", handled, err)
+		}
+		if popup := state.wordCompletion; popup == nil || len(popup.items) != 1 || popup.items[0] != want {
+			t.Fatalf("expected suggestion %q, got %+v (notice %q)", want, popup, state.notice)
+		}
+	}
+	openSuggestions("./alpha" + string(filepath.Separator))
+	if err := os.Remove(candidate); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(candidate, []byte("external file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Editor.String() != before || doc.Editor.Caret() != caret || doc.Dirty() || doc.Editor.CanUndo() ||
+		state.wordCompletion != nil || state.notice != "Path suggestion is no longer available" {
+		t.Fatalf("stale directory suggestion changed the editor: text=%q, caret=%d, notice=%q", doc.Editor.String(), doc.Editor.Caret(), state.notice)
+	}
+
+	openSuggestions("./alpha")
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := doc.Editor.String(); got != `open "./alpha" tail` {
+		t.Fatalf("fresh file suggestion produced %q", got)
+	}
+	state.command("Undo")
+	if doc.Editor.String() != before || doc.Dirty() || doc.Editor.CanUndo() {
+		t.Fatalf("one Undo did not restore the saved text: %q", doc.Editor.String())
+	}
+	for name, want := range map[string]string{source: before, candidate: "external file"} {
+		if data, err := os.ReadFile(name); err != nil || string(data) != want {
+			t.Fatalf("completion changed disk file %q: %q, %v", name, data, err)
+		}
+	}
+}
+
 func TestPathCompletionDirectoryReadonlyAndMissingParent(t *testing.T) {
 	root := t.TempDir()
 	canonical, _ := filepath.EvalSymlinks(root)

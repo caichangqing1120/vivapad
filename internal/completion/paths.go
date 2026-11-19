@@ -135,7 +135,13 @@ func PathNamesFile(raw, base string) (bool, error) {
 // PathCandidateAvailable checks a selected suggestion without rescanning its directory.
 func PathCandidateAvailable(raw, base string) (bool, error) {
 	info, err := pathInfo(raw, base)
-	return info != nil && (info.Mode().IsRegular() || info.IsDir()), err
+	if err != nil || info == nil {
+		return false, err
+	}
+	if raw != "" && os.IsPathSeparator(raw[len(raw)-1]) {
+		return info.IsDir(), nil
+	}
+	return info.Mode().IsRegular() || info.IsDir(), nil
 }
 
 func pathInfo(raw, base string) (os.FileInfo, error) {
