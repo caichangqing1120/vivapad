@@ -64,6 +64,10 @@ func (watcher *Watcher) Remove(path string) error {
 	return watcher.source.Remove(path)
 }
 
+func (watcher *Watcher) WatchList() []string {
+	return watcher.source.WatchList()
+}
+
 func (watcher *Watcher) Consume() (bool, error) {
 	changed := watcher.changed.Swap(false)
 	select {

@@ -194,3 +194,55 @@ func TestWorkspaceReopenRefreshesChangesWhileUnwatched(t *testing.T) {
 		t.Fatalf("reopened dock used stale rows: old=%v new=%v watched=%v", old, fresh, state.folderWatching[canonical])
 	}
 }
+
+func TestExpandedWorkspaceWatchesReplacementAtTheSamePath(t *testing.T) {
+	base := t.TempDir()
+	root, replacement := filepath.Join(base, "root"), filepath.Join(base, "replacement")
+	branch := filepath.Join(root, "branch")
+	for _, path := range []string{branch, replacement} {
+		if err := os.MkdirAll(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(replacement, "replacement.txt"), []byte("new folder"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModel()
+	if err := state.addFolderRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	canonical := state.folderRoots[0]
+	canonicalBranch := filepath.Join(canonical, "branch")
+	state.folderExpanded[canonical], state.folderExpanded[canonicalBranch] = true, true
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := os.Rename(branch, filepath.Join(base, "parked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacement, branch); err != nil {
+		t.Fatal(err)
+	}
+	waitForRow := func(name string) {
+		t.Helper()
+		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			for _, hit := range driver.Snapshot().Hits {
+				if hit.Label == "Open "+name {
+					return
+				}
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("expanded replacement did not show %q", name)
+	}
+	waitForRow("replacement.txt")
+	if err := os.WriteFile(filepath.Join(branch, "later.txt"), []byte("another change"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	waitForRow("later.txt")
+}
