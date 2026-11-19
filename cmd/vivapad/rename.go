@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -39,15 +40,8 @@ func (state *model) requestRename() {
 		state.notice = "Rename failed: " + err.Error()
 		return
 	}
-	if state.isPrivateDataPath(plan.Target) {
-		state.notice = "Rename destination is an internal VivaPad data file"
+	if !state.renameDestinationAvailable(doc, plan.Target) {
 		return
-	}
-	for _, other := range state.space.Documents {
-		if other != doc && other.Path == plan.Target {
-			state.notice = "Rename destination is already open in another tab"
-			return
-		}
 	}
 	if plan.Target == doc.Path {
 		state.notice = "File name unchanged"
@@ -61,10 +55,28 @@ func (state *model) requestRename() {
 	state.applyRenamePlan(plan, false)
 }
 
+func (state *model) renameDestinationAvailable(doc *document.Document, path string) bool {
+	if state.isPrivateDataPath(path) {
+		state.notice = "Rename destination is an internal VivaPad data file"
+		return false
+	}
+	target, _ := os.Stat(path)
+	for _, other := range state.space.Documents {
+		if other != doc && other.Path != "" && destinationMatchesFile(path, target, other.Path) {
+			state.notice = "Rename destination is already open in another tab"
+			return false
+		}
+	}
+	return true
+}
+
 func (state *model) applyRenamePlan(plan *document.RenamePlan, replace bool) {
 	doc := state.renameSource
 	if doc == nil {
 		doc = state.space.Current()
+	}
+	if replace && !state.renameDestinationAvailable(doc, plan.Target) {
+		return
 	}
 	oldPath := doc.Path
 	if err := plan.Apply(replace); err != nil {

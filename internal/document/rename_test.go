@@ -119,3 +119,50 @@ func TestRenameRejectsChangedSourceAndNewDestinationAppearingAfterPreview(t *tes
 		t.Fatalf("stale rename changed destination or binding: %q, %v, path=%q", data, err, doc.Path)
 	}
 }
+
+func TestRenameRejectsByteIdenticalReplacementAfterPreview(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{{"source", ErrRenameSourceChanged}, {"destination", ErrRenameTargetChanged}} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			source, target := filepath.Join(root, "source.txt"), filepath.Join(root, "target.txt")
+			for path, content := range map[string]string{source: "original", target: "previous"} {
+				if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			doc, err := Open(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			originalPath := doc.Path
+			plan, err := doc.PrepareRename(target)
+			if err != nil || !plan.TargetExists {
+				t.Fatalf("rename plan = %v, %v", plan, err)
+			}
+			changed, content := source, "original"
+			if tc.name == "destination" {
+				changed, content = target, "previous"
+			}
+			if err := os.Rename(changed, filepath.Join(root, "parked.txt")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(changed, []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := plan.Apply(true); !errors.Is(err, tc.err) {
+				t.Fatalf("same-byte replacement was not refused: %v", err)
+			}
+			if doc.Path != originalPath {
+				t.Fatalf("rename changed the document path to %q", doc.Path)
+			}
+			for path, expected := range map[string]string{source: "original", target: "previous"} {
+				if got, err := os.ReadFile(path); err != nil || string(got) != expected {
+					t.Fatalf("rename refusal changed %s: %q, %v", path, got, err)
+				}
+			}
+		})
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -20,6 +21,8 @@ type RenamePlan struct {
 
 	doc          *Document
 	source       string
+	sourceInfo   os.FileInfo
+	targetInfo   os.FileInfo
 	sourceDigest string
 	targetDigest string
 }
@@ -32,32 +35,56 @@ func (doc *Document) PrepareRename(path string) (*RenamePlan, error) {
 	if err != nil {
 		return nil, err
 	}
-	source, err := os.ReadFile(doc.Path)
+	sourceInfo, source, err := readRenameFile(doc.Path)
 	if err != nil {
 		return nil, err
 	}
 	if !bytes.Equal(source, doc.savedDisk) {
 		return nil, ErrRenameSourceChanged
 	}
-	plan := &RenamePlan{Target: target, doc: doc, source: doc.Path, sourceDigest: digest(source)}
+	plan := &RenamePlan{Target: target, doc: doc, source: doc.Path, sourceInfo: sourceInfo, sourceDigest: digest(source)}
 	if target == doc.Path {
 		return plan, nil
 	}
-	data, err := os.ReadFile(target)
+	targetInfo, data, err := readRenameFile(target)
 	if err == nil {
-		plan.TargetExists, plan.targetDigest = true, digest(data)
+		plan.TargetExists, plan.targetInfo, plan.targetDigest = true, targetInfo, digest(data)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 	return plan, nil
 }
 
+func readRenameFile(path string) (os.FileInfo, []byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	if !os.SameFile(info, opened) {
+		return nil, nil, fmt.Errorf("%s changed while opening", path)
+	}
+	data, err := io.ReadAll(file)
+	return opened, data, err
+}
+
 func (plan *RenamePlan) Apply(replace bool) error {
 	if plan == nil || plan.doc == nil || plan.doc.Path != plan.source {
 		return ErrRenameSourceChanged
 	}
-	source, err := os.ReadFile(plan.source)
-	if err != nil || digest(source) != plan.sourceDigest {
+	sourceInfo, source, err := readRenameFile(plan.source)
+	if err != nil || !os.SameFile(plan.sourceInfo, sourceInfo) || digest(source) != plan.sourceDigest {
 		return ErrRenameSourceChanged
 	}
 	if plan.Target == plan.source {
@@ -66,9 +93,9 @@ func (plan *RenamePlan) Apply(replace bool) error {
 	if plan.TargetExists && !replace {
 		return ErrRenameConfirmationRequired
 	}
-	data, err := os.ReadFile(plan.Target)
+	targetInfo, data, err := readRenameFile(plan.Target)
 	switch {
-	case plan.TargetExists && (err != nil || digest(data) != plan.targetDigest):
+	case plan.TargetExists && (err != nil || !os.SameFile(plan.targetInfo, targetInfo) || digest(data) != plan.targetDigest):
 		return ErrRenameTargetChanged
 	case !plan.TargetExists && err == nil:
 		return ErrRenameTargetChanged

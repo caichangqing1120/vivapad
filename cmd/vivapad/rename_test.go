@@ -235,6 +235,44 @@ func TestRenameCanceledOrOpenTabTargetDoesNotChangeFiles(t *testing.T) {
 	}
 }
 
+func TestRenameRejectsHardLinkToAnotherOpenTab(t *testing.T) {
+	root := t.TempDir()
+	source, other, alias := filepath.Join(root, "source.txt"), filepath.Join(root, "other.txt"), filepath.Join(root, "alias.txt")
+	for path, data := range map[string]string{source: "original", other: "second"} {
+		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Link(other, alias); err != nil {
+		t.Skipf("hard links unavailable: %v", err)
+	}
+	state := newModelWithFiles([]string{source, other})
+	state.space.Select(0)
+	doc, originalPath := state.space.Current(), state.space.Current().Path
+	doc.Editor.Insert("draft ")
+	value := doc.Editor.String()
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := driver.QueueSaveFile(alias, nil); err != nil {
+		t.Fatal(err)
+	}
+	state.requestRename()
+	if state.renamePlan != nil || !strings.Contains(state.notice, "already open in another tab") {
+		t.Fatalf("alias reached overwrite confirmation: plan=%v notice=%q", state.renamePlan != nil, state.notice)
+	}
+	if doc.Path != originalPath || !doc.Dirty() || doc.Editor.String() != value {
+		t.Fatal("rename refusal changed the open draft")
+	}
+	for path, expected := range map[string]string{source: "original", other: "second", alias: "second"} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != expected {
+			t.Fatalf("rename refusal changed %s: %q, %v", path, got, err)
+		}
+	}
+}
+
 func TestRenameUntitledTabValidatesNameWithoutWritingDisk(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()
