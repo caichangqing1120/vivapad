@@ -346,6 +346,9 @@ func (state *model) openFileResult(index int) bool {
 			return false
 		}
 	}
+	// A refused result must leave live input alone. Once the target is valid,
+	// cancel any outgoing composition before transferring editor ownership.
+	state.cancelLiveComposition()
 	state.space.Select(state.documentIndex(doc))
 	if alreadyOpen && state.splitEnabled {
 		pane := state.activePane

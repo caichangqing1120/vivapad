@@ -2617,13 +2617,14 @@ func (state *model) command(command string) {
 		// notice, which a bookmark synchronization must not overwrite.
 		historyNotice = true
 	}
-	openReplacement := command == "Replace All in Open Documents"
-	if !openReplacement {
+	checksComposition := command == "Replace All in Open Documents" ||
+		command == "Next Search Result" || command == "Previous Search Result"
+	if !checksComposition {
 		state.cancelLiveComposition()
 	}
-	// Batch replacement validates composition before changing an affected tab.
+	// Batch replacement and result navigation validate composition before acting.
 	// Do not map bookmarks or selection anchors against a provisional buffer.
-	trackActiveSource := !openReplacement || !doc.Editor.CompositionActive()
+	trackActiveSource := !checksComposition || !doc.Editor.CompositionActive()
 	if trackActiveSource {
 		state.bookmarkLines(doc)
 	}

@@ -56,6 +56,64 @@ func TestResultNavigationF4WrapsAcrossOpenDocumentsAndClickPosition(t *testing.T
 	}
 }
 
+func TestResultShortcutPreservesCompositionOnRefusal(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		replace   bool
+		modifiers gfx.Modifiers
+		notice    string
+	}{
+		{"stale snapshot looks current", true, 0, staleSearchResultNotice},
+		{"unchanged snapshot while composing", false, gfx.ModifierShift, composingResultNotice},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			doc.Editor.Insert("cat cat")
+			state.query.Insert("cat")
+			state.findAllCurrent()
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, editorID)
+			state.selectFileResult(0)
+			committed, marked, displayed := "cat cat", "x", "xcat cat"
+			if tc.replace {
+				doc.Editor.ReplaceRange(text.Range{Start: 0, End: 3}, "")
+				committed, marked, displayed = " cat", "cat", "cat cat"
+			}
+			doc.Editor.MoveTo(0, false)
+			input := tentativeTextInput(t, state, 0)
+			sendComposition(t, input, text.CompositionUpdate, marked)
+			assertLiveComposition(t, doc)
+			if doc.Editor.String() != displayed || doc.Editor.CommittedString() != committed {
+				t.Fatal("fixture did not establish the expected visible and committed text")
+			}
+			selection, caret := doc.Editor.Selection(), doc.Editor.Caret()
+			if err := driver.Key(gfx.KeyF4, tc.modifiers); err != nil {
+				t.Fatal(err)
+			}
+			if !doc.Editor.CompositionActive() || doc.Editor.String() != displayed || doc.Editor.CommittedString() != committed ||
+				doc.Editor.Selection() != selection || doc.Editor.Caret() != caret || state.resultSelected != 0 ||
+				state.notice != tc.notice || driver.Snapshot().Focused != editorID {
+				t.Fatalf("refused shortcut changed the edit or navigation: composing=%t text=%q selected=%d notice=%q",
+					doc.Editor.CompositionActive(), doc.Editor.String(), state.resultSelected, state.notice)
+			}
+			sendComposition(t, input, text.CompositionCancel, "")
+			if doc.Editor.String() != committed || tc.replace && (!doc.Editor.Undo() || doc.Editor.String() != "cat cat") {
+				t.Fatal("refusal changed cancellation or undo")
+			}
+			if err := driver.Key(gfx.KeyF4, tc.modifiers); err != nil {
+				t.Fatal(err)
+			}
+			if state.resultSelected != 1 || doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) || state.notice != "" {
+				t.Fatal("the same shortcut could not open the restored result")
+			}
+		})
+	}
+}
+
 func TestF4AcrossSplitKeepsTheFirstEditInTheResultPane(t *testing.T) {
 	state, driver := startDriver(t)
 	left := state.space.Current()
