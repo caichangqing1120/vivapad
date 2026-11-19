@@ -124,6 +124,7 @@ func (state *model) acceptWordCompletion(index int) {
 		return
 	}
 	before := current.doc.Editor.String()
+	candidate := current.items[index]
 	state.wordCompletion = nil
 	if current.kind == completionPath {
 		editor := current.doc.Editor
@@ -135,8 +136,15 @@ func (state *model) acceptWordCompletion(index int) {
 			state.notice = "Path already names a file"
 			return
 		}
+		if available, err := completion.PathCandidateAvailable(candidate, current.base); err != nil {
+			state.notice = "Path completion: " + err.Error()
+			return
+		} else if !available {
+			state.notice = "Path suggestion is no longer available"
+			return
+		}
 	}
-	state.completeCandidate(current.doc, current.start, current.end, current.items[index], current.kind)
+	state.completeCandidate(current.doc, current.start, current.end, candidate, current.kind)
 	state.relocateSelectAnchors(current.doc, before, current.doc.Editor.String(), current.start)
 }
 

@@ -111,3 +111,62 @@ func TestPathCompletionPreservesFileCreatedWhilePopupIsOpen(t *testing.T) {
 		}
 	}
 }
+
+func TestPathCompletionRefusesCandidateRemovedWhilePopupIsOpen(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "buffer.txt")
+	candidate := filepath.Join(root, "alpha.txt")
+	renamed := filepath.Join(root, "alpine.txt")
+	const before = "open [al-old.txt] tail\r\n"
+	for name, value := range map[string]string{source: before, candidate: "suggested file"} {
+		if err := os.WriteFile(name, []byte(value), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := newModelWithFiles([]string{source})
+	doc := state.space.Current()
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	clickID(t, driver, editorID)
+	caret := len("open [al")
+	doc.Editor.MoveTo(caret, false)
+	open := func(want string) {
+		t.Helper()
+		if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, ' '); err != nil || !handled {
+			t.Fatalf("path shortcut handled=%v err=%v", handled, err)
+		}
+		if popup := state.wordCompletion; popup == nil || len(popup.items) != 1 || popup.items[0] != want {
+			t.Fatalf("expected %q in the popup, got %+v", want, popup)
+		}
+	}
+	open("alpha.txt")
+	if err := os.Rename(candidate, renamed); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+		t.Fatal(err)
+	}
+	const originalText = "open [al-old.txt] tail\n"
+	if got := doc.Editor.String(); got != originalText || doc.Dirty() || doc.Editor.Caret() != caret || doc.Editor.CanUndo() || state.wordCompletion != nil {
+		t.Fatalf("stale completion changed the editor: text=%q dirty=%v caret=%d undo=%v popup=%+v", got, doc.Dirty(), doc.Editor.Caret(), doc.Editor.CanUndo(), state.wordCompletion)
+	}
+	open("alpine.txt")
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := doc.Editor.String(); got != "open [alpine.txt] tail\n" || !doc.Dirty() {
+		t.Fatalf("fresh completion did not replace the stale suffix: %q", got)
+	}
+	state.command("Undo")
+	if doc.Editor.String() != originalText || doc.Dirty() {
+		t.Fatalf("Undo did not restore the original saved text: %q", doc.Editor.String())
+	}
+	for name, want := range map[string]string{source: before, renamed: "suggested file"} {
+		if got, err := os.ReadFile(name); err != nil || string(got) != want {
+			t.Fatalf("completion changed %q: %q, %v", name, got, err)
+		}
+	}
+}

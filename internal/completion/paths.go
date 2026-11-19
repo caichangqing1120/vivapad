@@ -119,18 +119,26 @@ func Paths(value string, caret int, base string) (Result, error) {
 
 // PathNamesFile checks the current file system without listing the directory.
 func PathNamesFile(raw, base string) (bool, error) {
+	info, err := pathInfo(raw, base)
+	return info != nil && info.Mode().IsRegular(), err
+}
+
+// PathCandidateAvailable checks a selected suggestion without rescanning its directory.
+func PathCandidateAvailable(raw, base string) (bool, error) {
+	info, err := pathInfo(raw, base)
+	return info != nil && (info.Mode().IsRegular() || info.IsDir()), err
+}
+
+func pathInfo(raw, base string) (os.FileInfo, error) {
 	path, err := resolvePath(raw, base)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return nil, nil
 	}
-	if err != nil {
-		return false, err
-	}
-	return info.Mode().IsRegular(), nil
+	return info, err
 }
 
 func resolvePath(raw, base string) (string, error) {
