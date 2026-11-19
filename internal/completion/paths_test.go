@@ -175,6 +175,54 @@ func TestPathsClassifiesSymlinksByTheirTargets(t *testing.T) {
 	}
 }
 
+func TestPathsLetsFilesystemResolveParentAfterSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows applies different path normalization rules")
+	}
+	root := t.TempDir()
+	base, target := filepath.Join(root, "base"), filepath.Join(root, "target")
+	nested := filepath.Join(target, "nested")
+	for _, dir := range []string{base, nested} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{filepath.Join(base, "match-wrong"), filepath.Join(target, "match-file")} {
+		if err := os.WriteFile(path, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(nested, filepath.Join(base, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(nested, filepath.Join(target, "match-dir")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", base)
+	for _, prefix := range []string{"link/../", base + "/link/../", "~/link/../"} {
+		t.Run(prefix, func(t *testing.T) {
+			input := prefix + "ma"
+			want := []string{prefix + "match-dir/", prefix + "match-file"}
+			result, err := Paths(input, len([]rune(input)), base)
+			if err != nil || !reflect.DeepEqual(result.Candidates, want) {
+				t.Fatalf("Paths(%q) = %v, %v; want %v", input, result.Candidates, err, want)
+			}
+			for _, candidate := range result.Candidates {
+				if available, err := PathCandidateAvailable(candidate, base); err != nil || !available {
+					t.Errorf("candidate %q = %v, %v; want available", candidate, available, err)
+				}
+			}
+			if exists, err := PathNamesFile(want[1], base); err != nil || !exists {
+				t.Errorf("existing file %q was not recognized: %v, %v", want[1], exists, err)
+			}
+		})
+	}
+	const missingParent = "missing/../ma"
+	if _, err := Paths(missingParent, len(missingParent), base); err == nil {
+		t.Fatal("completed a path through a missing directory")
+	}
+}
+
 func TestPathCandidateUnavailableWhenFileBecomesDirectory(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "target")

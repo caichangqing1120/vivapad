@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"unicode"
 )
 
@@ -75,7 +76,10 @@ func Paths(value string, caret int, base string) (Result, error) {
 	case err == nil:
 		return Result{}, fmt.Errorf("path is not a regular file or directory: %s", resolved)
 	case errors.Is(err, os.ErrNotExist):
-		parent, suffix = filepath.Dir(resolved), filepath.Base(resolved)
+		parent, suffix = filepath.Split(resolved)
+		if parent == "" {
+			parent = "."
+		}
 		display = raw[:len(raw)-len(suffix)]
 	default:
 		return Result{}, err
@@ -104,7 +108,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 		}
 		mode := entry.Type()
 		if mode&os.ModeSymlink != 0 {
-			info, err := os.Stat(filepath.Join(parent, entry.Name()))
+			info, err := os.Stat(joinLookupPath(parent, entry.Name()))
 			if err != nil {
 				continue
 			}
@@ -145,6 +149,9 @@ func PathNamesFile(raw, base string) (bool, error) {
 // PathCandidateAvailable checks a selected suggestion without rescanning its directory.
 func PathCandidateAvailable(raw, base string) (bool, error) {
 	info, err := pathInfo(raw, base)
+	if errors.Is(err, syscall.ENOTDIR) {
+		return false, nil
+	}
 	if err != nil || info == nil {
 		return false, err
 	}
@@ -172,12 +179,23 @@ func resolvePath(raw, base string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, raw[2:]), nil
+		return joinLookupPath(home, raw[2:]), nil
 	}
 	if !filepath.IsAbs(raw) {
-		return filepath.Join(base, raw), nil
+		return joinLookupPath(base, raw), nil
 	}
 	return raw, nil
+}
+
+func joinLookupPath(dir, tail string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(dir, tail)
+	}
+	// On Unix, a symlink must be followed before resolving a later "..".
+	if dir == "" || os.IsPathSeparator(dir[len(dir)-1]) {
+		return dir + tail
+	}
+	return dir + string(filepath.Separator) + tail
 }
 
 func pathPrefix(name, prefix string) bool {
