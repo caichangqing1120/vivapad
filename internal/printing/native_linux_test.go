@@ -27,6 +27,23 @@ func TestLinuxPortalPDFContainsOnlyRequestedPages(t *testing.T) {
 	}
 }
 
+func TestLinuxPortalDoesNotRenderPDFForOutOfBoundsRange(t *testing.T) {
+	renderer, err := newPDFRenderer(linuxPrintFont, 12, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	printer := &Printer{
+		renderer: renderer,
+		device:   DeviceMetrics{PaperWidth: 595, PaperHeight: 842, HeaderLineHeight: 11, FooterLineHeight: 11},
+		choice:   PrintChoice{Ranges: []PageRange{{First: 2, Last: 3}}},
+	}
+	pages := []Page{{Number: 1}, {Number: 2}}
+	data, err := printer.renderPDF(Job{Interactive: true, Settings: DefaultSettings()}, pages)
+	if err == nil || len(data) != 0 {
+		t.Fatalf("portal built a partial PDF for an out-of-bounds range: %d bytes, err=%v", len(data), err)
+	}
+}
+
 func TestClosedLinuxPrinterCannotSubmit(t *testing.T) {
 	printer := &Printer{cups: true, choice: PrintChoice{Scope: ScopeAll}}
 	printer.Close()

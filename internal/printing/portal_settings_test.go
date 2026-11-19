@@ -58,6 +58,22 @@ func TestPortalPrintResultUsesPhysicalPageSelectionAndDisjointRanges(t *testing.
 	}
 }
 
+func TestPortalPrintRejectsRangeEndingAfterLastPage(t *testing.T) {
+	// The portal can return syntactically valid ranges before VivaPad paginates
+	// against its chosen printer. The second range asks for a page we don't have.
+	ranges, err := parsePortalRanges("0,2-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages := []Page{{Number: 1}, {Number: 2}, {Number: 3}, {Number: 4}}
+	if selected, err := SelectPageRanges(pages, ranges); err == nil || len(selected) != 0 {
+		t.Fatalf("out-of-bounds portal range was accepted: pages=%v, err=%v", selected, err)
+	}
+	if all, err := SelectPages(pages, 1, maxPrintPages); err != nil || !reflect.DeepEqual(all, pages) {
+		t.Fatalf("default print-all bounds changed: pages=%v, err=%v", all, err)
+	}
+}
+
 func TestPortalPrintSelectionAndLandscapeMargins(t *testing.T) {
 	job := Job{Interactive: true, Text: "alpha", Selection: text.Span{Start: 0, End: 3}}
 	result, err := parsePortalPrintResult(job, map[string]any{
