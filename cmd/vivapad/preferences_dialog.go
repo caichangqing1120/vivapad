@@ -2,6 +2,11 @@ package main
 
 import "github.com/vivaui/viva/gfx"
 
+func (state *model) closePreferences() {
+	state.preferencesOpen, state.printVariableOpen = false, false
+	state.requestEditorCommandFocus()
+}
+
 func (state *model) paintPreferencesDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.SetEscapeTarget(preferencesCloseID)
 	canvas.PushLayer(3)
@@ -52,8 +57,7 @@ func (state *model) paintPreferencesDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.Border(closeBounds, 1, palette.border, palette.toolbar)
 	canvas.LabelCenter("Close", closeBounds, gfx.TextStyle{Size: 12, Color: palette.text})
 	if hitButton(canvas, preferencesCloseID, closeBounds, "Close Preferences") {
-		state.preferencesOpen = false
-		state.printVariableOpen = false
+		state.closePreferences()
 	}
 	canvas.PopLayer()
 	canvas.PopLayer()

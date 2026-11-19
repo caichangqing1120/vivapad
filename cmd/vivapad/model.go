@@ -1572,8 +1572,7 @@ func newConfig(state *model) app.Config {
 		}
 		if state.preferencesOpen {
 			if event.Key == gfx.KeyEscape {
-				state.preferencesOpen = false
-				state.printVariableOpen = false
+				state.closePreferences()
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.printPreferenceField(event.Target) {
