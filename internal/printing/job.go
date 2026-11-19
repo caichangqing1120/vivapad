@@ -122,6 +122,9 @@ type PageRange struct {
 	First, Last int
 }
 
+// GTK's open-ended print range resolves against the paginated document.
+const pageRangeThroughEnd = -1
+
 func Prepare(doc *document.Document, language string, interactive bool) (Job, error) {
 	if doc == nil {
 		return Job{}, fmt.Errorf("printing: no document")

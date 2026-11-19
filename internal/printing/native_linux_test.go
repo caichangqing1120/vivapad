@@ -44,6 +44,27 @@ func TestLinuxPortalDoesNotRenderPDFForOutOfBoundsRange(t *testing.T) {
 	}
 }
 
+func TestLinuxPortalPDFRendersDisjointRangesThroughLastPage(t *testing.T) {
+	ranges, err := parsePortalRanges("3--1,1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderer, err := newPDFRenderer(linuxPrintFont, 12, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	printer := &Printer{
+		renderer: renderer,
+		device:   DeviceMetrics{PaperWidth: 595, PaperHeight: 842, HeaderLineHeight: 11, FooterLineHeight: 11},
+		choice:   PrintChoice{Ranges: ranges, Copies: 2},
+	}
+	pages := []Page{{Number: 1}, {Number: 2}, {Number: 3}, {Number: 4}, {Number: 5}}
+	data, err := printer.renderPDF(Job{Interactive: true, Settings: DefaultSettings()}, pages)
+	if err != nil || !bytes.Contains(data, []byte("/Count 3\n")) {
+		t.Fatalf("PDF must contain pages 2, 4 and 5 once before portal copies: bytes=%d, err=%v", len(data), err)
+	}
+}
+
 func TestClosedLinuxPrinterCannotSubmit(t *testing.T) {
 	printer := &Printer{cups: true, choice: PrintChoice{Scope: ScopeAll}}
 	printer.Close()

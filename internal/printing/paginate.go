@@ -251,15 +251,19 @@ func SelectPageRanges(pages []Page, ranges []PageRange) ([]Page, error) {
 		if pageRange.First <= previous {
 			return nil, fmt.Errorf("printing: page ranges overlap or are out of order")
 		}
-		if pageRange.Last > len(pages) {
-			return nil, fmt.Errorf("printing: page range ends at %d, but only %d pages are available", pageRange.Last, len(pages))
+		last := pageRange.Last
+		if last == pageRangeThroughEnd {
+			last = len(pages)
 		}
-		part, err := SelectPages(pages, pageRange.First, pageRange.Last)
+		if last > len(pages) {
+			return nil, fmt.Errorf("printing: page range ends at %d, but only %d pages are available", last, len(pages))
+		}
+		part, err := SelectPages(pages, pageRange.First, last)
 		if err != nil {
 			return nil, err
 		}
 		selected = append(selected, part...)
-		previous = pageRange.Last
+		previous = last
 	}
 	return selected, nil
 }

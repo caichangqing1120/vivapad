@@ -1,8 +1,10 @@
 package printing
 
 import (
+	"cmp"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -96,28 +98,32 @@ func parsePortalRanges(value string) ([]PageRange, error) {
 		return nil, fmt.Errorf("printing: empty portal page ranges")
 	}
 	var ranges []PageRange
-	previous := -1
 	for _, part := range strings.Split(value, ",") {
-		bounds := strings.Split(part, "-")
-		if len(bounds) < 1 || len(bounds) > 2 {
+		start, end, hasEnd := strings.Cut(part, "-")
+		first, err := strconv.Atoi(start)
+		if err != nil || first < 0 || first >= maxPrintPages {
 			return nil, fmt.Errorf("printing: invalid portal page ranges")
 		}
-		first, err := strconv.Atoi(bounds[0])
-		if err != nil {
-			return nil, fmt.Errorf("printing: invalid portal page ranges")
-		}
-		last := first
-		if len(bounds) == 2 {
-			last, err = strconv.Atoi(bounds[1])
-			if err != nil {
+		pageRange := PageRange{First: first + 1, Last: first + 1}
+		if hasEnd && end == "-1" {
+			pageRange.Last = pageRangeThroughEnd
+		} else if hasEnd {
+			last, err := strconv.Atoi(end)
+			if err != nil || last < first || last >= maxPrintPages {
 				return nil, fmt.Errorf("printing: invalid portal page ranges")
 			}
+			pageRange.Last = last + 1
 		}
-		if first <= previous || first < 0 || last < first || last >= maxPrintPages {
+		ranges = append(ranges, pageRange)
+	}
+	// GTK returns ranges in entry order. Render the selected pages in document order.
+	slices.SortFunc(ranges, func(a, b PageRange) int { return cmp.Compare(a.First, b.First) })
+	previous := 0
+	for _, pageRange := range ranges {
+		if previous == pageRangeThroughEnd || pageRange.First <= previous {
 			return nil, fmt.Errorf("printing: invalid or overlapping portal page ranges")
 		}
-		ranges = append(ranges, PageRange{First: first + 1, Last: last + 1})
-		previous = last
+		previous = pageRange.Last
 	}
 	return ranges, nil
 }
