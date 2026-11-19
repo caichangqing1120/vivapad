@@ -318,7 +318,9 @@ func (state *model) loadNPPSession() {
 					return
 				}
 			}
-			if explicit && doc.Encoding() != format || !explicit && doc.Encoding().IsLegacy() {
+			// Session byte positions refer to the saved encoding, not a pending conversion.
+			savedEncoding := doc.SavedEncoding()
+			if explicit && savedEncoding != format || !explicit && savedEncoding.IsLegacy() {
 				state.notice = "Session file is already open with another encoding: " + canonical
 				return
 			}

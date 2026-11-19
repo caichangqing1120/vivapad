@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/text"
+	"vivapad/internal/document"
 	"vivapad/internal/session"
 )
 
@@ -160,6 +161,71 @@ func TestLoadNPPSharedAliasUsesActiveViewsSelection(t *testing.T) {
 			}
 			if data, err := os.ReadFile(source); err != nil || string(data) != original {
 				t.Fatalf("import changed the source: %q, %v", data, err)
+			}
+		})
+	}
+}
+
+func TestLoadNPPSharedAliasUsesSavedEncodingDuringPendingConversion(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		codePage int
+		accept   bool
+	}{
+		{"matching decoder", 1252, true},
+		{"matching pending save format", -1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			first, source := filepath.Join(root, "first.txt"), filepath.Join(root, "shared.txt")
+			const original = "cat\r\ndog"
+			for _, path := range []string{first, source} {
+				if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			state, driver := startDriver(t)
+			draft := state.space.Current()
+			draft.Editor.Insert("keep my draft")
+			if err := state.space.OpenWithEncoding(source, document.Windows1252); err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			state.showInActivePane(doc)
+			doc.SetEncoding(document.UTF8)
+			before := text.Range{Start: 0, End: 3}
+			doc.Editor.SetSelection(before)
+			sep := string(filepath.Separator)
+			alias := root + sep + "." + sep + "shared.txt"
+			xmlPath := filepath.Join(root, "session.xml")
+			if err := session.SaveNPP(xmlPath, session.NPPState{
+				Main:       []session.NPPFile{{Path: first, Encoding: -1}, {Path: source, Encoding: tc.codePage}},
+				Sub:        []session.NPPFile{{Path: alias, Encoding: tc.codePage, StartPos: 5, EndPos: 8}},
+				ActiveMain: 1, ActiveView: 1,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := driver.QueueOpenFiles([]string{xmlPath}, nil); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuScope.At(0))
+			clickID(t, driver, menuItemScope.At(13))
+			clickID(t, driver, sessionScope.At(0))
+			if tc.accept {
+				if !state.splitEnabled || state.activePane != 1 || state.paneDocs != [2]*document.Document{doc, doc} ||
+					len(state.space.Documents) != 3 || doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) {
+					t.Fatalf("matching decoded file did not restore as a clone: %q", state.notice)
+				}
+			} else if state.splitEnabled || state.space.Current() != doc || len(state.space.Documents) != 2 ||
+				doc.Editor.Selection() != before || !strings.Contains(state.notice, "another encoding") {
+				t.Fatalf("conflicting decoding changed the current workspace: %q", state.notice)
+			}
+			if doc.Encoding() != document.UTF8 || doc.SavedEncoding() != document.Windows1252 || !doc.Dirty() ||
+				doc.Editor.String() != "cat\ndog" || doc.Editor.CanUndo() || draft.Editor.String() != "keep my draft" || !draft.Dirty() {
+				t.Fatal("import changed text, Undo history, or the pending conversion")
+			}
+			if data, err := os.ReadFile(source); err != nil || string(data) != original {
+				t.Fatalf("import changed source bytes: %q, %v", data, err)
 			}
 		})
 	}
