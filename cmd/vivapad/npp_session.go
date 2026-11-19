@@ -238,6 +238,7 @@ func (state *model) loadNPPSession() {
 	var paneFiles [2][]*document.Document
 	seen := make(map[string]*document.Document)
 	for pane, entries := range [][]session.NPPFile{stored.Main, stored.Sub} {
+		seenInView := make(map[string]bool, len(entries))
 		for _, file := range entries {
 			language, err := nppExtension(file.Language)
 			if err != nil {
@@ -249,6 +250,11 @@ func (state *model) loadNPPSession() {
 				state.notice = "Session file unavailable: " + file.Path + ": " + err.Error()
 				return
 			}
+			if seenInView[canonical] {
+				state.notice = "Session has a duplicate file in one view: " + canonical
+				return
+			}
+			seenInView[canonical] = true
 			doc := seen[canonical]
 			if doc == nil {
 				for _, existing := range state.space.Documents {
