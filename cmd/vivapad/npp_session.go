@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -217,6 +218,35 @@ type preparedNPPFile struct {
 	language string
 }
 
+type nppSessionPaths map[string][]string
+
+func (paths nppSessionPaths) resolve(path string) (string, error) {
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	key := strings.ToLower(canonical)
+	var info os.FileInfo
+	for _, name := range paths[key] {
+		if name == canonical {
+			return name, nil
+		}
+		if info == nil {
+			info, err = os.Stat(canonical)
+			if err != nil {
+				return "", err
+			}
+		}
+		// A matching spelling is only a hint: on a case-sensitive volume
+		// two names that differ in case may still be separate files.
+		if other, err := os.Stat(name); err == nil && os.SameFile(info, other) {
+			return name, nil
+		}
+	}
+	paths[key] = append(paths[key], canonical)
+	return canonical, nil
+}
+
 func (state *model) loadNPPSession() {
 	defer state.requestNativeChooserFocus()
 	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "Load Session"})
@@ -237,6 +267,13 @@ func (state *model) loadNPPSession() {
 	var prepared []preparedNPPFile
 	var paneFiles [2][]*document.Document
 	seen := make(map[string]*document.Document)
+	resolvedPaths := make(nppSessionPaths)
+	for _, doc := range state.space.Documents {
+		if doc.Path != "" {
+			key := strings.ToLower(doc.Path)
+			resolvedPaths[key] = append(resolvedPaths[key], doc.Path)
+		}
+	}
 	for pane, entries := range [][]session.NPPFile{stored.Main, stored.Sub} {
 		seenInView := make(map[string]bool, len(entries))
 		for _, file := range entries {
@@ -245,7 +282,7 @@ func (state *model) loadNPPSession() {
 				state.notice = "Session not loaded: " + err.Error()
 				return
 			}
-			canonical, err := filepath.EvalSymlinks(file.Path)
+			canonical, err := resolvedPaths.resolve(file.Path)
 			if err != nil {
 				state.notice = "Session file unavailable: " + file.Path + ": " + err.Error()
 				return
