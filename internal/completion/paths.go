@@ -52,6 +52,15 @@ func Paths(value string, caret int, base string) (Result, error) {
 	}
 	parent, suffix, display := "", "", ""
 	info, err := os.Stat(resolved)
+	explicitDirectory := os.IsPathSeparator(raw[len(raw)-1])
+	if explicitDirectory {
+		if err != nil {
+			return Result{}, err
+		}
+		if !info.IsDir() {
+			return Result{}, fmt.Errorf("path is not a directory: %s", resolved)
+		}
+	}
 	switch {
 	case err == nil && info.Mode().IsRegular():
 		if end > caret {
@@ -60,7 +69,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 		return result, nil
 	case err == nil && info.IsDir():
 		parent, display = resolved, raw
-		if !strings.HasSuffix(display, string(filepath.Separator)) {
+		if !explicitDirectory {
 			display += string(filepath.Separator)
 		}
 	case err == nil:

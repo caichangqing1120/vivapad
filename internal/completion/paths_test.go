@@ -110,6 +110,34 @@ func TestPathsReportsMissingParentAndFollowsExplicitDirectoryLink(t *testing.T) 
 	}
 }
 
+func TestPathsTreatsTrailingSeparatorAsDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "src"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{filepath.Join(root, "alpha.txt"), filepath.Join(root, "src", "main.go")} {
+		if err := os.WriteFile(file, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name, input string
+		want        []string
+		wantErr     bool
+	}{
+		{"missing directory", "al/", nil, true},
+		{"regular file", "alpha.txt/", nil, true},
+		{"existing directory", "./src/", []string{"./src/main.go"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := Paths(tc.input, len(tc.input), root)
+			if (err != nil) != tc.wantErr || !reflect.DeepEqual(result.Candidates, tc.want) {
+				t.Fatalf("Paths(%q) = %v, %v; want %v, error=%t", tc.input, result.Candidates, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestPathsBoundsDirectoryEntries(t *testing.T) {
 	root := t.TempDir()
 	for index := range 2001 {
