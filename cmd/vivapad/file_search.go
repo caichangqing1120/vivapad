@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -276,6 +277,32 @@ func (state *model) selectFileResult(index int) {
 	}
 }
 
+func (state *model) directoryResultTab(path string) *document.Document {
+	for _, doc := range state.space.Documents {
+		if doc.Path == path {
+			return doc
+		}
+	}
+	var target os.FileInfo
+	for _, doc := range state.space.Documents {
+		if !strings.EqualFold(doc.Path, path) {
+			continue
+		}
+		if target == nil {
+			var err error
+			target, err = os.Stat(path)
+			if err != nil {
+				return nil
+			}
+		}
+		// A case match alone would also accept distinct files on a case-sensitive volume.
+		if info, err := os.Stat(doc.Path); err == nil && os.SameFile(target, info) {
+			return doc
+		}
+	}
+	return nil
+}
+
 func (state *model) openFileResult(index int) bool {
 	if index < 0 || index >= len(state.fileResults.Matches) {
 		return false
@@ -304,12 +331,8 @@ func (state *model) openFileResult(index int) bool {
 			state.notice = staleSearchResultNotice
 			return false
 		}
-		for _, opened := range state.space.Documents {
-			if opened.Path == absolute {
-				doc, alreadyOpen = opened, true
-				break
-			}
-		}
+		doc = state.directoryResultTab(absolute)
+		alreadyOpen = doc != nil
 		if alreadyOpen && match.Encoding.IsLegacy() && doc.Encoding() != match.Encoding {
 			state.notice = fmt.Sprintf("%s is already open as %s", doc.Name, doc.EncodingLabel())
 			return false

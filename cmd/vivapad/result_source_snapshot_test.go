@@ -10,6 +10,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
@@ -234,6 +235,82 @@ func TestFinderSourceSnapshotUnopenedDirectoryRefusalIsAtomic(t *testing.T) {
 				t.Fatal("valid directory open discarded the existing unsaved source")
 			}
 		})
+	}
+}
+
+func TestFinderDirectoryResultUsesOpenFileIdentityAcrossCaseSpellings(t *testing.T) {
+	root := t.TempDir()
+	path, other := filepath.Join(root, "source.txt"), filepath.Join(root, "SOURCE.TXT")
+	const saved = "cat cat\r\n"
+	if err := os.WriteFile(path, []byte(saved), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := os.Stat(other)
+	alias := err == nil
+	if !alias {
+		if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(other, []byte(saved), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := newModelWithFiles([]string{other})
+	opened := state.space.Current()
+	if opened.Path == "" {
+		t.Fatal("fixture did not open the file")
+	}
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	state.query.Insert("cat")
+	collectFinderSnapshot(t, state, "directory", root)
+	index := slices.IndexFunc(state.fileResults.Matches, func(match searchfiles.Match) bool {
+		return filepath.Base(match.Path) == "source.txt" && match.Start == 4
+	})
+	if index < 0 {
+		t.Fatal("fixture did not find the second occurrence in source.txt")
+	}
+	if alias && opened.Path == state.fileResults.Matches[index].Path {
+		t.Skip("this filesystem normalizes the two case spellings at open")
+	}
+	opened.Editor.MoveTo(0, false)
+	opened.Editor.Insert("cat ")
+	opened.Editor.SetSelection(text.Range{Start: 3, End: 1})
+	selection, caret, draft := opened.Editor.Selection(), opened.Editor.Caret(), opened.Editor.String()
+	recents := slices.Clone(state.recentEntries)
+	panes := state.paneDocs
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, resultScope.At(index))
+	if alias {
+		if len(state.space.Documents) != 1 || state.space.Current() != opened || state.paneDocs != panes ||
+			state.resultSelected != -1 || state.notice != staleSearchResultNotice || !slices.Equal(state.recentEntries, recents) {
+			t.Fatalf("stale aliased directory result opened another document: tabs=%d selection=%d notice=%q", len(state.space.Documents), state.resultSelected, state.notice)
+		}
+	} else if len(state.space.Documents) != 2 || state.space.Current() == opened || state.resultSelected != index ||
+		filepath.Base(state.space.Current().Path) != "source.txt" {
+		t.Fatal("distinct files on a case-sensitive volume were treated as aliases")
+	}
+	if opened.Editor.String() != draft || opened.Editor.Selection() != selection || opened.Editor.Caret() != caret || !opened.Dirty() {
+		t.Fatal("result activation changed the open draft, caret or selection")
+	}
+	if alias {
+		if !opened.Editor.Undo() || !state.openFileResult(index) || len(state.space.Documents) != 1 || state.space.Current() != opened ||
+			opened.Editor.Selection() != (text.Range{Start: 4, End: 7}) {
+			t.Fatal("restoring the snapshot did not navigate in the existing tab")
+		}
+	}
+	for _, name := range []string{path, other} {
+		if disk, err := os.ReadFile(name); err != nil || string(disk) != saved {
+			t.Fatalf("result activation changed %q: %q, %v", name, disk, err)
+		}
 	}
 }
 
