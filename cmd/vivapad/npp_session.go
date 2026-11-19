@@ -369,6 +369,10 @@ func (state *model) loadNPPSession() {
 	if len(state.space.Documents) != 1 || oldBlank.Path != "" || oldBlank.Dirty() {
 		oldBlank = nil
 	}
+	activeViewFiles := make(map[*document.Document]bool, len(paneFiles[stored.ActiveView]))
+	for _, doc := range paneFiles[stored.ActiveView] {
+		activeViewFiles[doc] = true
+	}
 	for _, item := range prepared {
 		if state.documentIndex(item.doc) < 0 {
 			if err := state.space.AddOpened(item.doc); err != nil {
@@ -393,10 +397,13 @@ func (state *model) loadNPPSession() {
 			state.notice = "Session fold unavailable: " + err.Error()
 			return
 		}
-		item.doc.Editor.SetSelection(text.Range{
-			Start: runeFromNPPPosition(item.doc, item.file.StartPos),
-			End:   runeFromNPPPosition(item.doc, item.file.EndPos),
-		})
+		// A shared document has one editor selection. Restore it from the active view.
+		if item.pane == stored.ActiveView || !activeViewFiles[item.doc] {
+			item.doc.Editor.SetSelection(text.Range{
+				Start: runeFromNPPPosition(item.doc, item.file.StartPos),
+				End:   runeFromNPPPosition(item.doc, item.file.EndPos),
+			})
+		}
 		state.rememberRecent(item.doc)
 	}
 	if oldBlank != nil && state.documentIndex(oldBlank) < 0 {

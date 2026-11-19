@@ -108,3 +108,59 @@ func TestLoadNPPCanonicalizesFileIdentityPerPane(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadNPPSharedAliasUsesActiveViewsSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		pane  int
+		want  text.Range
+		caret int
+	}{
+		{"main active", 0, text.Range{Start: 0, End: 1}, 0},
+		{"sub active", 1, text.Range{Start: 2, End: 5}, 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			const original = "\u732b\r\nabc"
+			source := filepath.Join(root, "shared.txt")
+			if err := os.WriteFile(source, []byte(original), 0600); err != nil {
+				t.Fatal(err)
+			}
+			sep := string(filepath.Separator)
+			alias := root + sep + "." + sep + "shared.txt"
+			xmlPath := filepath.Join(root, "session.xml")
+			if err := session.SaveNPP(xmlPath, session.NPPState{
+				Main:       []session.NPPFile{{Path: source, Encoding: -1, StartPos: 3, EndPos: 0}},
+				Sub:        []session.NPPFile{{Path: alias, Encoding: -1, StartPos: 5, EndPos: 8}},
+				ActiveView: tc.pane,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			state, driver := startDriver(t)
+			draft := state.space.Current()
+			draft.Editor.Insert("keep my draft")
+			draft.Editor.SetSelection(text.Range{Start: 4, End: 0})
+			if err := driver.QueueOpenFiles([]string{xmlPath}, nil); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuScope.At(0))
+			clickID(t, driver, menuItemScope.At(13))
+			clickID(t, driver, sessionScope.At(0))
+			doc := state.space.Current()
+			if !state.splitEnabled || state.activePane != tc.pane || len(state.space.Documents) != 2 ||
+				state.paneDocs[0] != doc || state.paneDocs[1] != doc || doc == draft {
+				t.Fatalf("session did not restore the shared file in the active pane: %q", state.notice)
+			}
+			if got := doc.Editor.Selection(); got != tc.want || doc.Editor.Caret() != tc.caret {
+				t.Fatalf("active view selection = %+v, caret = %d; want %+v, %d", got, doc.Editor.Caret(), tc.want, tc.caret)
+			}
+			if doc.Dirty() || doc.Editor.CanUndo() || draft.Editor.String() != "keep my draft" ||
+				draft.Editor.Selection() != (text.Range{Start: 0, End: 4}) || draft.Editor.Caret() != 0 || !draft.Dirty() {
+				t.Fatal("import changed document content or edit history")
+			}
+			if data, err := os.ReadFile(source); err != nil || string(data) != original {
+				t.Fatalf("import changed the source: %q, %v", data, err)
+			}
+		})
+	}
+}
