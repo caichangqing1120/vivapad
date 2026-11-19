@@ -2236,6 +2236,10 @@ func (state *model) save(index int, saveAs bool) bool {
 		state.notice = err.Error()
 		return false
 	}
+	if state.isPrivateDataPath(absolute) {
+		state.notice = "Save destination is an internal VivaPad data file"
+		return false
+	}
 	var target os.FileInfo
 	if choosingPath {
 		target, _ = os.Stat(absolute)
@@ -2273,6 +2277,10 @@ func (state *model) saveCopy(index int) bool {
 	absolute, err := document.CanonicalSavePath(path)
 	if err != nil {
 		state.notice = err.Error()
+		return false
+	}
+	if state.isPrivateDataPath(absolute) {
+		state.notice = "Copy destination is an internal VivaPad data file"
 		return false
 	}
 	target, _ := os.Stat(absolute)

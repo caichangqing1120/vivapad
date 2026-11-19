@@ -19,7 +19,10 @@ func destinationMatchesFile(path string, target os.FileInfo, existing string) bo
 
 func (state *model) isPrivateDataPath(path string) bool {
 	target, _ := os.Stat(path)
-	for _, internal := range []string{state.sessionPath, state.preferencesPath, state.recoveryPath, state.recentPath, state.closedPath, state.macroPath} {
+	for _, internal := range []string{
+		state.sessionPath, state.preferencesPath, state.recoveryPath, state.recentPath,
+		state.closedPath, state.macroPath, state.namedMacroPath, state.runPath,
+	} {
 		if internal == "" {
 			continue
 		}
