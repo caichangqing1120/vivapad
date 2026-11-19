@@ -72,6 +72,40 @@ func TestRecoveryAfterHidingSplitKeepsLatestRightDraft(t *testing.T) {
 	}
 }
 
+func TestRecoveryKeepsCaretAfterReversingSelection(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	const saved = "\u732b\r\nsaved"
+	if err := os.WriteFile(path, []byte(saved), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sessionPath := filepath.Join(root, "settings", "session.json")
+	state := newStartupModel([]string{path}, sessionPath)
+	doc := state.space.Current()
+	doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+	doc.Editor.Insert(" draft")
+	want := text.Range{Start: 1, End: 4}
+	doc.Editor.SetSelection(want)
+	state.snapshotRecovery()
+	if err := state.recoveryWriter.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	// Reversing the selection keeps its sorted bounds and changes only the caret.
+	doc.Editor.SetSelection(text.Range{Start: want.End, End: want.Start})
+	state.snapshotRecovery()
+	if err := state.recoveryWriter.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	restored := newStartupModel(nil, sessionPath).space.Current()
+	if restored.Editor.Selection() != want || restored.Editor.Caret() != want.Start ||
+		restored.Editor.String() != "\u732b\nsaved draft" || !restored.Dirty() {
+		t.Fatalf("recovered selection = %+v, caret = %d, content = %q", restored.Editor.Selection(), restored.Editor.Caret(), restored.Editor.String())
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != saved {
+		t.Fatalf("recovery changed disk bytes: %q, %v", data, err)
+	}
+}
+
 func TestRecoveryValidationFailureRemainsVisibleUntilBackupSucceeds(t *testing.T) {
 	state := newStartupModel(nil, filepath.Join(t.TempDir(), "settings", "session.json"))
 	doc := state.space.Current()

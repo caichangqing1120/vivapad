@@ -130,6 +130,9 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 
 func (state *model) recoveryTab(doc *document.Document) recovery.Tab {
 	selection := doc.Editor.Selection()
+	if doc.Editor.Caret() == selection.Start {
+		selection.Start, selection.End = selection.End, selection.Start
+	}
 	mode, selected := state.languages[doc]
 	return recovery.Tab{
 		Path: doc.Path, Name: doc.Name, Content: doc.Editor.String(),
