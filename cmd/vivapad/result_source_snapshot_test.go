@@ -470,7 +470,7 @@ func TestFinderSourceSnapshotDirectoryKeepsEncodingMismatchRefusal(t *testing.T)
 	before, caret, recents := other.Editor.Selection(), other.Editor.Caret(), slices.Clone(state.recentEntries)
 	if state.openFileResult(1) || state.space.Current() != other || len(state.space.Documents) != 2 ||
 		other.Editor.Selection() != before || other.Editor.Caret() != caret || !other.Dirty() ||
-		state.resultSelected != -1 || !slices.Equal(state.recentEntries, recents) || !strings.Contains(state.notice, "already open as") {
+		state.resultSelected != -1 || !slices.Equal(state.recentEntries, recents) || state.notice != resultDecodingNotice {
 		t.Fatal("directory result lost the existing explicit-encoding refusal")
 	}
 }
@@ -518,8 +518,7 @@ func TestFinderDirectoryResultKeepsSourceDecoding(t *testing.T) {
 				t.Errorf("result activation changed disk bytes: %q, %v", data, err)
 			}
 
-			// Keep the same directory and text; use the tab's actual decoder.
-			target.SetEncoding(document.Windows1252)
+			// Keep the pending save conversion and search with the tab's actual decoder.
 			result, err := searchfiles.Find(context.Background(), root, "cat", document.SearchOptions{}, searchfiles.Options{Encoding: document.Windows1252})
 			if err != nil || len(result.Matches) != 2 {
 				t.Fatalf("legacy directory fixture: %+v, %v", result, err)
@@ -528,6 +527,13 @@ func TestFinderDirectoryResultKeepsSourceDecoding(t *testing.T) {
 			if !state.openFileResult(1) || state.space.Current() != target || state.resultSelected != 1 ||
 				target.Editor.Selection() != (text.Range{Start: 4, End: 7}) || state.notice != "" {
 				t.Errorf("matching decoder did not navigate to the second match: %q", state.notice)
+			}
+			wantSaveEncoding := document.Windows1252
+			if pending {
+				wantSaveEncoding = document.UTF8
+			}
+			if target.Encoding() != wantSaveEncoding || target.SavedEncoding() != document.Windows1252 || target.Dirty() != pending || target.Editor.CanUndo() {
+				t.Error("matching result changed the pending encoding or undo history")
 			}
 		})
 	}

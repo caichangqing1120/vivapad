@@ -336,10 +336,6 @@ func (state *model) openFileResult(index int) bool {
 		}
 		doc = state.directoryResultTab(absolute)
 		alreadyOpen = doc != nil
-		if alreadyOpen && match.Encoding.IsLegacy() && doc.Encoding() != match.Encoding {
-			state.notice = fmt.Sprintf("%s is already open as %s", doc.Name, doc.EncodingLabel())
-			return false
-		}
 		if !alreadyOpen {
 			if match.Encoding.IsLegacy() {
 				doc, err = document.OpenWithEncoding(absolute, match.Encoding)
