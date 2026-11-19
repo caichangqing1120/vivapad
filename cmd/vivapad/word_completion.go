@@ -100,6 +100,8 @@ func (state *model) startPathCompletion() {
 	}
 	if result.Truncated {
 		state.notice = "Path completion limited to first 2000 entries"
+	} else {
+		state.notice = ""
 	}
 }
 

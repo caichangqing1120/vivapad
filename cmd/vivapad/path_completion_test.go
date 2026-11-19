@@ -98,6 +98,57 @@ func TestPathCompletionShortcutFiltersAndAcceptsWithNativeEnter(t *testing.T) {
 	}
 }
 
+func TestPathCompletionClearsPreviousNoMatchWhenPopupOpens(t *testing.T) {
+	root := t.TempDir()
+	const before = "missing\n[al-old.txt]"
+	source := filepath.Join(root, "buffer.txt")
+	for name, contents := range map[string]string{"buffer.txt": before, "alpha.txt": "target"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := newModelWithFiles([]string{source})
+	doc := state.space.Current()
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, editorID)
+	completeAt := func(offset int) {
+		t.Helper()
+		doc.Editor.MoveTo(offset, false)
+		if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, ' '); err != nil || !handled {
+			t.Fatalf("path shortcut handled=%v err=%v", handled, err)
+		}
+	}
+	hasStatus := func() bool {
+		for _, label := range driver.Snapshot().Texts {
+			if label.Value == "No path completion" {
+				return true
+			}
+		}
+		return false
+	}
+	completeAt(len("missing"))
+	if state.wordCompletion != nil || !hasStatus() {
+		t.Fatalf("missing-path status did not appear: %q", state.notice)
+	}
+	completeAt(len("missing\n[al"))
+	if current := state.wordCompletion; current == nil || len(current.items) != 1 || current.items[0] != "alpha.txt" {
+		t.Fatalf("expected filename popup, got %+v", current)
+	}
+	if hasStatus() {
+		t.Fatalf("stale status remains visible beside the path popup: %q", state.notice)
+	}
+	if doc.Editor.String() != before || doc.Dirty() {
+		t.Fatal("opening the candidate popup modified the document")
+	}
+}
+
 func TestPathCompletionDirectoryReadonlyAndMissingParent(t *testing.T) {
 	root := t.TempDir()
 	canonical, _ := filepath.EvalSymlinks(root)
