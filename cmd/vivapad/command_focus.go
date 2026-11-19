@@ -34,6 +34,7 @@ func (state *model) restoreEditorCommandFocus(command string) {
 	switch command {
 	case "Record Macro", "Stop Recording", "Clear Macro", "Print...", "Print Now",
 		"Read-Only on Current Document", "Read-Only for All Documents", "Clear Read-Only for All Documents",
+		"Monitoring (tail -f)",
 		"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Toggle Full Screen Mode",
 		"Split View", "Move to Other View", "Clone to Other View", "Focus on Another View",
 		"Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Hide Lines",

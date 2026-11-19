@@ -329,6 +329,60 @@ func TestMonitoringCompactMenuCheckedStateAndClose(t *testing.T) {
 	}
 }
 
+func TestMonitoringMenuStopReturnsInputToReloadedRightPane(t *testing.T) {
+	root := t.TempDir()
+	leftPath, rightPath := filepath.Join(root, "peer.txt"), filepath.Join(root, "tail.log")
+	for path, value := range map[string]string{leftPath: "peer", rightPath: "old\r\n"} {
+		if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := newModelWithFiles([]string{leftPath, rightPath})
+	left, right := state.space.Documents[0], state.space.Documents[1]
+	state.splitEnabled, state.activePane = true, 1
+	state.paneDocs = [2]*document.Document{left, right}
+	state.paneOwner[left], state.paneOwner[right] = 0, 1
+	state.space.Select(1)
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, rightEditorID)
+	toggle := func() {
+		clickID(t, driver, menuScope.At(3))
+		revealViewMenuItem(t, driver, 23)
+		clickID(t, driver, menuItemScope.At(23))
+	}
+	toggle()
+	const saved = "new\r\nlast"
+	if err := os.WriteFile(rightPath, []byte(saved), 0600); err != nil {
+		t.Fatal(err)
+	}
+	waitMonitorState(t, driver, func() bool { return state.space.Current().Editor.String() == "new\nlast" })
+	current := state.space.Current()
+	if current == right || state.paneDocs != ([2]*document.Document{left, current}) || !state.isReadOnly(current) || current.Editor.CanUndo() {
+		t.Fatal("reload did not bind a fresh, monitored history source to the right pane")
+	}
+	toggle()
+	if state.isReadOnly(current) || state.monitors[current] != nil || current.Editor.Caret() != current.Editor.RuneCount() {
+		t.Fatal("stopping monitoring changed the restored editor policy or caret")
+	}
+	requireEditorCommandFocus(t, driver, rightEditorID)
+	if err := driver.Type("x"); err != nil || current.Editor.String() != "new\nlastx" || left.Editor.String() != "peer" {
+		t.Fatalf("first edit after stopping monitoring: left=%q right=%q, %v", left.Editor.String(), current.Editor.String(), err)
+	}
+	if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || current.Editor.String() != "new\nlast" || current.Dirty() {
+		t.Fatalf("Undo after stopping monitoring: %q, %v", current.Editor.String(), err)
+	}
+	if bytes, err := os.ReadFile(rightPath); err != nil || string(bytes) != saved {
+		t.Fatalf("monitoring modified the file: %q, %v", bytes, err)
+	}
+}
+
 func TestCaptureMonitoringWhenRequested(t *testing.T) {
 	output := os.Getenv("VIVAPAD_MONITOR_SHOTS")
 	if output == "" {
