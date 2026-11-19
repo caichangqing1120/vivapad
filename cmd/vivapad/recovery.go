@@ -36,7 +36,9 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 			}
 			if err == nil {
 				candidate := state.space.Current()
-				if candidate.DiskDigest() == tab.DiskDigest {
+				// Matching bytes can belong to a different file after a path is
+				// redirected. A draft already restored here also owns its buffer.
+				if candidate.Path == tab.Path && !candidate.Dirty() && candidate.DiskDigest() == tab.DiskDigest {
 					doc = candidate
 				}
 			}

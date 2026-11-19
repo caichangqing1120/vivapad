@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/text"
 	"vivapad/internal/recovery"
 )
 
@@ -102,6 +103,59 @@ func TestRecoveryValidationFailureRemainsVisibleUntilBackupSucceeds(t *testing.T
 	stored, err = recovery.Load(state.recoveryPath)
 	if state.notice != "" || err != nil || len(stored.Tabs) != 1 || stored.Tabs[0].Content != "original draft updated" || stored.Tabs[0].TabColor != 2 {
 		t.Fatalf("successful retry failed to replace the backup and clear the warning: notice=%q, backup=%+v, err=%v", state.notice, stored, err)
+	}
+}
+
+func TestRecoveryKeepsDraftsSeparateWhenSavedPathBecomesAlias(t *testing.T) {
+	root := t.TempDir()
+	firstPath, secondPath := filepath.Join(root, "first.txt"), filepath.Join(root, "second.txt")
+	const disk = "original\r\nlast\n"
+	for _, path := range []string{firstPath, secondPath} {
+		if err := os.WriteFile(path, []byte(disk), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sessionPath := filepath.Join(root, "settings", "session.json")
+	state := newStartupModel([]string{firstPath, secondPath}, sessionPath)
+	first, second := state.space.Documents[0], state.space.Documents[1]
+	first.Editor.MoveTo(0, false)
+	first.Editor.Insert("first draft: ")
+	first.Editor.SetSelection(text.Range{Start: 0, End: 5})
+	second.Editor.MoveTo(0, false)
+	second.Editor.Insert("second draft: ")
+	second.Editor.SetSelection(text.Range{Start: 1, End: 6})
+	state.snapshotRecovery()
+	if err := state.recoveryWriter.Wait(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Rename(firstPath, filepath.Join(root, "moved-first.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secondPath, firstPath); err != nil {
+		if os.IsPermission(err) {
+			t.Skipf("file symlinks are unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+
+	restored := newStartupModel([]string{secondPath}, sessionPath)
+	if len(restored.space.Documents) != 2 {
+		t.Fatalf("recovery collapsed two drafts into %d tab(s)", len(restored.space.Documents))
+	}
+	attached, detached := restored.space.Documents[0], restored.space.Documents[1]
+	if restored.space.Current() != attached || attached.Path != second.Path || attached.Editor.String() != second.Editor.String() ||
+		attached.Editor.Selection() != second.Editor.Selection() || attached.EOLSequence() != "WL" || !attached.Dirty() {
+		t.Fatalf("original path did not retain its own draft: %q, text=%q", attached.Path, attached.Editor.String())
+	}
+	if detached.Path != "" || detached.Name != "Recovered first.txt" || detached.Editor.String() != first.Editor.String() ||
+		detached.Editor.Selection() != first.Editor.Selection() || detached.EOLSequence() != "WL" || !detached.Dirty() {
+		t.Fatalf("redirected path did not recover as a separate draft: %q, text=%q", detached.Path, detached.Editor.String())
+	}
+	for _, path := range []string{secondPath, filepath.Join(root, "moved-first.txt")} {
+		if data, err := os.ReadFile(path); err != nil || string(data) != disk {
+			t.Fatalf("recovery changed saved bytes at %q: %q, %v", path, data, err)
+		}
 	}
 }
 
