@@ -117,6 +117,22 @@ func Paths(value string, caret int, base string) (Result, error) {
 	return result, nil
 }
 
+// PathNamesFile checks the current file system without listing the directory.
+func PathNamesFile(raw, base string) (bool, error) {
+	path, err := resolvePath(raw, base)
+	if err != nil {
+		return false, err
+	}
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return info.Mode().IsRegular(), nil
+}
+
 func resolvePath(raw, base string) (string, error) {
 	if strings.HasPrefix(raw, "~/") {
 		home, err := os.UserHomeDir()

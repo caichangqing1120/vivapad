@@ -125,6 +125,17 @@ func (state *model) acceptWordCompletion(index int) {
 	}
 	before := current.doc.Editor.String()
 	state.wordCompletion = nil
+	if current.kind == completionPath {
+		editor := current.doc.Editor
+		raw := before[editor.ByteOffset(current.start):editor.ByteOffset(current.end)]
+		if exists, err := completion.PathNamesFile(raw, current.base); err != nil {
+			state.notice = "Path completion: " + err.Error()
+			return
+		} else if exists {
+			state.notice = "Path already names a file"
+			return
+		}
+	}
 	state.completeCandidate(current.doc, current.start, current.end, current.items[index], current.kind)
 	state.relocateSelectAnchors(current.doc, before, current.doc.Editor.String(), current.start)
 }
