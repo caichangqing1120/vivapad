@@ -181,12 +181,7 @@ func (printer *Printer) PrintPages(job Job, pages []Page) error {
 	if printer.bus == nil && !printer.cups || job.Scope != printer.choice.Scope {
 		return fmt.Errorf("printing: Linux print portal is closed or page scope changed")
 	}
-	if len(printer.choice.Ranges) != 0 {
-		if _, err := SelectPageRanges(pages, printer.choice.Ranges); err != nil {
-			return err
-		}
-	}
-	data, err := printer.renderer.Render(job, pages, printer.device)
+	data, err := printer.renderPDF(job, pages)
 	if err != nil {
 		return err
 	}
@@ -220,6 +215,19 @@ func (printer *Printer) PrintPages(job Job, pages []Page) error {
 		"supported_output_file_formats": dbus.MakeVariant([]string{"pdf"}),
 	})
 	return err
+}
+
+func (printer *Printer) renderPDF(job Job, pages []Page) ([]byte, error) {
+	if len(printer.choice.Ranges) != 0 {
+		// Portal submission sends a ready-to-print PDF. Apply the range before
+		// rendering, leaving copy count and other spool settings with the portal.
+		selected, err := SelectPageRanges(pages, printer.choice.Ranges)
+		if err != nil {
+			return nil, err
+		}
+		pages = selected
+	}
+	return printer.renderer.Render(job, pages, printer.device)
 }
 
 func (printer *Printer) Close() {
