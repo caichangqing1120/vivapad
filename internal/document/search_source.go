@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"strings"
 )
 
@@ -45,7 +44,7 @@ func searchEncoding(encoding Encoding) *Encoding {
 }
 
 func readSearchFile(path string, maxBytes int64) ([]byte, error) {
-	file, err := os.Open(path)
+	file, err := openSearchFile(path)
 	if err != nil {
 		return nil, err
 	}
