@@ -8,7 +8,9 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/text"
+	"vivapad/internal/document"
 	"vivapad/internal/recovery"
+	"vivapad/internal/session"
 )
 
 func TestRecoveryAfterHidingSplitKeepsLatestRightDraft(t *testing.T) {
@@ -100,6 +102,48 @@ func TestRecoveryKeepsCaretAfterReversingSelection(t *testing.T) {
 	if restored.Editor.Selection() != want || restored.Editor.Caret() != want.Start ||
 		restored.Editor.String() != "\u732b\nsaved draft" || !restored.Dirty() {
 		t.Fatalf("recovered selection = %+v, caret = %d, content = %q", restored.Editor.Selection(), restored.Editor.Caret(), restored.Editor.String())
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != saved {
+		t.Fatalf("recovery changed disk bytes: %q, %v", data, err)
+	}
+}
+
+func TestRecoveryKeepsDraftSeparateFromTabOpenedWithDifferentDecoder(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	const saved = "caf\xc3\xa9\r\n"
+	if err := os.WriteFile(path, []byte(saved), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sessionPath := filepath.Join(root, "settings", "session.json")
+	state := newStartupModel([]string{path}, sessionPath)
+	doc := state.space.Current()
+	path = doc.Path
+	doc.Editor.Insert("draft ")
+	const draft = "draft caf\u00e9\n"
+	selection := text.Range{Start: 6, End: 10}
+	doc.Editor.SetSelection(selection)
+	state.snapshotRecovery()
+	if err := state.recoveryWriter.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Save(sessionPath, session.State{
+		Paths: []string{path}, Active: path,
+		Encodings: map[string]string{path: "Windows-1252"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	restored := newStartupModel(nil, sessionPath)
+	if len(restored.space.Documents) != 2 {
+		t.Fatalf("recovery attached a UTF-8 draft to another decoder: tabs=%d notice=%q", len(restored.space.Documents), restored.notice)
+	}
+	diskTab, draftTab := restored.space.Documents[0], restored.space.Current()
+	if diskTab.Path != path || diskTab.SavedEncoding() != document.Windows1252 || diskTab.Dirty() || diskTab.Editor.String() != "caf\u00c3\u00a9\n" {
+		t.Fatalf("recovery changed the existing Windows-1252 tab: %q, %s", diskTab.Editor.String(), diskTab.EncodingLabel())
+	}
+	if draftTab.Path != "" || !draftTab.Dirty() || draftTab.Encoding() != document.UTF8 || draftTab.Editor.String() != draft || draftTab.Editor.Selection() != selection {
+		t.Fatalf("recovery did not keep an untitled UTF-8 draft: path=%q text=%q selection=%+v", draftTab.Path, draftTab.Editor.String(), draftTab.Editor.Selection())
 	}
 	if data, err := os.ReadFile(path); err != nil || string(data) != saved {
 		t.Fatalf("recovery changed disk bytes: %q, %v", data, err)
