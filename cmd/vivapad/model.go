@@ -2303,6 +2303,9 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.languages, doc)
 	delete(state.bookmarks, doc)
 	delete(state.changeView, doc)
+	if state.noChangeNoticeDoc == doc {
+		state.retireNoChangeNotice("")
+	}
 	for pane := range state.multiSelections {
 		if state.multiSelections[pane].doc == doc {
 			state.multiSelections[pane] = multiSelectionState{}

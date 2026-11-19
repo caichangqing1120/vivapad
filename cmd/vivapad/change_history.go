@@ -7,6 +7,8 @@ import (
 	"vivapad/internal/document"
 )
 
+const noChangeNavigationNotice = "No changes to navigate"
+
 // H06: change-history navigation and Clear. Both consume the document's real
 // consumer result; an unavailable history refuses with its reason instead of
 // guessing "no changes".
@@ -75,7 +77,7 @@ func (state *model) navigateChange(previous bool) {
 		return
 	}
 	if !ok {
-		state.notice = "No changes to navigate"
+		state.notice = noChangeNavigationNotice
 		state.noChangeNoticeDoc = doc
 		state.noChangeNoticeRevision = consumer.Revision()
 		return
@@ -86,6 +88,13 @@ func (state *model) navigateChange(previous bool) {
 	state.multiSelections[pane] = multiSelectionState{}
 	state.selectAnchors[pane] = selectAnchor{}
 	state.notice = ""
+}
+
+func (state *model) retireNoChangeNotice(replacement string) {
+	state.noChangeNoticeDoc, state.noChangeNoticeRevision = nil, 0
+	if state.notice == noChangeNavigationNotice {
+		state.notice = replacement
+	}
 }
 
 // clearChangeHistory forgets undo/redo and the change-history editions while

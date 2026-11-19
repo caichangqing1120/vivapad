@@ -1023,13 +1023,13 @@ func (state *model) paintStatus(canvas *gfx.Canvas, width, y float32) {
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: statusHeight}, palette.chrome)
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.border)
 	doc := state.space.Current()
-	if state.notice == "No changes to navigate" {
-		if doc != state.noChangeNoticeDoc {
-			state.notice = ""
+	if state.noChangeNoticeDoc != nil {
+		if state.notice != noChangeNavigationNotice || doc != state.noChangeNoticeDoc {
+			state.retireNoChangeNotice("")
 		} else if consumer, err := doc.ChangeHistory(); err != nil {
-			state.notice = err.Error()
+			state.retireNoChangeNotice(err.Error())
 		} else if consumer.Revision() != state.noChangeNoticeRevision {
-			state.notice = ""
+			state.retireNoChangeNotice("")
 		}
 	}
 	line, column := doc.Position()

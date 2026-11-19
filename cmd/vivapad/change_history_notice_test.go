@@ -59,6 +59,9 @@ func TestNoChangeNoticeExpiresAfterEditingItsSource(t *testing.T) {
 	if state.notice == "No changes to navigate" {
 		t.Fatal("a new changed line still reports no changes")
 	}
+	if state.noChangeNoticeDoc != nil {
+		t.Fatal("an expired notice still retains its source document")
+	}
 }
 
 func TestNoChangeNoticeBelongsToTheActiveDocument(t *testing.T) {
@@ -96,6 +99,9 @@ func TestNoChangeNoticeBelongsToTheActiveDocument(t *testing.T) {
 	if state.notice == "No changes to navigate" {
 		t.Fatal("left document's no-change notice leaked into right pane")
 	}
+	if state.noChangeNoticeDoc != nil {
+		t.Fatal("switching panes left the old document in the expired notice")
+	}
 	state.notice = "Settings not saved: storage unavailable"
 	if err := driver.Type("X"); err != nil {
 		t.Fatal(err)
@@ -105,5 +111,29 @@ func TestNoChangeNoticeBelongsToTheActiveDocument(t *testing.T) {
 	}
 	if state.notice != "Settings not saved: storage unavailable" {
 		t.Fatalf("unrelated error notice was dropped: %q", state.notice)
+	}
+}
+
+func TestNoChangeNoticeReleasesClosedSource(t *testing.T) {
+	for _, notice := range []string{"No changes to navigate", "Settings not saved: storage unavailable"} {
+		t.Run(notice, func(t *testing.T) {
+			state, _, doc := noticeDocument(t)
+			state.command("Next Change")
+			if state.noChangeNoticeDoc != doc {
+				t.Fatal("precondition: the no-change notice has no source")
+			}
+			state.notice = notice
+			state.closeTab(state.documentIndex(doc))
+			if state.documentIndex(doc) >= 0 || state.noChangeNoticeDoc != nil {
+				t.Fatal("closing the source left it attached to the status bar")
+			}
+			want := notice
+			if notice == "No changes to navigate" {
+				want = ""
+			}
+			if state.notice != want {
+				t.Fatalf("notice after closing source = %q, want %q", state.notice, want)
+			}
+		})
 	}
 }
