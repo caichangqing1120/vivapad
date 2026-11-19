@@ -87,7 +87,11 @@ func (state *model) restoreFolderWorkspace(stored session.State) {
 	notice := state.notice
 	var missing string
 	for _, root := range stored.FolderRoots {
-		if err := state.addFolderRoot(root); err != nil {
+		err := foldertree.CheckCanonicalPath(root)
+		if err == nil {
+			err = state.addFolderRoot(root)
+		}
+		if err != nil {
 			missing = "Folder unavailable: " + err.Error()
 		}
 	}
@@ -105,8 +109,15 @@ func (state *model) folderRows() []folderRow {
 		if !state.folderExpanded[path] {
 			return
 		}
-		state.ensureFolderWatch(path)
 		children, ok := state.folderCache[path]
+		if !ok || !state.folderWatching[path] && !state.folderWatchUnavailable {
+			if err := foldertree.CheckCanonicalPath(path); err != nil {
+				state.stopFolderBranch(path)
+				state.notice = "Folder unavailable: " + err.Error()
+				return
+			}
+		}
+		state.ensureFolderWatch(path)
 		if !ok {
 			var err error
 			children, err = foldertree.Children(path)
@@ -139,7 +150,11 @@ func (state *model) activateFolderRow(row folderRow) {
 		}
 		return
 	}
-	if err := state.space.Open(row.path); err != nil {
+	err := foldertree.CheckCanonicalPath(row.path)
+	if err == nil {
+		err = state.space.Open(row.path)
+	}
+	if err != nil {
 		state.notice = "Cannot open " + row.name + ": " + err.Error()
 		return
 	}

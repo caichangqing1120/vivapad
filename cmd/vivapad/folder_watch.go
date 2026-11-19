@@ -78,10 +78,13 @@ func (state *model) consumeFolderChanges() {
 		active[path] = struct{}{}
 	}
 	for path := range state.folderWatching {
-		if _, err := foldertree.CanonicalRoot(path); err != nil {
+		if resolved, err := foldertree.CanonicalRoot(path); err != nil || resolved != path {
 			_ = state.folderWatcher.Remove(path)
 			delete(state.folderWatching, path)
 			delete(state.folderExpanded, path)
+			if err == nil {
+				state.notice = "Folder unavailable: path now points elsewhere: " + path
+			}
 		} else if _, watched := active[path]; !watched {
 			// The OS dropped the old directory watch. Paint can attach to its replacement.
 			delete(state.folderWatching, path)
