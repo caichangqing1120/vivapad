@@ -220,28 +220,17 @@ func (state *model) refreshReplacedTabs(result searchfiles.ApplyResult) error {
 			if doc.Path != path {
 				continue
 			}
-			language, selected := state.languages[doc]
 			old, err := state.space.Reload(index)
 			if err != nil {
 				reloadErrors = append(reloadErrors, fmt.Errorf("%s: %w", path, err))
 				continue
 			}
 			updated := state.space.Documents[index]
-			state.rebindBookmarksOnReload(old, updated)
-			state.replacePaneDocument(old, updated)
-			// Directory replace retires the tab's document. Consume that source once
-			// before it is released: it is the only source in this operation that
-			// can have pending frames, and its explicit unavailable error must not
-			// be discarded silently with the retired document. The replacement is a
-			// fresh document.Open source bound before it is reachable, so it starts
-			// with an available, empty history by construction.
+			// Report unavailable history before releasing the source with pending frames.
 			if _, historyErr := old.ChangeHistory(); historyErr != nil {
 				reloadErrors = append(reloadErrors, fmt.Errorf("%s retired history: %w", path, historyErr))
 			}
-			state.releaseDocument(old)
-			if selected {
-				state.languages[updated] = language
-			}
+			state.rebindReloadedDocument(old, updated)
 		}
 	}
 	return errors.Join(reloadErrors...)

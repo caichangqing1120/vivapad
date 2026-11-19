@@ -56,11 +56,6 @@ func (state *model) reloadDocument(index int, discard bool) *document.Document {
 func (state *model) reloadDocumentWithHistory(index int, discard bool) (*document.Document, error) {
 	previous := state.space.Documents[index]
 	state.cancelDocumentComposition(previous)
-	previousValue := previous.Editor.String()
-	previousRectangles := state.rectangles
-	readOnly := state.readOnly[previous]
-	caret := previous.Editor.Caret()
-	language, selected := state.languages[previous]
 	var oldErr error
 	if discard {
 		_, oldErr = state.space.ReloadDiscard(index)
@@ -77,11 +72,23 @@ func (state *model) reloadDocumentWithHistory(index int, discard bool) (*documen
 		return nil, nil
 	}
 	current := state.space.Documents[index]
+	state.rebindReloadedDocument(previous, current)
+	// Observe the replacement once so a constructor failure is not hidden by
+	// an empty marker history or overwritten by the caller's success notice.
+	_, historyErr := current.ChangeHistory()
+	state.notice = reloadedNotice(current.Name, historyErr)
+	return current, historyErr
+}
+
+func (state *model) rebindReloadedDocument(previous, current *document.Document) {
+	previousValue := previous.Editor.String()
+	previousRectangles := state.rectangles
+	language, selected := state.languages[previous]
 	state.rebindBookmarksOnReload(previous, current)
-	if readOnly {
+	if state.readOnly[previous] {
 		state.readOnly[current] = true
 	}
-	current.Editor.MoveTo(min(caret, current.Editor.RuneCount()), false)
+	current.Editor.MoveTo(min(previous.Editor.Caret(), current.Editor.RuneCount()), false)
 	state.replacePaneDocument(previous, current)
 	if editor := state.editors[previous]; editor != nil {
 		state.editors[current] = editor
@@ -117,13 +124,6 @@ func (state *model) reloadDocumentWithHistory(index int, discard bool) (*documen
 	if selected {
 		state.languages[current] = language
 	}
-	// The replacement is a new bound source; consume it once so a constructor
-	// failure surfaces here instead of as an empty marker history. The error is
-	// both composed into this notice and returned for callers that compose their
-	// own notice.
-	_, historyErr := current.ChangeHistory()
-	state.notice = reloadedNotice(current.Name, historyErr)
-	return current, historyErr
 }
 
 func (state *model) paintReloadDialog(canvas *gfx.Canvas, size gfx.Size) {

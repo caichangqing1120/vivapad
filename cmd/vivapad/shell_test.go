@@ -2064,6 +2064,9 @@ func TestReplaceInFilesPreviewThenConfirmRefreshesOpenTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := newModelWithFiles([]string{path})
+	previous := state.space.Current()
+	previous.Editor.MoveTo(4, false)
+	state.tabColors[previous] = 3
 	driver, err := app.NewDriver(newConfig(state), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -2110,6 +2113,13 @@ func TestReplaceInFilesPreviewThenConfirmRefreshesOpenTab(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(path); string(data) != "dog dog" || state.space.Current().Editor.String() != "dog dog" || state.replaceConfirmOpen {
 		t.Fatalf("confirmed replacement = disk:%q editor:%q modal:%v", data, state.space.Current().Editor.String(), state.replaceConfirmOpen)
+	}
+	current := state.space.Current()
+	if current == previous || current.Dirty() || current.Editor.CanUndo() {
+		t.Fatal("confirmed replacement did not start a fresh, clean history")
+	}
+	if current.Editor.Caret() != 4 || state.tabColors[current] != 3 {
+		t.Errorf("replacement reset tab state: caret=%d color=%d", current.Editor.Caret(), state.tabColors[current])
 	}
 	requireEditorCommandFocus(t, driver, editorID)
 }
