@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/vivaui/viva/app"
@@ -159,6 +160,36 @@ func TestUTFConversionMenuPreservesUndoRedo(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUTFConversionMenuRefusesLeadingBOMCharacterInPlainUTF8(t *testing.T) {
+	original := utfConversionMenuBytes(t, "efbbbfefbbbf410d0a42")
+	state, driver, file := startUTFConversionDriver(t, original, 640, 400)
+	doc := state.space.Current()
+	editor := doc.Editor
+	editor.SetSelection(text.Range{Start: 2, End: 1})
+	selection, caret := editor.Selection(), editor.Caret()
+	clickUTFConversion(t, driver, "UTF-8")
+	clickID(t, driver, saveID)
+	if !strings.Contains(state.notice, "U+FEFF") || !strings.Contains(state.notice, "UTF-8 BOM") {
+		t.Errorf("Save must explain the refused conversion and the usable encoding: %q", state.notice)
+	}
+	if disk, err := os.ReadFile(file); err != nil || !bytes.Equal(disk, original) {
+		t.Errorf("refused Save changed the original bytes: %x, %v", disk, err)
+	}
+	if editor.String() != "\ufeffA\nB" || editor.Selection() != selection || editor.Caret() != caret ||
+		doc.Encoding() != document.UTF8 || doc.SavedEncoding() != document.UTF8BOM || !doc.Dirty() {
+		t.Error("refused Save lost the pending conversion or editor state")
+	}
+	if err := driver.Move(620, 350); err != nil {
+		t.Fatal(err)
+	}
+	for _, label := range driver.Snapshot().Texts {
+		if strings.Contains(label.Value, "Use UTF-8 BOM to keep leading U+FEFF") {
+			return
+		}
+	}
+	t.Fatal("compact status bar hid the actionable save error")
 }
 
 func TestUTFConversionSaveDialogCancelAndFailure(t *testing.T) {

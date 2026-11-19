@@ -237,6 +237,9 @@ func encodeText(value string, encoding Encoding) ([]byte, error) {
 		}
 		return data, nil
 	case UTF8:
+		if strings.HasPrefix(value, "\ufeff") {
+			return nil, errors.New("Use UTF-8 BOM to keep leading U+FEFF")
+		}
 		return []byte(value), nil
 	default:
 		return encodeLegacy(value, encoding)

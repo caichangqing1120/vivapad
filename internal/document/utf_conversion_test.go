@@ -6,10 +6,63 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/vivaui/viva/text"
 )
+
+func TestUTF8OutputRefusesLeadingBOMCharacter(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.txt")
+	destination := filepath.Join(root, "copy.txt")
+	const original, copyBytes = "\xef\xbb\xbf\xef\xbb\xbfA\r\nB", "keep copy\r\n"
+	if err := os.WriteFile(source, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(destination, []byte(copyBytes), 0600); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := Open(source)
+	if err != nil || doc.Editor.String() != "\ufeffA\nB" || doc.Encoding() != UTF8BOM {
+		t.Fatalf("fixture must decode a leading content character: %+v, %v", doc, err)
+	}
+	doc.Editor.SetSelection(text.Range{Start: 2, End: 1})
+	selection, caret := doc.Editor.Selection(), doc.Editor.Caret()
+	doc.SetEncoding(UTF8)
+	for _, op := range []struct {
+		name string
+		run  func() error
+	}{{"preflight", doc.ValidateEncoding}, {"Save Copy", func() error { return doc.SaveCopy(destination) }}, {"Save", func() error { return doc.Save("") }}} {
+		if err := op.run(); err == nil || !strings.Contains(err.Error(), "U+FEFF") {
+			t.Errorf("%s must refuse a leading U+FEFF in plain UTF-8, got %v", op.name, err)
+		}
+	}
+	if disk, err := os.ReadFile(source); err != nil || string(disk) != original {
+		t.Errorf("refusal changed the source: %x, %v", disk, err)
+	}
+	if disk, err := os.ReadFile(destination); err != nil || string(disk) != copyBytes {
+		t.Errorf("refusal changed the copy destination: %x, %v", disk, err)
+	}
+	if doc.Editor.String() != "\ufeffA\nB" || doc.Editor.Selection() != selection || doc.Editor.Caret() != caret ||
+		doc.Encoding() != UTF8 || doc.SavedEncoding() != UTF8BOM || !doc.Dirty() || !doc.Editor.AtSavePoint() {
+		t.Error("refusal changed editor state, pending encoding or saved boundary")
+	}
+	doc.SetEncoding(UTF8BOM)
+	if err := doc.SaveCopy(destination); err != nil {
+		t.Fatal(err)
+	}
+	if disk, err := os.ReadFile(destination); err != nil || string(disk) != original {
+		t.Fatalf("UTF-8 with BOM did not retain both byte sequences: %x, %v", disk, err)
+	}
+	if copy, err := Open(destination); err != nil || copy.Editor.String() != doc.Editor.String() || copy.Encoding() != UTF8BOM {
+		t.Fatalf("UTF-8 BOM copy did not reopen with the leading text character: %+v, %v", copy, err)
+	}
+	const interior = "A\ufeffB"
+	if encoded, err := encodeText(interior, UTF8); err != nil || string(encoded) != interior {
+		t.Fatalf("an interior U+FEFF is valid plain UTF-8: %x, %v", encoded, err)
+	}
+}
 
 var utfConversionFixtures = []struct {
 	format         Encoding
