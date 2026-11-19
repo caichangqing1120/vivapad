@@ -49,6 +49,15 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 		seen[doc], editors[doc.Editor] = true, doc
 		composing := doc.Editor.CompositionActive()
 		before := doc.Editor.CommittedString()
+		edits, err := document.ReplacementEditsInText(before, query, replacement, options)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", doc.Name, err)
+		}
+		if !slices.ContainsFunc(edits, func(edit document.ReplacementEdit) bool {
+			return before[edit.Start:edit.End] != edit.Text
+		}) {
+			continue
+		}
 		ending := doc.LineEnding()
 		var sequence string
 		// A replacement preview is a transient wrapper, not a document: it must
@@ -65,11 +74,14 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 		// During composition the live LF labels may describe the provisional
 		// text. A draft with uniform LF only determines whether the committed
 		// text would change; it cannot authorize edits to a composing document.
-		count, edits, err := candidate.ReplaceAllWithEdits(query, replacement, options)
+		batch, err := candidate.PrepareTargetEdits(edits)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", doc.Name, err)
 		}
-		if count == 0 || candidate.Editor.String() == before {
+		if err := batch.Apply(); err != nil {
+			return nil, fmt.Errorf("%s: %w", doc.Name, err)
+		}
+		if candidate.Editor.String() == before {
 			continue
 		}
 		if composing {
@@ -79,11 +91,11 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 			return nil, fmt.Errorf("%w (%s cannot be saved after replacement)", err, doc.Name)
 		}
 		plan.Changes = append(plan.Changes, OpenChange{
-			Doc: doc, Name: doc.Name, Count: count, Edits: append([]document.ReplacementEdit(nil), edits...),
+			Doc: doc, Name: doc.Name, Count: len(edits), Edits: append([]document.ReplacementEdit(nil), edits...),
 			before: before, encoding: doc.Encoding(), ending: ending, eolSequence: sequence,
 			source: doc, editor: doc.Editor, targets: edits,
 		})
-		plan.Replacements += count
+		plan.Replacements += len(edits)
 	}
 	return plan, nil
 }

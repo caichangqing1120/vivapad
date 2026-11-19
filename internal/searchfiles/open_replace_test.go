@@ -57,18 +57,18 @@ func TestOpenBufferReplacementSupportsRegexCaptures(t *testing.T) {
 
 func TestOpenBufferPreviewSkipsWholeDocumentEqualResults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mixed.txt")
-	original := []byte("cat\r\ncat\n")
-	if err := os.WriteFile(path, original, 0600); err != nil {
-		t.Fatal(err)
-	}
 	for _, scenario := range []struct {
-		name, query, replacement string
-		options                  document.SearchOptions
+		name, original, query, replacement string
+		options                            document.SearchOptions
 	}{
-		{name: "literal", query: "cat", replacement: "cat"},
-		{name: "regex", query: `(cat)`, replacement: `$1`, options: document.SearchOptions{Regex: true}},
+		{name: "literal", original: "cat\r\ncat\n", query: "cat", replacement: "cat"},
+		{name: "regex", original: "cat\r\ncat\n", query: `(cat)`, replacement: `$1`, options: document.SearchOptions{Regex: true}},
+		{name: "net equal regex", original: "aaa\r\nend\n", query: `(a)a|(a)`, replacement: `$1$2$2`, options: document.SearchOptions{Regex: true}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(scenario.original), 0600); err != nil {
+				t.Fatal(err)
+			}
 			doc, err := document.Open(path)
 			if err != nil {
 				t.Fatal(err)
@@ -87,7 +87,7 @@ func TestOpenBufferPreviewSkipsWholeDocumentEqualResults(t *testing.T) {
 			if doc.Editor.String() != before || doc.Editor.Selection() != selection || doc.Dirty() || doc.Editor.CanUndo() {
 				t.Fatalf("equal-result preview changed saved document: text=%q dirty=%t undo=%t", doc.Editor.String(), doc.Dirty(), doc.Editor.CanUndo())
 			}
-			if disk, err := os.ReadFile(path); err != nil || string(disk) != string(original) {
+			if disk, err := os.ReadFile(path); err != nil || string(disk) != scenario.original {
 				t.Fatalf("equal-result preview changed mixed-EOL disk: %q, %v", disk, err)
 			}
 		})

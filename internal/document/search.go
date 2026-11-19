@@ -384,11 +384,22 @@ func (doc *Document) ReplaceAllWith(query, replacement string, options SearchOpt
 }
 
 func (doc *Document) ReplaceAllWithEdits(query, replacement string, options SearchOptions) (int, []ReplacementEdit, error) {
-	expression, err := compileSearch(query, options)
-	if err != nil || expression == nil {
+	edits, err := ReplacementEditsInText(doc.Editor.String(), query, replacement, options)
+	if err != nil {
 		return 0, nil, err
 	}
-	value := doc.Editor.String()
+	if err := doc.applyTargetEdits(edits); err != nil {
+		return 0, nil, err
+	}
+	return len(edits), edits, nil
+}
+
+// ReplacementEditsInText computes replacement targets against an immutable UTF-8 snapshot.
+func ReplacementEditsInText(value, query, replacement string, options SearchOptions) ([]ReplacementEdit, error) {
+	expression, err := compileSearch(query, options)
+	if err != nil || expression == nil {
+		return nil, err
+	}
 	matches := searchMatches(value, expression, options)
 	edits := make([]ReplacementEdit, 0, len(matches))
 	for _, match := range matches {
@@ -401,8 +412,5 @@ func (doc *Document) ReplaceAllWithEdits(query, replacement string, options Sear
 		}
 		edits = append(edits, ReplacementEdit{Start: match[0], End: match[1], Text: insert})
 	}
-	if err := doc.applyTargetEdits(edits); err != nil {
-		return 0, nil, err
-	}
-	return len(edits), edits, nil
+	return edits, nil
 }
