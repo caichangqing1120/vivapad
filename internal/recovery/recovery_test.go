@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -113,6 +114,47 @@ func TestRecoveryRejectsCorruptAndOversizedData(t *testing.T) {
 	}
 	if err := Save(path, State{Active: 0, Tabs: []Tab{{Name: "huge", Content: strings.Repeat("x", 33<<20)}}}); err == nil {
 		t.Fatal("wrote backup above the size limit")
+	}
+}
+
+func TestEscapedOversizeRecoveryKeepsPreviousBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "recovery.json")
+	if err := Save(path, State{Active: 0, Tabs: []Tab{{Name: "draft", Content: "keep me"}}}); err != nil {
+		t.Fatal(err)
+	}
+	state := State{Active: 0, Tabs: []Tab{{Name: "draft", Content: strings.Repeat("\x01", 6<<20)}}}
+	if err := Save(path, state); err == nil || !strings.Contains(err.Error(), "exceeds 32 MiB") {
+		t.Fatalf("oversized encoded backup = %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil || len(loaded.Tabs) != 1 || loaded.Tabs[0].Content != "keep me" {
+		t.Fatalf("refused backup changed the last valid draft: %+v, %v", loaded, err)
+	}
+}
+
+func TestEncodedContentsFitAtJSONSizeBoundary(t *testing.T) {
+	tabs := []Tab{{Content: "\x00\x01\b\f\n\r\t"}, {Content: "<>&\"\\\u2028\u2029\u732b\U0001f4dd"}, {}}
+	size := 0
+	for _, tab := range tabs {
+		encoded, err := json.Marshal(tab.Content)
+		if err != nil {
+			t.Fatal(err)
+		}
+		size += len(encoded)
+	}
+	if !encodedContentsFit(tabs, size) || encodedContentsFit(tabs, size-1) {
+		t.Fatalf("content size check disagrees with encoding/json at %d bytes", size)
+	}
+}
+
+func BenchmarkRejectEscapedOversizeRecovery(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "recovery.json")
+	state := State{Active: 0, Tabs: []Tab{{Name: "draft", Content: strings.Repeat("\x01", 6<<20)}}}
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := Save(path, state); err == nil || !strings.Contains(err.Error(), "exceeds 32 MiB") {
+			b.Fatalf("oversized encoded backup = %v", err)
+		}
 	}
 }
 

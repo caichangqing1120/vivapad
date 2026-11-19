@@ -57,6 +57,9 @@ func Save(path string, state State) error {
 	if err := validate(state); err != nil {
 		return err
 	}
+	if !encodedContentsFit(state.Tabs, maxBytes) {
+		return fmt.Errorf("recovery backup exceeds 32 MiB")
+	}
 	data, err := json.Marshal(diskState{Version: version, State: state})
 	if err != nil {
 		return err
@@ -95,6 +98,41 @@ func Save(path string, state State) error {
 		return err
 	}
 	return os.Rename(file.Name(), path)
+}
+
+// Check the JSON string sizes before encoding; Marshal still checks the full
+// backup, including metadata. validate has already checked UTF-8 and raw sizes.
+func encodedContentsFit(tabs []Tab, limit int) bool {
+	size := 0
+	for _, tab := range tabs {
+		size += len(tab.Content) + 2
+	}
+	if size <= limit/6 {
+		return true
+	}
+	if size > limit {
+		return false
+	}
+	for _, tab := range tabs {
+		for _, r := range tab.Content {
+			switch r {
+			case '"', '\\', '\b', '\f', '\n', '\r', '\t':
+				size++
+			case '<', '>', '&':
+				size += 5
+			case '\u2028', '\u2029':
+				size += 3
+			default:
+				if r < ' ' {
+					size += 5
+				}
+			}
+			if size > limit {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func Load(path string) (State, error) {
