@@ -129,7 +129,7 @@ func (state *model) recoveryTab(doc *document.Document) recovery.Tab {
 		Language: mode, LanguageSelected: selected, FoldedHeaders: state.foldHeaders(doc),
 		Encoding: doc.Encoding(), DiskEncoding: doc.SavedEncoding(), LineEnding: doc.LineEnding(), LineEndings: doc.EOLSequence(), DiskDigest: doc.DiskDigest(),
 		SelectionStart: selection.Start, SelectionEnd: selection.End,
-		Pane: state.paneOwner[doc], ReadOnly: state.isReadOnly(doc), Pinned: state.isPinned(doc), TabColor: state.tabColors[doc],
+		Pane: state.paneOwner[doc], ReadOnly: state.readOnly[doc], Pinned: state.isPinned(doc), TabColor: state.tabColors[doc],
 	}
 }
 
