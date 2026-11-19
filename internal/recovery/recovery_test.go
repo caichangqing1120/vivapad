@@ -117,6 +117,37 @@ func TestRecoveryRejectsCorruptAndOversizedData(t *testing.T) {
 	}
 }
 
+func TestRecoveryReadLimitRequiresActualEOF(t *testing.T) {
+	const valid = `{"version":9,"active":-1,"tabs":[]}`
+	const atLimit = valid + " \r\n\t"
+	limit := int64(len(atLimit))
+	for _, tc := range []struct {
+		name, input string
+		wantError   string
+	}{
+		{"below limit", valid, ""},
+		{"exact limit", atLimit, ""},
+		{"whitespace beyond limit", atLimit + " ", "exceeds"},
+		{"data beyond limit", atLimit + "!" + strings.Repeat("x", 128), "exceeds"},
+		{"trailing data inside limit", valid + "{}", "trailing data"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := strings.NewReader(tc.input)
+			state, err := decodeRecovery(source, limit)
+			if tc.wantError == "" {
+				if err != nil || state.Active != -1 || len(state.Tabs) != 0 {
+					t.Fatalf("valid backup did not load: %+v, %v", state, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("read %d bytes of a %d-byte stream at limit %d: %v", len(tc.input)-source.Len(), len(tc.input), limit, err)
+			}
+			if consumed := int64(len(tc.input) - source.Len()); consumed > limit+1 {
+				t.Fatalf("read %d bytes past a %d-byte limit", consumed, limit)
+			}
+		})
+	}
+}
+
 func TestEscapedOversizeRecoveryKeepsPreviousBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "recovery.json")
 	if err := Save(path, State{Active: 0, Tabs: []Tab{{Name: "draft", Content: "keep me"}}}); err != nil {

@@ -151,15 +151,27 @@ func Load(path string) (State, error) {
 	if info.Size() > maxBytes {
 		return State{}, fmt.Errorf("recovery backup exceeds 32 MiB")
 	}
-	decoder := json.NewDecoder(io.LimitReader(file, maxBytes))
+	return decodeRecovery(file, maxBytes)
+}
+
+func decodeRecovery(source io.Reader, limit int64) (State, error) {
+	// Read one extra byte so the limit cannot masquerade as the file's EOF.
+	limited := &io.LimitedReader{R: source, N: limit + 1}
+	decoder := json.NewDecoder(limited)
 	decoder.DisallowUnknownFields()
 	var stored diskState
-	if err := decoder.Decode(&stored); err != nil {
-		return State{}, err
+	err := decoder.Decode(&stored)
+	if err == nil {
+		var extra json.RawMessage
+		if trailing := decoder.Decode(&extra); !errors.Is(trailing, io.EOF) {
+			err = fmt.Errorf("recovery backup has trailing data")
+		}
 	}
-	var extra json.RawMessage
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return State{}, fmt.Errorf("recovery backup has trailing data")
+	if limited.N == 0 {
+		return State{}, fmt.Errorf("recovery backup exceeds 32 MiB")
+	}
+	if err != nil {
+		return State{}, err
 	}
 	if stored.Version < 1 || stored.Version > version {
 		return State{}, fmt.Errorf("unsupported recovery version %d", stored.Version)
