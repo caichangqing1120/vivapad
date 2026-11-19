@@ -13,32 +13,6 @@ const noChangeNavigationNotice = "No changes to navigate"
 // consumer result; an unavailable history refuses with its reason instead of
 // guessing "no changes".
 
-// changeHistoryLineBounds returns the UTF-8 byte bounds LineMask needs for every
-// zero-based logical line in one pass: content start, content end (before its
-// EOL) and the next line's start. The final line without a trailing newline uses
-// the value length for both end and next, which is the documented empty final line
-// and EOF deletion-point case.
-func changeHistoryLineBounds(value string) (starts, ends, nexts []int) {
-	count := strings.Count(value, "\n") + 1
-	starts = make([]int, 0, count)
-	ends = make([]int, 0, count)
-	nexts = make([]int, 0, count)
-	start := 0
-	for {
-		if newline := strings.IndexByte(value[start:], '\n'); newline >= 0 {
-			starts = append(starts, start)
-			ends = append(ends, start+newline)
-			nexts = append(nexts, start+newline+1)
-			start += newline + 1
-			continue
-		}
-		starts = append(starts, start)
-		ends = append(ends, len(value))
-		nexts = append(nexts, len(value))
-		return starts, ends, nexts
-	}
-}
-
 // navigateChange moves the caret to the next or previous changed line, skipping
 // the current contiguous changed block and wrapping like the original
 // changedHistoryGoTo. A document with no changed line leaves caret and selection
@@ -51,17 +25,45 @@ func (state *model) navigateChange(previous bool) {
 		state.notice = err.Error()
 		return
 	}
-	value := doc.Editor.String()
-	// One pass of line bounds: the predicate must not rescan the document for every
-	// line it is asked about.
-	starts, ends, nexts := changeHistoryLineBounds(value)
-	count := len(starts)
+	editor := doc.Editor
+	value := editor.String()
+	caret := editor.ByteOffset(editor.Caret())
+	current := strings.Count(value[:caret], "\n")
+	count := current + strings.Count(value[caret:], "\n") + 1
+	line, start := current, strings.LastIndexByte(value[:caret], '\n')+1
+	// ChangedLine walks neighboring lines in order, restarting at either end on wrap.
+	seek := func(target int) {
+		if line == target {
+			return
+		}
+		switch target {
+		case 0:
+			line, start = 0, 0
+		case count - 1:
+			line, start = target, strings.LastIndexByte(value, '\n')+1
+		default:
+			for line < target {
+				start += strings.IndexByte(value[start:], '\n') + 1
+				line++
+			}
+			for line > target {
+				start = strings.LastIndexByte(value[:start-1], '\n') + 1
+				line--
+			}
+		}
+	}
 	var queryErr error
 	marked := func(line int) bool {
 		if line < 0 || line >= count {
 			return false
 		}
-		mask, maskErr := consumer.LineMask(starts[line], ends[line], nexts[line])
+		seek(line)
+		end, next := len(value), len(value)
+		if newline := strings.IndexByte(value[start:], '\n'); newline >= 0 {
+			end = start + newline
+			next = end + 1
+		}
+		mask, maskErr := consumer.LineMask(start, end, next)
 		if maskErr != nil {
 			if queryErr == nil {
 				queryErr = maskErr
@@ -70,7 +72,6 @@ func (state *model) navigateChange(previous bool) {
 		}
 		return mask != 0
 	}
-	current := strings.Count(value[:doc.Editor.ByteOffset(doc.Editor.Caret())], "\n")
 	target, ok := changehistory.ChangedLine(current, count, previous, marked)
 	if queryErr != nil {
 		state.notice = queryErr.Error()
@@ -82,7 +83,8 @@ func (state *model) navigateChange(previous bool) {
 		state.noChangeNoticeRevision = consumer.Revision()
 		return
 	}
-	doc.GoToLine(target + 1)
+	seek(target)
+	editor.MoveTo(editor.RuneIndex(start), false)
 	pane := state.activePane
 	state.rectangles[pane] = rectangleSelection{}
 	state.multiSelections[pane] = multiSelectionState{}

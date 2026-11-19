@@ -75,6 +75,25 @@ func TestNavigateChangeWithoutChangesDoesNotMove(t *testing.T) {
 	}
 }
 
+func TestNavigateChangeWrapsToFinalEmptyLineAfterUnicode(t *testing.T) {
+	state := openedDocument(t, "\u4e00\r\nsecond\r\n\u597d")
+	doc := state.space.Current()
+	doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+	doc.Editor.DeleteBackward()
+	doc.Editor.MoveTo(0, false)
+	doc.Editor.Insert("X")
+	doc.Editor.MoveTo(0, false)
+	const live = "X\u4e00\nsecond\n"
+	state.command("Previous Change")
+	if doc.Editor.String() != live || doc.Editor.Caret() != len([]rune(live)) || state.notice != "" {
+		t.Fatalf("did not wrap to the final deletion point: caret=%d notice=%q", doc.Editor.Caret(), state.notice)
+	}
+	state.command("Next Change")
+	if doc.Editor.String() != live || doc.Editor.Caret() != 0 || state.notice != "" || !doc.Dirty() || !doc.Editor.CanUndo() {
+		t.Fatalf("did not wrap back to the first change: caret=%d notice=%q", doc.Editor.Caret(), state.notice)
+	}
+}
+
 func TestClearChangeHistoryCommandPreservesDirtyAndText(t *testing.T) {
 	state := openedDocument(t, "one\ntwo\nthree\n")
 	doc := state.space.Current()
