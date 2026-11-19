@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -228,5 +229,66 @@ func TestLoadNPPSharedAliasUsesSavedEncodingDuringPendingConversion(t *testing.T
 				t.Fatalf("import changed source bytes: %q, %v", data, err)
 			}
 		})
+	}
+}
+
+func TestLoadNPPRefusesAmbiguousOpenAliasesBeforeImporting(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "shared.txt")
+	alias := filepath.Join(root, "SHARED.TXT")
+	first := filepath.Join(root, "first.txt")
+	const original = "saved\r\n"
+	for _, path := range []string{source, first} {
+		if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(alias); os.IsNotExist(err) {
+		t.Skip("temporary filesystem distinguishes these path spellings")
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	state, driver := startDriver(t)
+	for i, path := range []string{source, alias} {
+		if err := state.space.Open(path); err != nil {
+			t.Fatal(err)
+		}
+		opened := state.space.Current()
+		state.showInActivePane(opened)
+		opened.Editor.Insert([]string{"first draft ", "second draft "}[i])
+		opened.Editor.SetSelection(text.Range{Start: i + 2, End: i})
+	}
+	if len(state.space.Documents) != 2 {
+		t.Skip("workspace did not open two distinct tabs for the alias")
+	}
+	before := slices.Clone(state.space.Documents)
+	active, panes := state.space.Current(), state.paneDocs
+	recents := slices.Clone(state.recentEntries)
+	xmlPath := filepath.Join(root, "session.xml")
+	if err := session.SaveNPP(xmlPath, session.NPPState{
+		Main:       []session.NPPFile{{Path: first, Encoding: -1}, {Path: alias, Encoding: -1, ReadOnly: true}},
+		ActiveMain: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.QueueOpenFiles([]string{xmlPath}, nil); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(0))
+	clickID(t, driver, menuItemScope.At(13))
+	clickID(t, driver, sessionScope.At(0))
+	if !strings.Contains(state.notice, "already open in multiple tabs") || !slices.Equal(state.space.Documents, before) ||
+		state.space.Current() != active || state.paneDocs != panes || state.splitEnabled || !slices.Equal(state.recentEntries, recents) {
+		t.Fatalf("ambiguous alias changed the workspace: tabs=%d notice=%q", len(state.space.Documents), state.notice)
+	}
+	for i, opened := range before {
+		if opened.Editor.String() != []string{"first draft saved\n", "second draft saved\n"}[i] ||
+			opened.Editor.Selection() != (text.Range{Start: i, End: i + 2}) || opened.Editor.Caret() != i ||
+			!opened.Dirty() || !opened.Editor.CanUndo() || state.isReadOnly(opened) {
+			t.Fatalf("ambiguous alias changed draft %d", i)
+		}
+	}
+	if data, err := os.ReadFile(source); err != nil || string(data) != original {
+		t.Fatalf("session import changed the source: %q, %v", data, err)
 	}
 }

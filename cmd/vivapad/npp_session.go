@@ -231,22 +231,29 @@ func (paths nppSessionPaths) resolve(path string) (string, error) {
 		return "", err
 	}
 	key := nppSessionPathKey(canonical)
+	var matched string
 	var info os.FileInfo
 	for _, name := range paths[key] {
-		if name == canonical {
-			return name, nil
-		}
-		if info == nil {
-			info, err = os.Stat(canonical)
-			if err != nil {
-				return "", err
+		if name != canonical {
+			if info == nil {
+				info, err = os.Stat(canonical)
+				if err != nil {
+					return "", err
+				}
+			}
+			// A matching key only suggests an alias. The filesystem may keep
+			// case or Unicode spelling variants as separate files.
+			if other, err := os.Stat(name); err != nil || !os.SameFile(info, other) {
+				continue
 			}
 		}
-		// A matching key only suggests an alias. The filesystem may keep
-		// case or Unicode spelling variants as separate files.
-		if other, err := os.Stat(name); err == nil && os.SameFile(info, other) {
-			return name, nil
+		if matched != "" && name != matched {
+			return "", fmt.Errorf("file is already open in multiple tabs: %s", canonical)
 		}
+		matched = name
+	}
+	if matched != "" {
+		return matched, nil
 	}
 	paths[key] = append(paths[key], canonical)
 	return canonical, nil
@@ -289,7 +296,7 @@ func (state *model) loadNPPSession() {
 			}
 			canonical, err := resolvedPaths.resolve(file.Path)
 			if err != nil {
-				state.notice = "Session file unavailable: " + file.Path + ": " + err.Error()
+				state.notice = "Session not loaded: " + err.Error()
 				return
 			}
 			if seenInView[canonical] {
