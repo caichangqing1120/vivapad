@@ -105,6 +105,14 @@ func TestRecentCommandsKeepRecordedFilePath(t *testing.T) {
 			if !strings.Contains(state.notice, "no longer resolves") {
 				t.Fatalf("redirect was not reported: %q", state.notice)
 			}
+			if !tc.restoreClosed {
+				if err := driver.Type("!"); err != nil || current.Editor.String() != "draft!" {
+					t.Fatalf("first key after Recent Files refusal: draft=%q, err=%v", current.Editor.String(), err)
+				}
+				if err := driver.Key(gfx.KeyBackspace, 0); err != nil || current.Editor.String() != "draft" {
+					t.Fatalf("editor did not receive backspace: draft=%q, err=%v", current.Editor.String(), err)
+				}
+			}
 			if err := os.Remove(moved); err != nil {
 				t.Fatal(err)
 			}

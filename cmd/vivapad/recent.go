@@ -33,6 +33,7 @@ func (state *model) openRecent(index int) {
 	entry := state.recentEntries[index]
 	if err := state.space.OpenRecorded(entry.Path, entry.Encoding); err != nil {
 		state.notice = "Cannot open recent " + filepath.Base(entry.Path) + ": " + err.Error()
+		state.requestEditorCommandFocus()
 		return
 	}
 	state.showInActivePane(state.space.Current())
