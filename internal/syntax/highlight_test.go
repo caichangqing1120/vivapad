@@ -35,6 +35,32 @@ func TestHighlightCacheDoesNotReturnStaleLine(t *testing.T) {
 	}
 }
 
+func TestHighlightSeparatesNumbersFromStringsAndHexData(t *testing.T) {
+	for _, tc := range []struct {
+		mode, line, number, other string
+	}{
+		{".json", `{"number": 42, "string": "42"}`, "42", `"42"`},
+		{".json5", `{"number": 0x2A, "string": '0x2A'}`, "0x2A", "'0x2A'"},
+		{".hex", ":020000001A2BB9", "2B", "1A"},
+		{".srec", "S10512341A2B6F", "2B", "1A"},
+		{".tek", "%126298000000001A2B", "2B", "1A"},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			var highlighter Highlighter
+			colors := make(map[string]gfx.Color)
+			for _, run := range highlighter.Highlight(tc.mode, tc.line, nil) {
+				colors[tc.line[run.Start:run.End]] = run.Color
+			}
+			if got := colors[tc.number]; got != gfx.RGB(139, 75, 147) {
+				t.Errorf("numeric span %q color = %v", tc.number, got)
+			}
+			if got := colors[tc.other]; got != gfx.RGB(172, 77, 64) {
+				t.Errorf("string or odd data span %q color = %v", tc.other, got)
+			}
+		})
+	}
+}
+
 func TestJSON5HighlightsExtendedTokensWithoutChangingJSON(t *testing.T) {
 	var highlighter Highlighter
 	const line = `{answer: +0x2A, name: 'demo', "quoted": -.5, more: +Infinity, missing: -NaN, ok: true,} // note`

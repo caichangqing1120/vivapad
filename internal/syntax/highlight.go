@@ -94,10 +94,10 @@ func tokenColor(kind chroma.TokenType) (gfx.Color, bool) {
 		return gfx.RGB(92, 125, 87), true
 	case kind.InCategory(chroma.Keyword), kind.InSubCategory(chroma.NameTag):
 		return gfx.RGB(49, 92, 167), true
-	case kind.InCategory(chroma.LiteralString):
-		return gfx.RGB(172, 77, 64), true
-	case kind.InCategory(chroma.LiteralNumber):
+	case kind.InSubCategory(chroma.LiteralNumber):
 		return gfx.RGB(139, 75, 147), true
+	case kind.InCategory(chroma.Literal):
+		return gfx.RGB(172, 77, 64), true
 	case kind.InSubCategory(chroma.NameFunction), kind.InSubCategory(chroma.NameClass):
 		return gfx.RGB(113, 76, 144), true
 	}
