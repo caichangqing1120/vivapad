@@ -67,6 +67,7 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	_, gui4cli := lexer.(*gui4CliLexer)
 	_, nncrontab := lexer.(*nncrontabLexer)
 	_, txt2tags := lexer.(*txt2tagsLexer)
+	_, hollywood := lexer.(*hollywoodLexer)
 	for offset := 0; ; {
 		token := iterator()
 		if token == chroma.EOF {
@@ -100,6 +101,8 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 			color, ok = nncrontabTokenColor(token.Type)
 		} else if txt2tags {
 			color, ok = txt2tagsTokenColor(token.Type)
+		} else if hollywood {
+			color, ok = hollywoodTokenColor(token.Type)
 		}
 		if ok && end > start {
 			runs = append(runs, components.CodeEditorRun{Start: start, End: end, Color: color})

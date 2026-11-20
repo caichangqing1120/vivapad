@@ -99,6 +99,7 @@ var languages = [...]Language{
 	{"Gui4Cli", ".gui", "gui4cli", "IDM_LANG_GUI4CLI", "Gui4Cli", "//", ""},
 	{"Nncrontab", ".tab", "nncrontab", "IDM_LANG_NNCRONTAB", "Nncrontab", "\\", ""},
 	{"txt2tags", ".t2t", "txt2tags", "IDM_LANG_TXT2TAGS", "txt2tags", "", ""},
+	{"Hollywood", ".hws", "hollywood", "IDM_LANG_HOLLYWOOD", "Hollywood", ";", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }

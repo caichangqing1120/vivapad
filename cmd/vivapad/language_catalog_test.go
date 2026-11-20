@@ -378,6 +378,7 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.TAB", "Nncrontab", "nncrontab", "\\"},
 		{"demo.SPF", "Nncrontab", "nncrontab", "\\"},
 		{"demo.T2T", "txt2tags", "txt2tags", ""},
+		{"demo.HWS", "Hollywood", "hollywood", ";"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)
@@ -431,6 +432,7 @@ func TestNewLanguageModesRoundTripSessionsWithoutEditing(t *testing.T) {
 		{"Gui4Cli", ".gui", "gui4cli", "\xef\xbb\xbfWindow demo\r\nXONLOAD\r\nSay ready\r\n"},
 		{"Nncrontab", ".tab", "nncrontab", "\xef\xbb\xbf#( demo\r\nTime: 5 * * * *\r\nAction: BEEP\r\n)#\r\n"},
 		{"txt2tags", ".t2t", "txt2tags", "\xef\xbb\xbf= Demo =\r\n**bold**\r\n"},
+		{"Hollywood", ".hws", "hollywood", "\xef\xbb\xbfFunction Demo()\r\nPrint(42)\r\nEndFunction\r\n"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			checkLanguageSessionRoundTrip(t, tc.label, tc.mode, tc.nppName, tc.source)

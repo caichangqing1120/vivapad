@@ -768,6 +768,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.txt2tagsHighlighters, doc)
 	}
+	if language.Mode == ".hws" {
+		highlighter := state.hollywoodHighlighters[doc]
+		if highlighter == nil {
+			if state.hollywoodHighlighters == nil {
+				state.hollywoodHighlighters = make(map[*document.Document]*syntax.HollywoodHighlighter)
+			}
+			highlighter = syntax.NewHollywoodHighlighter()
+			state.hollywoodHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.hollywoodHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)

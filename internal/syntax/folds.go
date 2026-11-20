@@ -46,6 +46,8 @@ func FoldRegions(mode, value string) []FoldRegion {
 		return pureBasicFoldRegions(value)
 	case ".gui":
 		return gui4CliFoldRegions(value)
+	case ".hws":
+		return hollywoodFoldRegions(value)
 	}
 	if mode == ".py" || mode == ".yaml" || mode == ".yml" {
 		return indentFoldRegions(value, mode == ".py")
