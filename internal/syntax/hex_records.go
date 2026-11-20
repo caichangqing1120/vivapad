@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -62,6 +63,10 @@ func (lexer *hexRecordLexer) line(tokens []chroma.Token, line string) []chroma.T
 	line = trimmed
 	field := func(start, end int, kind chroma.TokenType, valid bool) {
 		end = min(end, len(line))
+		// Record fields use ASCII widths. Keep a malformed multibyte
+		// character whole in the field where it starts.
+		start = hexFieldBoundary(line, start)
+		end = hexFieldBoundary(line, end)
 		if start >= end {
 			return
 		}
@@ -143,6 +148,13 @@ func (lexer *hexRecordLexer) line(tokens []chroma.Token, line string) []chroma.T
 		field(end, len(line), chroma.Error, false)
 	}
 	return tokens
+}
+
+func hexFieldBoundary(line string, at int) int {
+	for at < len(line) && !utf8.RuneStart(line[at]) {
+		at++
+	}
+	return at
 }
 
 func hexNibble(ch byte) int {

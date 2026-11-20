@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -88,6 +89,43 @@ func TestHexRecordLanguageMappings(t *testing.T) {
 		if !ok || !known || byExtension != byNPP || byExtension.LineComment != "" {
 			t.Errorf("%s does not map to %s: %+v / %+v", extension, nppName, byExtension, byNPP)
 		}
+	}
+}
+
+func TestHexRecordHighlightKeepsMalformedUnicodeIntact(t *testing.T) {
+	for _, tc := range []struct{ mode, valid string }{
+		{".hex", ":020000000102FB"},
+		{".srec", "S10512340102B1"},
+		{".tek", "%126148000000000102"},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			var highlighter Highlighter
+			invalid := highlighter.Highlight(tc.mode, tc.valid+"?", nil)
+			if len(invalid) == 0 || invalid[len(invalid)-1].Start != len(tc.valid) {
+				t.Fatalf("malformed ASCII suffix did not get its own highlight: %v", invalid)
+			}
+			invalidColor := invalid[len(invalid)-1].Color
+			for at := 1; at <= len(tc.valid); at++ {
+				for _, malformed := range []string{"é", "界", "🙂"} {
+					source := tc.valid[:at] + malformed + tc.valid[at:]
+					var covered bool
+					for _, run := range highlighter.Highlight(tc.mode, source, nil) {
+						if !utf8.ValidString(source[run.Start:run.End]) {
+							t.Fatalf("%q splits a character at [%d:%d]", source, run.Start, run.End)
+						}
+						if run.Start <= at && run.End >= at+len(malformed) {
+							covered = true
+							if run.Color != invalidColor {
+								t.Fatalf("%q does not mark %q as invalid", source, malformed)
+							}
+						}
+					}
+					if !covered {
+						t.Fatalf("%q did not highlight the whole invalid character %q", source, malformed)
+					}
+				}
+			}
+		})
 	}
 }
 
