@@ -31,13 +31,7 @@ func (state *model) openRecent(index int) {
 		return
 	}
 	entry := state.recentEntries[index]
-	var err error
-	if entry.Encoding.IsLegacy() {
-		err = state.space.OpenWithEncoding(entry.Path, entry.Encoding)
-	} else {
-		err = state.space.Open(entry.Path)
-	}
-	if err != nil {
+	if err := state.space.OpenRecorded(entry.Path, entry.Encoding); err != nil {
 		state.notice = "Cannot open recent " + filepath.Base(entry.Path) + ": " + err.Error()
 		return
 	}

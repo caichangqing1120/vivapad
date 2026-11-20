@@ -271,19 +271,24 @@ var ErrDiskPathRedirected = errors.New("file path no longer resolves to its orig
 
 // CheckDiskPath verifies that the document still names a regular file at its bound path.
 func (doc *Document) CheckDiskPath() error {
-	resolved, err := filepath.EvalSymlinks(doc.Path)
+	return CheckRecordedPath(doc.Path)
+}
+
+// CheckRecordedPath verifies that a previously canonicalized path still names a regular file there.
+func CheckRecordedPath(path string) error {
+	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return err
 	}
-	if resolved != doc.Path {
-		return fmt.Errorf("%w: %s", ErrDiskPathRedirected, doc.Path)
+	if resolved != path {
+		return fmt.Errorf("%w: %s", ErrDiskPathRedirected, path)
 	}
-	info, err := os.Lstat(doc.Path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return err
 	}
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%s is not a regular file", doc.Path)
+		return fmt.Errorf("%s is not a regular file", path)
 	}
 	return nil
 }

@@ -60,19 +60,32 @@ func (space *Workspace) Select(index int) bool {
 }
 
 func (space *Workspace) Open(path string) error {
-	return space.open(path, nil)
+	return space.open(path, nil, false)
 }
 
 func (space *Workspace) OpenWithEncoding(path string, encoding document.Encoding) error {
-	return space.open(path, &encoding)
+	return space.open(path, &encoding, false)
 }
 
-func (space *Workspace) open(path string, encoding *document.Encoding) error {
+// OpenRecorded opens an entry whose path was canonicalized when recorded.
+// UTF8 is the history default and requests normal encoding detection.
+func (space *Workspace) OpenRecorded(path string, encoding document.Encoding) error {
+	if encoding == document.UTF8 {
+		return space.open(path, nil, true)
+	}
+	return space.open(path, &encoding, true)
+}
+
+func (space *Workspace) open(path string, encoding *document.Encoding, recorded bool) error {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return err
 	}
-	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+	if recorded {
+		if err := document.CheckRecordedPath(path); err != nil {
+			return err
+		}
+	} else if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
 		absolute = resolved
 	}
 	for index, doc := range space.Documents {
@@ -92,6 +105,9 @@ func (space *Workspace) open(path string, encoding *document.Encoding) error {
 	}
 	if err != nil {
 		return err
+	}
+	if recorded && doc.Path != path {
+		return document.ErrDiskPathRedirected
 	}
 	return space.AddOpened(doc)
 }
