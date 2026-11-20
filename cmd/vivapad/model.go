@@ -1684,19 +1684,11 @@ func newConfig(state *model) app.Config {
 				state.filesDialogOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			if state.incrementOpen && event.Target == incrementQueryID && state.menuOpen < 0 {
-				state.closeIncrementalSearch()
-				focus := editorID
-				if state.splitEnabled && state.activePane == 1 {
-					focus = rightEditorID
-				}
-				return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
-			}
 			if state.selectedSearchMenuOpen {
 				state.selectedSearchMenuOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			if state.resultsOpen && !state.distractionFree {
+			if state.resultsOpen && !state.distractionFree && !state.incrementOpen {
 				state.discardFileResults()
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
@@ -1811,6 +1803,14 @@ func newConfig(state *model) app.Config {
 			if state.menuOpen >= 0 || state.searchOpen || state.goToOpen {
 				state.menuOpen, state.searchOpen, state.goToOpen = -1, false, false
 				return gfx.EventResult{Handled: true, Repaint: true}
+			}
+			if state.incrementOpen {
+				state.closeIncrementalSearch()
+				focus := editorID
+				if state.splitEnabled && state.activePane == 1 {
+					focus = rightEditorID
+				}
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
 			}
 			if state.fullscreen {
 				state.command(state.fullscreenExitCommand())

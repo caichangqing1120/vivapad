@@ -127,6 +127,41 @@ func TestDistractionFreeEscapePreservesHiddenFinder(t *testing.T) {
 	}
 }
 
+func TestDistractionFreeEscapeFromEditorClosesIncrementalSearchFirst(t *testing.T) {
+	state, driver := startDriver(t)
+	state.requestFullscreen = driver.SetFullscreen
+	left := state.space.Current()
+	left.Editor.Insert("left draft")
+	right := state.space.NewDocument()
+	right.Editor.Insert("cat cat")
+	state.toggleSplit()
+	state.command(distractionFreeCommand)
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierAlt, 'i'); err != nil || !handled {
+		t.Fatalf("incremental search shortcut handled=%v err=%v", handled, err)
+	}
+	if err := driver.Type("cat"); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, rightEditorID)
+	if !driver.Fullscreen() || !state.incrementOpen || driver.Snapshot().Focused != rightEditorID || len(state.incrementMatches) != 2 {
+		t.Fatal("fixture did not leave incremental search open while editing the right pane")
+	}
+	selection := right.Editor.Selection()
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+		t.Fatal(err)
+	}
+	if !driver.Fullscreen() || state.incrementOpen || len(state.incrementMatches) != 0 || driver.Snapshot().Focused != rightEditorID {
+		t.Fatalf("first Escape: fullscreen=%t incremental search=%t matches=%d focus=%v",
+			driver.Fullscreen(), state.incrementOpen, len(state.incrementMatches), driver.Snapshot().Focused)
+	}
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+		t.Fatal(err)
+	}
+	if driver.Fullscreen() || state.activePane != 1 || right.Editor.Selection() != selection || right.Editor.String() != "cat cat" || left.Editor.String() != "left draft" {
+		t.Fatal("second Escape did not exit fullscreen while preserving both drafts")
+	}
+}
+
 func TestDistractionFreeModeFollowsObservedFullscreenState(t *testing.T) {
 	state, driver := startDriver(t)
 	var requested []bool
