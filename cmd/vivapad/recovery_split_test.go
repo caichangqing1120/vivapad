@@ -238,8 +238,17 @@ func TestRecoveryKeepsDraftsSeparateWhenSavedPathBecomesAlias(t *testing.T) {
 }
 
 func TestSinglePaneRecoveryDoesNotOpenRedirectedFile(t *testing.T) {
-	for _, name := range []string{"file", "parent directory"} {
-		t.Run(name, func(t *testing.T) {
+	for _, scenario := range []struct {
+		name        string
+		parent      bool
+		withSession bool
+	}{
+		{name: "file"},
+		{name: "parent directory", parent: true},
+		{name: "file with remembered session", withSession: true},
+		{name: "parent directory with remembered session", parent: true, withSession: true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
 			root := t.TempDir()
 			sourceDir, targetDir := filepath.Join(root, "source"), filepath.Join(root, "target")
 			for _, dir := range []string{sourceDir, targetDir} {
@@ -263,6 +272,12 @@ func TestSinglePaneRecoveryDoesNotOpenRedirectedFile(t *testing.T) {
 			if draft.Name != "draft.txt" || state.paneOwner[draft] != 1 {
 				t.Fatal("fixture did not put the saved document in the right pane")
 			}
+			left := state.paneDocs[0].Path
+			if scenario.withSession {
+				if err := session.Save(sessionPath, session.State{Paths: []string{left, draft.Path}, Active: draft.Path}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			draft.Editor.MoveTo(0, false)
 			draft.Editor.Insert("unsaved: ")
 			state.toggleSplit()
@@ -272,12 +287,12 @@ func TestSinglePaneRecoveryDoesNotOpenRedirectedFile(t *testing.T) {
 			if err := state.recoveryWriter.Wait(); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
+			if _, err := os.Stat(sessionPath); !scenario.withSession && !os.IsNotExist(err) {
 				t.Fatalf("fixture unexpectedly has a saved session: %v", err)
 			}
 
 			from, to := sourcePath, targetPath
-			if name == "parent directory" {
+			if scenario.parent {
 				from, to = sourceDir, targetDir
 			}
 			parked := filepath.Join(root, "parked")
@@ -292,16 +307,33 @@ func TestSinglePaneRecoveryDoesNotOpenRedirectedFile(t *testing.T) {
 			}
 
 			restored := newStartupModel(nil, sessionPath)
-			if len(restored.space.Documents) != 1 {
-				t.Errorf("crash recovery opened %d tabs; want only the recovered draft", len(restored.space.Documents))
+			wantTabs := 1
+			if scenario.withSession {
+				wantTabs = 2
+				if first := restored.space.Documents[0]; first.Path != left || first.Dirty() {
+					t.Errorf("unrelated saved tab was not restored: %q, dirty=%t", first.Path, first.Dirty())
+				}
+			}
+			if len(restored.space.Documents) != wantTabs {
+				t.Errorf("crash recovery opened %d tabs; want %d", len(restored.space.Documents), wantTabs)
 			}
 			doc := restored.space.Current()
 			if restored.splitEnabled || doc.Path != "" || doc.Name != "Recovered draft.txt" || !doc.Dirty() ||
 				doc.Editor.String() != "unsaved: original\nlast\n" || doc.Editor.Selection() != selection || doc.EOLSequence() != "WL" {
 				t.Fatalf("recovered path=%q, text=%q, selection=%+v, endings=%q", doc.Path, doc.Editor.String(), doc.Editor.Selection(), doc.EOLSequence())
 			}
+			if scenario.withSession {
+				canonicalTarget, err := filepath.EvalSymlinks(targetPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				explicit := newStartupModel([]string{sourcePath}, sessionPath)
+				if current := explicit.space.Current(); current.Path != canonicalTarget || current.Dirty() || len(explicit.space.Documents) != 2 {
+					t.Errorf("explicit open did not follow the link and keep the recovered draft separate: active=%q, tabs=%d", current.Path, len(explicit.space.Documents))
+				}
+			}
 			parkedFile := parked
-			if name == "parent directory" {
+			if scenario.parent {
 				parkedFile = filepath.Join(parked, "draft.txt")
 			}
 			for _, path := range []string{targetPath, parkedFile} {

@@ -841,18 +841,14 @@ func newStartupModel(paths []string, sessionPath string) *model {
 		state.notice = "Session not restored: " + sessionErr.Error()
 	} else {
 		for _, path := range stored.Paths {
-			if err := state.openRemembered(path, stored.Encodings); err != nil {
+			if err := state.openRecordedSessionPath(path, stored.Encodings[path]); err != nil {
 				state.notice = "Session file unavailable: " + filepath.Base(path)
 			}
 		}
 		state.restoreSessionLanguages(stored.Languages)
 		state.restoreSessionFolds(stored.Folds)
-		active := stored.Active
-		if resolved, err := filepath.EvalSymlinks(active); err == nil {
-			active = resolved
-		}
 		for index, doc := range state.space.Documents {
-			if doc.Path == active {
+			if doc.Path == stored.Active {
 				state.space.Select(index)
 				break
 			}
@@ -874,6 +870,17 @@ func newStartupModel(paths []string, sessionPath string) *model {
 		state.focusViewRequested, state.focusViewArmed = true, true
 	}
 	return state
+}
+
+func (state *model) openRecordedSessionPath(path, label string) error {
+	if label == "" {
+		return state.space.OpenRecorded(path, document.UTF8)
+	}
+	format, ok := document.EncodingFromLabel(label)
+	if !ok || !format.IsLegacy() {
+		return fmt.Errorf("unsupported session encoding %q", label)
+	}
+	return state.space.OpenRecorded(path, format)
 }
 
 func (state *model) openRemembered(path string, encodings map[string]string) error {

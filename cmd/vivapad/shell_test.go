@@ -379,7 +379,10 @@ func TestStartupOpensFileArgument(t *testing.T) {
 }
 
 func TestStartupRestoresSessionOnlyWithoutFileArguments(t *testing.T) {
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	first, second, explicit := filepath.Join(root, "first.txt"), filepath.Join(root, "second.txt"), filepath.Join(root, "explicit.txt")
 	for _, path := range []string{first, second, explicit} {
 		if err := os.WriteFile(path, []byte(filepath.Base(path)), 0644); err != nil {
