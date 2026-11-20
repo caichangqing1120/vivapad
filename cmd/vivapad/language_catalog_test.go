@@ -358,6 +358,7 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.ISS", "Inno Setup", "inno", ";"},
 		{"demo.MIB", "ASN.1", "asn1", ""},
 		{"demo.MMS", "MMIXAL", "mmixal", "%"},
+		{"demo.ERR", "ErrorList", "errorlist", "#"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)
@@ -399,6 +400,7 @@ func TestNewLanguageModesRoundTripSessionsWithoutEditing(t *testing.T) {
 		{"Inno Setup", ".iss", "inno", "\xef\xbb\xbf[Setup]\r\nAppName=Demo\r\n[Code]\r\nbegin\r\nend;\r\n"},
 		{"ASN.1", ".mib", "asn1", "\xef\xbb\xbfDEMO DEFINITIONS ::= BEGIN\r\nitem OBJECT IDENTIFIER ::= { parent 42 }\r\nEND\r\n"},
 		{"MMIXAL", ".mms", "mmixal", "\xef\xbb\xbfMain\tGET $1,:rA\r\n\tTRAP 0,Fputs,StdOut\r\n"},
+		{"ErrorList", ".err", "errorlist", "\xef\xbb\xbfmain.c:7:4: error: invalid type\r\n  ordinary output\r\n"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			checkLanguageSessionRoundTrip(t, tc.label, tc.mode, tc.nppName, tc.source)

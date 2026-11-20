@@ -87,6 +87,7 @@ var languages = [...]Language{
 	{"Inno Setup", ".iss", "inno", "IDM_LANG_INNO", "Inno Setup", ";", ""},
 	{"ASN.1", ".mib", "asn1", "IDM_LANG_ASN1", "ASN.1", "", ""},
 	{"MMIXAL", ".mms", "mmixal", "IDM_LANG_MMIXAL", "MMIXAL", "%", ""},
+	{"ErrorList", ".err", "errorlist", "IDM_LANG_ERRORLIST", "ErrorList", "#", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }

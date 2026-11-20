@@ -59,6 +59,7 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	var runs []components.CodeEditorRun
 	_, record := lexer.(*hexRecordLexer)
 	_, mmixal := lexer.(*mmixalLexer)
+	_, errorList := lexer.(*errorListLexer)
 	for offset := 0; ; {
 		token := iterator()
 		if token == chroma.EOF {
@@ -76,6 +77,8 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 			case chroma.NameVariable:
 				color, ok = tokenColor(chroma.LiteralNumber)
 			}
+		} else if errorList {
+			color, ok = errorListColor(token.Type)
 		}
 		if ok && end > start {
 			runs = append(runs, components.CodeEditorRun{Start: start, End: end, Color: color})
@@ -94,6 +97,23 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	key.line = strings.Clone(line)
 	highlighter.lines[key] = runs
 	return append(dst, runs...)
+}
+
+func errorListColor(kind chroma.TokenType) (gfx.Color, bool) {
+	switch kind {
+	case chroma.GenericError, chroma.GenericDeleted:
+		return gfx.RGB(177, 39, 58), true
+	case chroma.GenericInserted:
+		return gfx.RGB(39, 112, 65), true
+	case chroma.GenericTraceback:
+		return tokenColor(chroma.NameClass)
+	case chroma.GenericHeading, chroma.GenericPrompt:
+		return tokenColor(chroma.Keyword)
+	case chroma.GenericEmph:
+		return tokenColor(chroma.Comment)
+	default:
+		return gfx.Color{}, false
+	}
 }
 
 func tokenColor(kind chroma.TokenType) (gfx.Color, bool) {
