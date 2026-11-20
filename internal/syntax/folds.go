@@ -30,6 +30,9 @@ func FoldRegions(mode, value string) []FoldRegion {
 	if strings.EqualFold(mode, ".iss") {
 		return innoFoldRegions(value)
 	}
+	if csoundMode(mode) {
+		return csoundFoldRegions(value)
+	}
 	if mode == ".py" || mode == ".yaml" || mode == ".yml" {
 		return indentFoldRegions(value, mode == ".py")
 	}

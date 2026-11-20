@@ -654,6 +654,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.kixHighlighters, doc)
 	}
+	if language, ok := syntax.LanguageByMode(snapshot.Language); ok && language.Mode == ".orc" {
+		highlighter := state.csoundHighlighters[doc]
+		if highlighter == nil {
+			if state.csoundHighlighters == nil {
+				state.csoundHighlighters = make(map[*document.Document]*syntax.CSoundHighlighter)
+			}
+			highlighter = syntax.NewCSoundHighlighter()
+			state.csoundHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.csoundHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)

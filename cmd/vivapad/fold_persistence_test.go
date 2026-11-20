@@ -95,9 +95,23 @@ func TestIntelHEXFoldStateRestoresFromSessionWithoutEditing(t *testing.T) {
 }
 
 func TestInnoSetupFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.ISS", "inno",
+		"\xef\xbb\xbf[Setup]\r\nAppName=Demo\r\n[Files]\r\nSource: data.txt\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 1}, {Header: 2, LastLine: 3}},
+		[]string{"AppName=Demo", "Source: data.txt"})
+}
+
+func TestCSoundFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "score.CSD", "csound",
+		"\xef\xbb\xbfinstr 1\r\n  a1 oscil .5, p4\r\nendin\r\ninstr 2\r\n  out a1\r\nendin\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"a1 oscil .5", "out a1"})
+}
+
+func checkLanguageFoldingRoundTrip(t *testing.T, name, language, original string, want []components.CodeEditorFoldRange, bodies []string) {
+	t.Helper()
 	root := t.TempDir()
-	path, sessionPath := filepath.Join(root, "script.ISS"), filepath.Join(root, "session.json")
-	const original = "\xef\xbb\xbf[Setup]\r\nAppName=Demo\r\n[Files]\r\nSource: data.txt\r\n"
+	path, sessionPath := filepath.Join(root, name), filepath.Join(root, "session.json")
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -115,13 +129,14 @@ func TestInnoSetupFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T)
 	clickID(t, driver, menuScope.At(3))
 	revealViewMenuItem(t, driver, 11)
 	clickID(t, driver, menuItemScope.At(11))
-	want := []components.CodeEditorFoldRange{{Header: 0, LastLine: 1}, {Header: 2, LastLine: 3}}
 	if got := state.foldRanges(doc); !slices.Equal(got, want) {
-		t.Fatalf("Inno Fold All = %+v, want %+v", got, want)
+		t.Fatalf("%s Fold All = %+v, want %+v", language, got, want)
 	}
 	for _, label := range driver.Snapshot().Texts {
-		if strings.Contains(label.Value, "AppName=Demo") || strings.Contains(label.Value, "Source: data.txt") {
-			t.Fatalf("painted a collapsed body: %q", label.Value)
+		for _, body := range bodies {
+			if strings.Contains(label.Value, body) {
+				t.Fatalf("painted a collapsed body: %q", label.Value)
+			}
 		}
 	}
 	clickID(t, driver, leftFoldScope.At(0))
@@ -133,13 +148,17 @@ func TestInnoSetupFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T)
 		t.Fatal("folding changed buffer content or history")
 	}
 	exported, err := state.nppSessionState()
-	if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != "inno" || !slices.Equal(exported.Main[0].Folds, []int{0, 2}) {
-		t.Fatalf("NPP Inno fold export = %+v, %v", exported, err)
+	headers := make([]int, 0, len(want))
+	for _, region := range want {
+		headers = append(headers, region.Header)
+	}
+	if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != language || !slices.Equal(exported.Main[0].Folds, headers) {
+		t.Fatalf("NPP %s fold export = %+v, %v", language, exported, err)
 	}
 	newConfig(state).OnCloseRequest(func() {})
 	reopened := newStartupModel(nil, sessionPath)
 	if got := reopened.foldRanges(reopened.space.Current()); !slices.Equal(got, want) {
-		t.Fatalf("private Inno fold restore = %+v; %q", got, reopened.notice)
+		t.Fatalf("private %s fold restore = %+v; %q", language, got, reopened.notice)
 	}
 	xmlPath := filepath.Join(root, "session.xml")
 	if err := session.SaveNPP(xmlPath, exported); err != nil {
@@ -153,14 +172,14 @@ func TestInnoSetupFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T)
 	clickID(t, loader, menuItemScope.At(13))
 	clickID(t, loader, sessionScope.At(0))
 	if got := loaded.foldRanges(loaded.space.Current()); !slices.Equal(got, want) {
-		t.Fatalf("NPP Inno fold import = %+v; %q", got, loaded.notice)
+		t.Fatalf("NPP %s fold import = %+v; %q", language, got, loaded.notice)
 	}
 	loaded.command("Unfold All")
 	if doc := loaded.space.Current(); len(loaded.foldRanges(doc)) != 0 || doc.Dirty() || doc.Editor.String() != before || doc.Editor.CanUndo() {
 		t.Fatal("Unfold All changed source or history")
 	}
 	if data, err := os.ReadFile(path); err != nil || string(data) != original {
-		t.Fatalf("Inno folding changed the saved bytes: %q, %v", data, err)
+		t.Fatalf("%s folding changed the saved bytes: %q, %v", language, data, err)
 	}
 }
 

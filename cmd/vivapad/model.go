@@ -362,6 +362,7 @@ type model struct {
 	innoHighlighters              map[*document.Document]*syntax.InnoHighlighter
 	asn1Highlighters              map[*document.Document]*syntax.ASN1Highlighter
 	kixHighlighters               map[*document.Document]*syntax.KixHighlighter
+	csoundHighlighters            map[*document.Document]*syntax.CSoundHighlighter
 	query                         *text.Editor
 	incrementQuery                *text.Editor
 	incrementOpen                 bool
@@ -2334,6 +2335,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.innoHighlighters, doc)
 	delete(state.asn1Highlighters, doc)
 	delete(state.kixHighlighters, doc)
+	delete(state.csoundHighlighters, doc)
 	delete(state.bookmarks, doc)
 	delete(state.changeView, doc)
 	if state.noChangeNoticeDoc == doc {

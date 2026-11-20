@@ -362,6 +362,9 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.SCP", "Spice", "spice", "*"},
 		{"demo.OUT", "Spice", "spice", "*"},
 		{"demo.KIX", "KIXtart", "kix", ";"},
+		{"demo.ORC", "CSound", "csound", ";"},
+		{"demo.SCO", "CSound", "csound", ";"},
+		{"demo.CSD", "CSound", "csound", ";"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)
@@ -406,6 +409,7 @@ func TestNewLanguageModesRoundTripSessionsWithoutEditing(t *testing.T) {
 		{"ErrorList", ".err", "errorlist", "\xef\xbb\xbfmain.c:7:4: error: invalid type\r\n  ordinary output\r\n"},
 		{"Spice", ".scp", "spice", "\xef\xbb\xbf* Example circuit\r\n.TRAN 100n 1.5e-3\r\n"},
 		{"KIXtart", ".kix", "kix", "\xef\xbb\xbfDIM $name\r\nRETURN @CRLF\r\n"},
+		{"CSound", ".orc", "csound", "\xef\xbb\xbfinstr 1\r\n  a1 oscil .5, p4\r\nendin\r\n"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			checkLanguageSessionRoundTrip(t, tc.label, tc.mode, tc.nppName, tc.source)

@@ -61,6 +61,7 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	_, mmixal := lexer.(*mmixalLexer)
 	_, errorList := lexer.(*errorListLexer)
 	_, kix := lexer.(*kixLexer)
+	_, csound := lexer.(*csoundLexer)
 	for offset := 0; ; {
 		token := iterator()
 		if token == chroma.EOF {
@@ -82,6 +83,8 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 			color, ok = errorListColor(token.Type)
 		} else if kix {
 			color, ok = kixTokenColor(token.Type)
+		} else if csound {
+			color, ok = csoundTokenColor(token.Type)
 		}
 		if ok && end > start {
 			runs = append(runs, components.CodeEditorRun{Start: start, End: end, Color: color})
@@ -100,6 +103,17 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	key.line = strings.Clone(line)
 	highlighter.lines[key] = runs
 	return append(dst, runs...)
+}
+
+func csoundTokenColor(kind chroma.TokenType) (gfx.Color, bool) {
+	switch kind {
+	case chroma.NameVariable:
+		return tokenColor(chroma.LiteralNumber)
+	case chroma.NameVariableGlobal:
+		return gfx.RGB(113, 76, 144), true
+	default:
+		return tokenColor(kind)
+	}
 }
 
 func kixTokenColor(kind chroma.TokenType) (gfx.Color, bool) {
