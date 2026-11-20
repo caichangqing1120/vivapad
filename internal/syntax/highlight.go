@@ -42,7 +42,12 @@ func (highlighter *Highlighter) Highlight(language, line string, dst []component
 	if lexer == nil {
 		return dst
 	}
-	iterator, err := lexer.Tokenise(&chroma.TokeniseOptions{State: "root"}, line)
+	source := line
+	// Chroma's TeX comment rule consumes the newline, which the editor omits.
+	if lexer.Config().Name == "TeX" && strings.Contains(line, "%") && !strings.HasSuffix(line, "\n") {
+		source += "\n"
+	}
+	iterator, err := lexer.Tokenise(&chroma.TokeniseOptions{State: "root"}, source)
 	if err != nil {
 		return dst
 	}

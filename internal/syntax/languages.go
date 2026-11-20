@@ -73,6 +73,12 @@ var languages = [...]Language{
 	{"Registry", ".reg", "registry", "IDM_LANG_REGISTRY", "reg", ";;", ""},
 	{"SAS", ".sas", "sas", "IDM_LANG_SAS", "SAS", "", ""},
 	{"Smalltalk", ".st", "smalltalk", "IDM_LANG_SMALLTALK", "Smalltalk", "", ""},
+	{"ActionScript", ".as", "actionscript", "IDM_LANG_FLASH", "ActionScript", "//", "{[("},
+	{"Assembly", ".asm", "asm", "IDM_LANG_ASM", "NASM", ";", ""},
+	{"BlitzBasic", ".bb", "blitzbasic", "IDM_LANG_BLITZBASIC", "BlitzBasic", "", ""},
+	{"LISP", ".lisp", "lisp", "IDM_LANG_LISP", "Common Lisp", ";", "("},
+	{"Microsoft Transact-SQL", ".tsql", "mssql", "IDM_LANG_MSSQL", "Transact-SQL", "--", ""},
+	{"TeX", "lang:tex", "tex", "IDM_LANG_TEX", "TeX", "%", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }

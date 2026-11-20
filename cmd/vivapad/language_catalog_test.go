@@ -301,3 +301,44 @@ func TestNPPExpandedLanguagesRemainIndependentAcrossSplitViews(t *testing.T) {
 		t.Fatalf("split language import = %q / %q, notice=%q", loaded.languageFor(loaded.paneDocs[0]), loaded.languageFor(loaded.paneDocs[1]), loaded.notice)
 	}
 }
+
+func TestExplicitLanguageVariantsKeepExtensionDefaults(t *testing.T) {
+	for _, tc := range []struct{ extension, label, defaultName, nppName, mode string }{
+		{".tex", "TeX", "latex", "tex", "lang:tex"},
+		{".sql", "Microsoft Transact-SQL", "sql", "mssql", ".tsql"},
+	} {
+		t.Run(tc.nppName, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "notes"+tc.extension)
+			const source = "unchanged\r\n"
+			if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+				t.Fatal(err)
+			}
+			state := newModelWithFiles([]string{path})
+			doc := state.space.Current()
+			if got := nppLanguage(state.languageFor(doc)); got != tc.defaultName {
+				t.Fatalf("default for %s = %q, want %q", tc.extension, got, tc.defaultName)
+			}
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(driver.Close)
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuScope.At(5))
+			clickLanguage(t, driver, tc.label)
+			exported, err := state.nppSessionState()
+			if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != tc.nppName {
+				t.Fatalf("NPP session after selecting %s = %+v, %v", tc.label, exported, err)
+			}
+			mode, err := nppExtension(exported.Main[0].Language)
+			if err != nil || mode != tc.mode || state.languageFor(doc) != tc.mode {
+				t.Fatalf("round trip for %s = %q, %v; active %q", tc.label, mode, err, state.languageFor(doc))
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != source || doc.Dirty() || doc.Editor.String() != "unchanged\n" {
+				t.Fatalf("selecting %s changed the document: disk %q, %v, dirty=%v", tc.label, data, err, doc.Dirty())
+			}
+		})
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 )
 
@@ -90,6 +91,12 @@ func TestAdditionalOriginalLanguagesHighlight(t *testing.T) {
 		{"registry", "IDM_LANG_REGISTRY", "[HKEY_CURRENT_USER\\Software\\Example]"},
 		{"sas", "IDM_LANG_SAS", "/* an example */"},
 		{"smalltalk", "IDM_LANG_SMALLTALK", "\"an example\""},
+		{"actionscript", "IDM_LANG_FLASH", "var value:Number = 42;"},
+		{"asm", "IDM_LANG_ASM", "mov eax, 42"},
+		{"blitzbasic", "IDM_LANG_BLITZBASIC", "Local value = 42"},
+		{"lisp", "IDM_LANG_LISP", "(defun greet () \"hi\")"},
+		{"mssql", "IDM_LANG_MSSQL", "DECLARE @value INT = 42;"},
+		{"tex", "IDM_LANG_TEX", "% a TeX comment"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			lang, ok := LanguageByNPP(tc.name)
@@ -100,6 +107,30 @@ func TestAdditionalOriginalLanguagesHighlight(t *testing.T) {
 				t.Fatalf("%s did not highlight %q", lang.Lexer, tc.line)
 			}
 		})
+	}
+}
+
+func TestTeXHighlightColorsCommentsAtLineEnd(t *testing.T) {
+	var highlighter Highlighter
+	const line = `\% text % café`
+	commentStart := strings.LastIndex(line, "%")
+	commentColor, _ := tokenColor(chroma.Comment)
+	for _, mode := range []string{".tex", "lang:tex"} {
+		found := false
+		for _, run := range highlighter.Highlight(mode, line, nil) {
+			if run.End > len(line) {
+				t.Fatalf("%s: highlight extends past the actual line: %+v", mode, run)
+			}
+			if run.Color == commentColor {
+				if run.Start != commentStart || run.End != len(line) {
+					t.Fatalf("%s: unexpected comment range %+v", mode, run)
+				}
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: comment was not highlighted", mode)
+		}
 	}
 }
 
