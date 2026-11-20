@@ -52,7 +52,7 @@ func TestLanguageCatalogHasOriginalIdentityAndRealLexers(t *testing.T) {
 			t.Fatalf("%q has no Chroma lexer %q", spec.Label, spec.Lexer)
 		}
 	}
-	for _, missing := range []string{"BaanC", "Gui4Cli", "User-Defined"} {
+	for _, missing := range []string{"BaanC", "User-Defined"} {
 		if _, ok := LanguageByLabel(missing); ok {
 			t.Fatalf("unsupported lexer %q shown as functional", missing)
 		}

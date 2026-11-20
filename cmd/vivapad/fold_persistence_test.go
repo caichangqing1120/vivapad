@@ -143,6 +143,13 @@ func TestPureBasicFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T)
 		[]string{"Debug $2a", "count.i"})
 }
 
+func TestGui4CliFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.GUI", "gui4cli",
+		"\xef\xbb\xbfWindow Demo\r\n  Say ready\r\nXONLOAD\r\n  Say loaded\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 1}, {Header: 2, LastLine: 3}},
+		[]string{"Say ready", "Say loaded"})
+}
+
 func checkLanguageFoldingRoundTrip(t *testing.T, name, language, original string, want []components.CodeEditorFoldRange, bodies []string) {
 	t.Helper()
 	root := t.TempDir()

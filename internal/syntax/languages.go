@@ -96,6 +96,7 @@ var languages = [...]Language{
 	{"FreeBasic", ".bas", "freebasic", "IDM_LANG_FREEBASIC", "FreeBasic", "", ""},
 	{"OScript", ".osx", "oscript", "IDM_LANG_OSCRIPT", "OScript", "//", ""},
 	{"PureBasic", ".pb", "purebasic", "IDM_LANG_PUREBASIC", "PureBasic", "", ""},
+	{"Gui4Cli", ".gui", "gui4cli", "IDM_LANG_GUI4CLI", "Gui4Cli", "//", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }

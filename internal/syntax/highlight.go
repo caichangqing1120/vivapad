@@ -64,6 +64,7 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	_, csound := lexer.(*csoundLexer)
 	_, avs := lexer.(*avsLexer)
 	_, oscript := lexer.(*oscriptLexer)
+	_, gui4cli := lexer.(*gui4CliLexer)
 	for offset := 0; ; {
 		token := iterator()
 		if token == chroma.EOF {
@@ -91,6 +92,8 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 			color, ok = avsTokenColor(token.Type)
 		} else if oscript {
 			color, ok = oscriptTokenColor(token.Type)
+		} else if gui4cli {
+			color, ok = gui4CliTokenColor(token.Type)
 		}
 		if ok && end > start {
 			runs = append(runs, components.CodeEditorRun{Start: start, End: end, Color: color})

@@ -368,6 +368,7 @@ type model struct {
 	freeBasicHighlighters         map[*document.Document]*syntax.FreeBasicHighlighter
 	oscriptHighlighters           map[*document.Document]*syntax.OScriptHighlighter
 	pureBasicHighlighters         map[*document.Document]*syntax.PureBasicHighlighter
+	gui4CliHighlighters           map[*document.Document]*syntax.Gui4CliHighlighter
 	query                         *text.Editor
 	incrementQuery                *text.Editor
 	incrementOpen                 bool
@@ -2346,6 +2347,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.freeBasicHighlighters, doc)
 	delete(state.oscriptHighlighters, doc)
 	delete(state.pureBasicHighlighters, doc)
+	delete(state.gui4CliHighlighters, doc)
 	delete(state.bookmarks, doc)
 	delete(state.changeView, doc)
 	if state.noChangeNoticeDoc == doc {

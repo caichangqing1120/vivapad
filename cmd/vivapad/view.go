@@ -733,6 +733,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.pureBasicHighlighters, doc)
 	}
+	if language.Mode == ".gui" {
+		highlighter := state.gui4CliHighlighters[doc]
+		if highlighter == nil {
+			if state.gui4CliHighlighters == nil {
+				state.gui4CliHighlighters = make(map[*document.Document]*syntax.Gui4CliHighlighter)
+			}
+			highlighter = syntax.NewGui4CliHighlighter()
+			state.gui4CliHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.gui4CliHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)
