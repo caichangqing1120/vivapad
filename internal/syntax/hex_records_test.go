@@ -92,6 +92,35 @@ func TestHexRecordLanguageMappings(t *testing.T) {
 	}
 }
 
+func TestHexRecordHighlightDistinguishesHalfByteData(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode, record string
+		wantError          bool
+	}{
+		{"Intel incomplete byte", ".hex", ":020000000AB", true},
+		{"Motorola incomplete byte", ".srec", "S10512340AB", true},
+		{"Tektronix odd digit count", ".tek", "%116258000000000AB", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var highlighter Highlighter
+			runs := highlighter.Highlight(tc.mode, tc.record, nil)
+			invalid := highlighter.Highlight(tc.mode, tc.record+"?", nil)
+			if len(runs) < 2 || len(invalid) == 0 {
+				t.Fatalf("record did not produce data runs: %v / %v", runs, invalid)
+			}
+			badColor := invalid[len(invalid)-1].Color
+			last := runs[len(runs)-1]
+			complete := runs[len(runs)-2]
+			if complete.Start != len(tc.record)-3 || complete.End != len(tc.record)-1 || complete.Color == badColor {
+				t.Fatalf("complete byte lost its data style: %+v", complete)
+			}
+			if last.Start != len(tc.record)-1 || last.End != len(tc.record) || (last.Color == badColor) != tc.wantError {
+				t.Fatalf("last digit highlight = %+v, want error %t", last, tc.wantError)
+			}
+		})
+	}
+}
+
 func TestIntelHexAddressPayloadUsesAddressStyle(t *testing.T) {
 	address, _ := tokenColor(chroma.NameFunction)
 	checksum, _ := tokenColor(chroma.Comment)

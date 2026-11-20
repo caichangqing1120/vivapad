@@ -83,7 +83,8 @@ func (lexer *hexRecordLexer) line(tokens []chroma.Token, line string) []chroma.T
 			if (at-start)%4 == 2 {
 				kind = chroma.LiteralNumberHex
 			}
-			field(at, last, kind, hexDigits(line, at, last))
+			// Tektronix counts digits; Intel and Motorola count whole bytes.
+			field(at, last, kind, (last-at == 2 || lexer.marker == '%') && hexDigits(line, at, last))
 		}
 	}
 	field(0, 1, chroma.Keyword, true)
