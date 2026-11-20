@@ -98,6 +98,24 @@ func TestPathsOffersOnlyNamesThatFitTheCurrentToken(t *testing.T) {
 	}
 }
 
+func TestPathsIgnoresApostrophesInsideWordsBeforeQuotedPath(t *testing.T) {
+	root := t.TempDir()
+	const target = "alpha draft.txt"
+	if err := os.WriteFile(filepath.Join(root, target), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, left := range []string{`it's ready: "`, `l'éditeur: '`} {
+		quote := left[len(left)-1:]
+		const typed, tail = "alpha dr", "-old.txt"
+		value := left + typed + tail + quote + " now"
+		start := len([]rune(left))
+		result, err := Paths(value, start+len(typed), root)
+		if err != nil || result.Start != start || result.End != start+len(typed+tail) || !reflect.DeepEqual(result.Candidates, []string{target}) {
+			t.Errorf("Paths(%q) = %+v, %v; want %q in %d:%d", value, result, err, target, start, start+len(typed+tail))
+		}
+	}
+}
+
 func TestPathsExpandTildeWithoutChangingCandidateText(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("HOME environment is platform-specific on Windows")

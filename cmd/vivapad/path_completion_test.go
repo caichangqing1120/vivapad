@@ -74,7 +74,8 @@ func TestPathCompletionMenuQuotesAndUndo(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	prefix, suffix := "open \""+filepath.Join(canonical, "alp"), "\" keep"
+	const left = `it's ready: "`
+	prefix, suffix := left+filepath.Join(canonical, "alp"), "\" keep"
 	before := prefix + suffix
 	source := filepath.Join(canonical, "source.txt")
 	if err := os.WriteFile(source, []byte(before), 0600); err != nil {
@@ -98,7 +99,7 @@ func TestPathCompletionMenuQuotesAndUndo(t *testing.T) {
 		t.Fatalf("path menu popup = %+v, notice=%q", current, state.notice)
 	}
 	clickID(t, driver, wordCompletionScope.At(0))
-	want := "open \"" + filepath.Join(canonical, "alpha.txt") + suffix
+	want := left + filepath.Join(canonical, "alpha.txt") + suffix
 	if doc.Editor.String() != want || !doc.Dirty() || state.wordCompletion != nil {
 		t.Fatalf("accepted path = %q, popup=%+v", doc.Editor.String(), state.wordCompletion)
 	}

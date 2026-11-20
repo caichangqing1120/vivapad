@@ -232,6 +232,12 @@ func pathAtCaret(characters []rune, caret int) (string, int) {
 			continue
 		}
 		if quoteStart < 0 {
+			// An apostrophe inside a word in surrounding prose cannot open a path.
+			if characters[index] == '\'' && index > lineStart && index+1 < caret &&
+				unicode.In(characters[index-1], unicode.L, unicode.M, unicode.N) &&
+				unicode.In(characters[index+1], unicode.L, unicode.M, unicode.N) {
+				continue
+			}
 			quoteStart, quote = index, characters[index]
 		} else if characters[index] == quote {
 			quoteStart, quote = -1, 0
