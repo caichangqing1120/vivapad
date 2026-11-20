@@ -91,6 +91,9 @@ func (plan *ReplacePlan) Apply(ctx context.Context) (ApplyResult, error) {
 		if err != nil || !info.Mode().IsRegular() {
 			return result, fmt.Errorf("target not a regular file; no files written: %s", change.Path)
 		}
+		if info.Mode().Perm()&0222 == 0 {
+			return result, fmt.Errorf("read-only file; no files written: %s: %w", change.Path, os.ErrPermission)
+		}
 		current, err := document.ReadSearchSource(change.Path, change.Encoding, plan.maxFileBytes)
 		if errors.Is(err, document.ErrSearchFileTooLarge) {
 			return result, fmt.Errorf("%w; no files written: %s", err, change.Path)

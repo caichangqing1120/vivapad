@@ -2,6 +2,7 @@ package searchfiles
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,6 +136,47 @@ func TestReplacePreflightRejectsChangedFileBeforeAnyWrite(t *testing.T) {
 	}
 	if content, _ := os.ReadFile(first); string(content) != "one" {
 		t.Fatalf("first file was changed before preflight completed: %q", content)
+	}
+}
+
+func TestReplacePreflightRejectsNewReadOnlyFileBeforeAnyWrite(t *testing.T) {
+	root := t.TempDir()
+	first, last := filepath.Join(root, "a.txt"), filepath.Join(root, "z.txt")
+	const original = "\xef\xbb\xbfcat\r\n"
+	for _, name := range []string{first, last} {
+		writeTestFile(t, name, []byte(original))
+	}
+	plan, err := PreviewReplace(t.Context(), root, "cat", "dog", document.SearchOptions{}, Options{})
+	if err != nil || len(plan.Changes) != 2 {
+		t.Fatalf("preview = %+v, %v", plan, err)
+	}
+	if err := os.Chmod(last, 0444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(last, 0600) })
+	result, err := plan.Apply(t.Context())
+	if !errors.Is(err, os.ErrPermission) || !strings.Contains(err.Error(), "no files written") ||
+		result.FilesChanged != 0 || result.Replacements != 0 || len(result.Paths) != 0 {
+		t.Errorf("read-only preflight = %+v, %v", result, err)
+	}
+	for _, name := range []string{first, last} {
+		if data, err := os.ReadFile(name); err != nil || string(data) != original {
+			t.Errorf("read-only refusal changed %s: %q, %v", name, data, err)
+		}
+	}
+	if t.Failed() {
+		return
+	}
+	if err := os.Chmod(last, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := plan.Apply(t.Context()); err != nil || result.FilesChanged != 2 || result.Replacements != 2 {
+		t.Fatalf("restoring write permission should allow retry: %+v, %v", result, err)
+	}
+	for _, name := range []string{first, last} {
+		if data, err := os.ReadFile(name); err != nil || string(data) != "\xef\xbb\xbfdog\r\n" {
+			t.Errorf("retry changed the format of %s: %q, %v", name, data, err)
+		}
 	}
 }
 
