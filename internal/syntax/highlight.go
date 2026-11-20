@@ -12,6 +12,7 @@ import (
 type cacheKey struct {
 	language string
 	line     string
+	prefix   string
 }
 
 type Highlighter struct {
@@ -20,10 +21,14 @@ type Highlighter struct {
 }
 
 func (highlighter *Highlighter) Highlight(language, line string, dst []components.CodeEditorRun) []components.CodeEditorRun {
+	return highlighter.highlight(language, line, "", dst)
+}
+
+func (highlighter *Highlighter) highlight(language, line, prefix string, dst []components.CodeEditorRun) []components.CodeEditorRun {
 	if language == "" || len(line) > components.CodeEditorMaxHighlightedLine {
 		return dst
 	}
-	key := cacheKey{language: language, line: line}
+	key := cacheKey{language: language, line: line, prefix: prefix}
 	if cached, ok := highlighter.lines[key]; ok {
 		return append(dst, cached...)
 	}
@@ -42,7 +47,7 @@ func (highlighter *Highlighter) Highlight(language, line string, dst []component
 	if lexer == nil {
 		return dst
 	}
-	source := line
+	source := prefix + line
 	// Chroma's TeX comment rule consumes the newline, which the editor omits.
 	if lexer.Config().Name == "TeX" && strings.Contains(line, "%") && !strings.HasSuffix(line, "\n") {
 		source += "\n"
@@ -57,12 +62,13 @@ func (highlighter *Highlighter) Highlight(language, line string, dst []component
 		if token == chroma.EOF {
 			break
 		}
-		end := min(offset+len(token.Value), len(line))
-		if color, ok := tokenColor(token.Type); ok && end > offset {
-			runs = append(runs, components.CodeEditorRun{Start: offset, End: end, Color: color})
+		start := max(0, offset-len(prefix))
+		end := min(offset+len(token.Value)-len(prefix), len(line))
+		if color, ok := tokenColor(token.Type); ok && end > start {
+			runs = append(runs, components.CodeEditorRun{Start: start, End: end, Color: color})
 		}
 		offset += len(token.Value)
-		if offset >= len(line) {
+		if offset >= len(line)+len(prefix) {
 			break
 		}
 	}
@@ -72,7 +78,8 @@ func (highlighter *Highlighter) Highlight(language, line string, dst []component
 	if highlighter.lines == nil {
 		highlighter.lines = make(map[cacheKey][]components.CodeEditorRun)
 	}
-	highlighter.lines[cacheKey{language: language, line: strings.Clone(line)}] = runs
+	key.line = strings.Clone(line)
+	highlighter.lines[key] = runs
 	return append(dst, runs...)
 }
 

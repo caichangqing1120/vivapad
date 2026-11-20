@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
@@ -579,6 +580,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 		Representations: state.codeRepresentations(),
 		ScrollbarID:     barID, HorizontalScrollbarID: horizontalID,
 		Language: state.languageFor(doc), Highlight: state.syntax.Highlight,
+	}
+	if strings.EqualFold(snapshot.Language, ".json5") || strings.EqualFold(snapshot.Language, ".jsonc") {
+		highlighter := state.json5Highlighters[doc]
+		if highlighter == nil {
+			if state.json5Highlighters == nil {
+				state.json5Highlighters = make(map[*document.Document]*syntax.JSON5Highlighter)
+			}
+			highlighter = syntax.NewJSON5Highlighter(&state.syntax)
+			state.json5Highlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.json5Highlighters, doc)
 	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
