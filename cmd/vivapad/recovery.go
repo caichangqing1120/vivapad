@@ -97,7 +97,14 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 				}
 			}
 			if state.documentIndex(state.paneDocs[pane]) < 0 {
-				state.paneDocs[pane] = state.space.Current()
+				if recoveredActive == nil {
+					state.paneDocs[pane] = state.space.Current()
+					continue
+				}
+				// The recovered tab may have replaced the startup blank tab.
+				// Keep the missing pane independent of the other pane's draft.
+				blank := state.space.NewDocument()
+				state.paneOwner[blank], state.paneDocs[pane] = pane, blank
 			}
 		}
 	} else if recoveredActive != nil {

@@ -535,6 +535,14 @@ func TestRecoveredUntitledBufferReturnsToRightView(t *testing.T) {
 		restored.paneOwner[restored.paneDocs[1]] != 1 || !restored.paneDocs[1].Dirty() {
 		t.Fatalf("recovered right draft = %+v active=%d", restored.paneDocs, restored.activePane)
 	}
+	left, right := restored.paneDocument(0), restored.paneDocument(1)
+	if left == right || left.Path != "" || left.Dirty() || left.Editor.String() != "" || restored.paneOwner[left] != 0 {
+		t.Fatalf("left pane did not recover as an independent blank tab: name=%q content=%q owner=%d",
+			left.Name, left.Editor.String(), restored.paneOwner[left])
+	}
+	if restored.space.Current() != right {
+		t.Fatal("restoring an empty left pane changed the active editor")
+	}
 }
 
 func TestSavingDirtySplitTabsPreservesTheirViews(t *testing.T) {
