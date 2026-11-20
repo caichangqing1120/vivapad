@@ -74,6 +74,35 @@ func TestExpandedLanguageModesHighlightWithSelectedLexer(t *testing.T) {
 	}
 }
 
+func TestAdditionalOriginalLanguagesHighlight(t *testing.T) {
+	var highlighter Highlighter
+	for _, tc := range []struct{ name, id, line string }{
+		{"ada", "IDM_LANG_ADA", "procedure Demo is"},
+		{"autoit", "IDM_LANG_AU3", "Local $value = 42"},
+		{"batch", "IDM_LANG_BATCH", "REM an example"},
+		{"caml", "IDM_LANG_CAML", "let value = 42"},
+		{"cobol", "IDM_LANG_COBOL", "       IDENTIFICATION DIVISION."},
+		{"d", "IDM_LANG_D", "int value = 42;"},
+		{"fortran77", "IDM_LANG_FORTRAN_77", "      INTEGER I"},
+		{"forth", "IDM_LANG_FORTH", "\\ an example"},
+		{"nsis", "IDM_LANG_NSIS", "Section \"Demo\""},
+		{"props", "IDM_LANG_PROPS", "# an example"},
+		{"registry", "IDM_LANG_REGISTRY", "[HKEY_CURRENT_USER\\Software\\Example]"},
+		{"sas", "IDM_LANG_SAS", "/* an example */"},
+		{"smalltalk", "IDM_LANG_SMALLTALK", "\"an example\""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lang, ok := LanguageByNPP(tc.name)
+			if !ok || lang.SourceID != tc.id {
+				t.Fatalf("session language %s = %+v", tc.name, lang)
+			}
+			if runs := highlighter.Highlight(lang.Mode, tc.line, nil); len(runs) == 0 {
+				t.Fatalf("%s did not highlight %q", lang.Lexer, tc.line)
+			}
+		})
+	}
+}
+
 func TestYAMLExtensionAliasUsesRegisteredLexer(t *testing.T) {
 	if spec, ok := LanguageByMode(".yml"); !ok || spec.Label != "YAML" {
 		t.Fatalf("YAML file extension = %+v, %v", spec, ok)

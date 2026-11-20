@@ -260,13 +260,25 @@ func TestNPPExpandedLanguagesRemainIndependentAcrossSplitViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	right := state.space.Current()
-	state.command("Rust")
 	state.toggleSplit()
 	state.paneDocs = [2]*document.Document{left, right}
 	state.paneOwner[left], state.paneOwner[right] = 0, 1
 	state.activePane = 1
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(5))
+	clickLanguage(t, driver, "Smalltalk")
+	if left.Dirty() || right.Dirty() || left.Editor.String() != "clean" || right.Editor.String() != "clean" {
+		t.Fatal("selecting Smalltalk changed split document contents")
+	}
 	exported, err := state.nppSessionState()
-	if err != nil || len(exported.Main) != 1 || len(exported.Sub) != 1 || exported.Main[0].Language != "go" || exported.Sub[0].Language != "rust" {
+	if err != nil || len(exported.Main) != 1 || len(exported.Sub) != 1 || exported.Main[0].Language != "go" || exported.Sub[0].Language != "smalltalk" {
 		t.Fatalf("split language export = %+v, %v", exported, err)
 	}
 	xmlPath := filepath.Join(root, "split.xml")
@@ -274,18 +286,18 @@ func TestNPPExpandedLanguagesRemainIndependentAcrossSplitViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	loaded := newModel()
-	driver, err := app.NewDriver(newConfig(loaded), nil)
+	importDriver, err := app.NewDriver(newConfig(loaded), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer driver.Close()
-	if err := driver.QueueOpenFiles([]string{xmlPath}, nil); err != nil {
+	t.Cleanup(importDriver.Close)
+	if err := importDriver.QueueOpenFiles([]string{xmlPath}, nil); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, menuScope.At(0))
-	clickID(t, driver, menuItemScope.At(13))
-	clickID(t, driver, sessionScope.At(0))
-	if !loaded.splitEnabled || loaded.languageFor(loaded.paneDocs[0]) != ".go" || loaded.languageFor(loaded.paneDocs[1]) != ".rs" {
+	clickID(t, importDriver, menuScope.At(0))
+	clickID(t, importDriver, menuItemScope.At(13))
+	clickID(t, importDriver, sessionScope.At(0))
+	if !loaded.splitEnabled || loaded.languageFor(loaded.paneDocs[0]) != ".go" || loaded.languageFor(loaded.paneDocs[1]) != ".st" {
 		t.Fatalf("split language import = %q / %q, notice=%q", loaded.languageFor(loaded.paneDocs[0]), loaded.languageFor(loaded.paneDocs[1]), loaded.notice)
 	}
 }

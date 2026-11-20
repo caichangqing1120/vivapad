@@ -60,6 +60,19 @@ var languages = [...]Language{
 	{"Scheme", ".scm", "scheme", "IDM_LANG_SCHEME", "Scheme", ";", ""},
 	{"CoffeeScript", ".coffee", "coffeescript", "IDM_LANG_COFFEESCRIPT", "CoffeeScript", "#", ""},
 	{"GDScript", ".gd", "gdscript", "IDM_LANG_GDSCRIPT", "GDScript", "#", ""},
+	{"Ada", ".ada", "ada", "IDM_LANG_ADA", "Ada", "--", ""},
+	{"AutoIt", ".au3", "autoit", "IDM_LANG_AU3", "AutoIt", ";", ""},
+	{"Batch", ".bat", "batch", "IDM_LANG_BATCH", "Batchfile", "REM", ""},
+	{"Caml", ".ml", "caml", "IDM_LANG_CAML", "OCaml", "", ""},
+	{"COBOL", ".cob", "cobol", "IDM_LANG_COBOL", "COBOL", "", ""},
+	{"D", ".d", "d", "IDM_LANG_D", "D", "//", "{[("},
+	{"Fortran (fixed form)", ".f77", "fortran77", "IDM_LANG_FORTRAN_77", "FortranFixed", "", ""},
+	{"Forth", ".forth", "forth", "IDM_LANG_FORTH", "Forth", "\\", ""},
+	{"NSIS", ".nsi", "nsis", "IDM_LANG_NSIS", "NSIS", ";", ""},
+	{"Properties", ".properties", "props", "IDM_LANG_PROPS", "properties", "#", ""},
+	{"Registry", ".reg", "registry", "IDM_LANG_REGISTRY", "reg", ";;", ""},
+	{"SAS", ".sas", "sas", "IDM_LANG_SAS", "SAS", "", ""},
+	{"Smalltalk", ".st", "smalltalk", "IDM_LANG_SMALLTALK", "Smalltalk", "", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
