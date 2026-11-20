@@ -19,7 +19,7 @@ type folderRow struct {
 }
 
 func (state *model) folderPanelWidth(width float32) float32 {
-	if !state.folderVisible && !state.functionListVisible && !state.documentListVisible {
+	if state.leftDockCount() == 0 {
 		return 0
 	}
 	return max(0, min(250, max(140, width*0.27), width-180))

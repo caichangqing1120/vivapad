@@ -27,6 +27,9 @@ func (state *model) restoreFunctionDock(stored session.State) {
 }
 
 func (state *model) activeDock() string {
+	if state.characterVisible && state.activeLeftDock == "characters" {
+		return "characters"
+	}
 	if state.documentListVisible && state.activeLeftDock == "documents" {
 		return "documents"
 	}
@@ -41,6 +44,9 @@ func (state *model) activeDock() string {
 	}
 	if state.documentListVisible {
 		return "documents"
+	}
+	if state.characterVisible {
+		return "characters"
 	}
 	return ""
 }
@@ -141,7 +147,7 @@ func (state *model) paintLeftDockTabs(canvas *gfx.Canvas, bounds gfx.Rect) {
 	canvas.Fill(bounds, palette.tabs)
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
 	canvas.Fill(gfx.Rect{Y: bounds.Y + bounds.Height - 1, Width: bounds.Width, Height: 1}, palette.border)
-	var tabs [3]struct {
+	var tabs [4]struct {
 		id    gfx.ID
 		label string
 		mode  string
@@ -168,6 +174,13 @@ func (state *model) paintLeftDockTabs(canvas *gfx.Canvas, bounds gfx.Rect) {
 		}{leftDockFunctionsID, "Functions", "functions"}
 		count++
 	}
+	if state.characterVisible {
+		tabs[count] = struct {
+			id          gfx.ID
+			label, mode string
+		}{leftDockCharactersID, "Characters", "characters"}
+		count++
+	}
 	for index, tab := range tabs[:count] {
 		item := gfx.Rect{X: float32(index) * bounds.Width / float32(count), Y: bounds.Y, Width: bounds.Width / float32(count), Height: bounds.Height - 1}
 		selected := state.activeDock() == tab.mode
@@ -184,6 +197,8 @@ func (state *model) paintLeftDockTabs(canvas *gfx.Canvas, bounds gfx.Rect) {
 				label = "Folder"
 			case "functions":
 				label = "Funcs"
+			case "characters":
+				label = "Chars"
 			}
 		}
 		label = canvas.FitLine(label, 11, gfx.WeightRegular, item.Width-8)

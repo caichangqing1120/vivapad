@@ -31,7 +31,7 @@ var menuLabels = [...]string{"File", "Edit", "Search", "View", "Encoding", "Lang
 
 var menuCommands = [...][]string{
 	{"New", "Open...", "Save", "Save As...", "Save a Copy As...", "Save All", "Close", "Open as GB18030...", "Open as Windows-1252...", "Reload from Disk", "Recent Files", "Close All", "Close Other Tabs", "Sessions", "Rename...", "Close Multiple Documents", "Open Folder as Workspace...", "Open in Default Viewer", "Open Containing Folder", "Open as Encoding...", "Move to Recycle Bin", "Print...", "Print Now", "Exit"},
-	{"Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Line Operations", "Convert Case", "Blank Operations", "Copy to Clipboard", "Delete", "Begin/End Select", "Read-Only in Notepad++", fileReadOnlyLabel(), "Auto-Completion", "Comment/Uncomment", "Insert", "EOL Conversion", "Column Editor...", "Begin/End Select in Column Mode", "On Selection", "Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select"},
+	{"Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Line Operations", "Convert Case", "Blank Operations", "Copy to Clipboard", "Delete", "Begin/End Select", "Read-Only in Notepad++", fileReadOnlyLabel(), "Auto-Completion", "Comment/Uncomment", "Insert", "EOL Conversion", "Column Editor...", "Begin/End Select in Column Mode", "On Selection", "Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select", characterPanelCommand},
 	{
 		"Find...", "Find in Files...", "Find Next", "Find Previous", "Selected Text Search",
 		"Replace...", "Incremental Search", "Search Results Window", "Next Search Result", "Previous Search Result",
@@ -143,6 +143,8 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 			state.paintFunctionPanel(canvas, leftBounds)
 		case "documents":
 			state.paintDocumentList(canvas, leftBounds)
+		case "characters":
+			state.paintCharacterPanel(canvas, leftBounds)
 		default:
 			state.paintFolderPanel(canvas, leftBounds)
 		}
@@ -1652,6 +1654,8 @@ func (state *model) menuSelected(command string) bool {
 		return state.functionListVisible
 	case "Document List":
 		return state.documentListVisible
+	case characterPanelCommand:
+		return state.characterVisible
 	case "Synchronize Vertical Scrolling":
 		return state.syncVertical
 	case "Synchronize Horizontal Scrolling":

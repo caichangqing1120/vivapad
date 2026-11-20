@@ -24,6 +24,9 @@ func (state *model) leftDockCount() int {
 	if state.documentListVisible {
 		count++
 	}
+	if state.characterVisible {
+		count++
+	}
 	return count
 }
 

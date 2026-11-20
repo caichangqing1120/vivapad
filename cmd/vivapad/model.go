@@ -84,6 +84,13 @@ var (
 	leftDockWorkspaceID        = tree.ID(page, "left-dock-workspace")
 	leftDockFunctionsID        = tree.ID(page, "left-dock-functions")
 	leftDockDocumentsID        = tree.ID(page, "left-dock-documents")
+	leftDockCharactersID       = tree.ID(page, "left-dock-characters")
+	characterPanelID           = tree.ID(page, "character-panel")
+	characterCloseID           = tree.ID(page, "character-close")
+	characterPrevID            = tree.ID(page, "character-previous")
+	characterNextID            = tree.ID(page, "character-next")
+	characterHTMLID            = tree.ID(page, "character-html")
+	characterCellScope         = tree.Sub(page, tree.Name("character-cells"))
 	documentListPanelID        = tree.ID(page, "document-list-panel")
 	documentListCloseID        = tree.ID(page, "document-list-close")
 	documentListRowScope       = tree.Sub(page, tree.Name("document-list-rows"))
@@ -450,6 +457,11 @@ type model struct {
 	documentListAnchorPane        int
 	documentListFocusRequested    bool
 	activeLeftDock                string
+	characterVisible              bool
+	characterHTML                 bool
+	characterOffset               int
+	characterPageRows             int
+	characterTable                *characterTable
 	functionFilter                *text.Editor
 	functionFilterFocus           bool
 	functionSymbols               map[*document.Document]functionSymbolCache
@@ -1198,6 +1210,14 @@ func newConfig(state *model) app.Config {
 		}
 		if state.summaryOpen || state.helpMode != noHelp {
 			return gfx.EventResult{Handled: true}
+		}
+		if state.activeDock() == "characters" && (event.Target == characterPanelID || event.Target.Scope() == characterCellScope) {
+			step := 1
+			if event.StepY(21) < 0 {
+				step = -1
+			}
+			state.moveCharacterPanel(step)
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.documentListVisible && state.activeDock() == "documents" &&
 			(event.Target == documentListPanelID || event.Target.Scope() == documentListRowScope || event.Target.Scope() == documentListRowCloseScope) {
@@ -2538,6 +2558,9 @@ func (state *model) persistSession() {
 	stored.FunctionListVisible = state.functionListVisible
 	stored.DocumentListVisible = state.documentListVisible
 	stored.ActiveLeftDock = state.activeLeftDock
+	if stored.ActiveLeftDock == "characters" {
+		stored.ActiveLeftDock = ""
+	}
 	for _, doc := range state.closingDocs {
 		if doc.Path != "" {
 			stored.Paths = append(stored.Paths, doc.Path)
@@ -3047,6 +3070,8 @@ func (state *model) command(command string) {
 		state.menuOpen, state.copyPathsMenuOpen = 1, true
 	case "On Selection":
 		state.menuOpen, state.onSelectionMenuOpen = 1, true
+	case characterPanelCommand:
+		state.toggleCharacterPanel()
 	case "Multi-select All":
 		state.menuOpen, state.multiAllMenuOpen = 1, true
 	case "Multi-select Next":

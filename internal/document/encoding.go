@@ -87,6 +87,12 @@ func (doc *Document) Encoding() Encoding { return doc.encoding }
 
 func (doc *Document) SavedEncoding() Encoding { return doc.savedEncoding }
 
+// DecodeLegacyByte reports an independently valid, round-trippable text byte.
+func DecodeLegacyByte(format Encoding, value byte) (string, bool) {
+	decoded, _, err := decodeLegacy([]byte{value}, format)
+	return decoded, err == nil
+}
+
 func (doc *Document) EncodingLabel() string {
 	switch doc.encoding {
 	case UTF8BOM:
