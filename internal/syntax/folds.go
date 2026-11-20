@@ -42,6 +42,8 @@ func FoldRegions(mode, value string) []FoldRegion {
 		return freeBasicFoldRegions(value)
 	case ".osx":
 		return oscriptFoldRegions(value)
+	case ".pb":
+		return pureBasicFoldRegions(value)
 	}
 	if mode == ".py" || mode == ".yaml" || mode == ".yml" {
 		return indentFoldRegions(value, mode == ".py")

@@ -136,6 +136,13 @@ func TestOScriptFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
 		[]string{"Echo(42)", "documentation"})
 }
 
+func TestPureBasicFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.PB", "purebasic",
+		"\xef\xbb\xbfProcedure Demo()\r\n  Debug $2a\r\nEndProcedure\r\nStructure Record\r\n  count.i\r\nEndStructure\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"Debug $2a", "count.i"})
+}
+
 func checkLanguageFoldingRoundTrip(t *testing.T, name, language, original string, want []components.CodeEditorFoldRange, bodies []string) {
 	t.Helper()
 	root := t.TempDir()

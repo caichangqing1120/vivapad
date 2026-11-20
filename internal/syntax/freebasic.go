@@ -45,6 +45,10 @@ func NewFreeBasicHighlighter() *FreeBasicHighlighter {
 }
 
 func scanFreeBasicLine(line string, inComment bool, emit func(int, int, chroma.TokenType)) bool {
+	return scanBasicLine(line, inComment, emit, false)
+}
+
+func scanBasicLine(line string, inComment bool, emit func(int, int, chroma.TokenType), pure bool) bool {
 	style := func(start, end int, kind chroma.TokenType) {
 		if emit != nil && start < end {
 			emit(start, end, kind)
@@ -52,6 +56,10 @@ func scanFreeBasicLine(line string, inComment bool, emit func(int, int, chroma.T
 	}
 	i := 0
 	first := len(line) - len(strings.TrimLeft(line, " \t"))
+	comment, words := byte('\''), freeBasicWords
+	if pure {
+		comment, words = ';', pureBasicWords
+	}
 	for i < len(line) {
 		start := i
 		if inComment || strings.HasPrefix(line[i:], "/'") {
@@ -72,15 +80,23 @@ func scanFreeBasicLine(line string, inComment bool, emit func(int, int, chroma.T
 		ch := line[i]
 		i++
 		switch {
-		case ch == '\'':
+		case ch == comment:
 			kind := chroma.CommentSingle
-			if i < len(line) && line[i] == '$' {
+			if !pure && i < len(line) && line[i] == '$' {
 				kind = chroma.CommentPreproc
 			}
 			style(start, len(line), kind)
 			return false
-		case ch == '"':
+		case ch == '"' || pure && ch == '~' && i < len(line) && line[i] == '"':
+			escaped := ch == '~'
+			if escaped {
+				i++
+			}
 			for i < len(line) {
+				if escaped && line[i] == '\\' && i+1 < len(line) {
+					i += 2
+					continue
+				}
 				if line[i] != '"' {
 					i++
 					continue
@@ -92,7 +108,19 @@ func scanFreeBasicLine(line string, inComment bool, emit func(int, int, chroma.T
 				i++
 			}
 			style(start, i, chroma.LiteralStringDouble)
-		case ch == '&' && i < len(line) && strings.ContainsRune("hHoObB", rune(line[i])):
+		case pure && (ch == '$' || ch == '%'):
+			kind, base := chroma.LiteralNumberHex, byte(16)
+			if ch == '%' {
+				kind, base = chroma.LiteralNumberBin, 2
+			}
+			for i < len(line) && freeBasicDigit(line[i], base) {
+				i++
+			}
+			if i == start+1 {
+				kind = chroma.Operator
+			}
+			style(start, i, kind)
+		case !pure && ch == '&' && i < len(line) && strings.ContainsRune("hHoObB", rune(line[i])):
 			kind, base := chroma.LiteralNumberHex, byte(16)
 			switch line[i] {
 			case 'o', 'O':
@@ -112,18 +140,18 @@ func scanFreeBasicLine(line string, inComment bool, emit func(int, int, chroma.T
 			for i < len(line) && freeBasicWordByte(line[i]) {
 				i++
 			}
-			if i < len(line) && line[i] == '$' && freeBasicWords[strings.ToLower(line[start:i+1])] == chroma.Keyword {
+			if !pure && i < len(line) && line[i] == '$' && words[strings.ToLower(line[start:i+1])] == chroma.Keyword {
 				i++
 			}
 			word := strings.ToLower(line[start:i])
-			if word == "rem" {
+			if !pure && word == "rem" {
 				style(start, len(line), chroma.CommentSingle)
 				return false
 			}
 			if ch != '#' && start == first && i < len(line) && line[i] == ':' {
 				i++
 				style(start, i, chroma.NameLabel)
-			} else if kind, ok := freeBasicWords[word]; ok {
+			} else if kind, ok := words[word]; ok {
 				style(start, i, kind)
 			} else if ch == '#' && i > start+1 {
 				style(start, i, chroma.NameConstant)
