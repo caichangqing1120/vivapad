@@ -10,6 +10,7 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
+	"vivapad/internal/external"
 )
 
 func TestOpenInDefaultViewerPreservesDirtyBufferAndRejectsUnsafeFile(t *testing.T) {
@@ -59,6 +60,74 @@ func TestOpenInDefaultViewerPreservesDirtyBufferAndRejectsUnsafeFile(t *testing.
 	}
 }
 
+func TestContainingFolderConsoleMenusPreserveEditor(t *testing.T) {
+	for _, tc := range []struct {
+		label string
+		index int
+		kind  external.ConsoleKind
+		fail  bool
+	}{
+		{"cmd", 1, external.CommandPrompt, false},
+		{"PowerShell", 2, external.WindowsPowerShell, true},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "source & demo.txt")
+			if err := os.WriteFile(file, []byte("saved"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			state := newModelWithFiles([]string{file})
+			doc := state.space.Current()
+			doc.Editor.Insert("draft")
+			before, selection := doc.Editor.String(), doc.Editor.Selection()
+			language := state.languageFor(doc)
+			calls := 0
+			state.openConsole = func(kind external.ConsoleKind, path string) error {
+				calls++
+				if kind != tc.kind || path != doc.Path {
+					t.Fatalf("console launch target = %d %q, want %d %q", kind, path, tc.kind, doc.Path)
+				}
+				if tc.fail {
+					return errors.New("shell unavailable")
+				}
+				return nil
+			}
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(driver.Close)
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickConsole := func() {
+				clickID(t, driver, menuScope.At(0))
+				clickID(t, driver, menuItemScope.At(18))
+				clickID(t, driver, containingFolderScope.At(tc.index))
+			}
+			clickConsole()
+			requireEditorCommandFocus(t, driver, editorID)
+			if calls != 1 || state.menuOpen >= 0 || state.space.Current() != doc ||
+				!doc.Dirty() || doc.Editor.String() != before || doc.Editor.Selection() != selection || state.languageFor(doc) != language {
+				t.Fatalf("launch altered document or menu state: calls=%d notice=%q", calls, state.notice)
+			}
+			if tc.fail && !strings.Contains(state.notice, "shell unavailable") {
+				t.Fatalf("failed launch notice = %q", state.notice)
+			}
+			if data, err := os.ReadFile(file); err != nil || string(data) != "saved" {
+				t.Fatalf("launch changed source bytes: %q, %v", data, err)
+			}
+			state.showInActivePane(state.space.NewDocument())
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickConsole()
+			if calls != 1 || !strings.Contains(state.notice, "Save") {
+				t.Fatalf("untitled launch: calls=%d notice=%q", calls, state.notice)
+			}
+		})
+	}
+}
+
 func TestContainingFolderSubmenuFitsCompactViewportAndUsesSavedPath(t *testing.T) {
 	root := t.TempDir()
 	file := filepath.Join(root, "selected.txt")
@@ -83,7 +152,7 @@ func TestContainingFolderSubmenuFitsCompactViewportAndUsesSavedPath(t *testing.T
 		for _, hit := range driver.Snapshot().Hits {
 			if hit.ID == containingFolderScope.At(index) {
 				found = true
-				if hit.Bounds.Y+hit.Bounds.Height > 400-statusHeight || hit.Disabled != (index == 1 || index == 2) {
+				if hit.Bounds.Y+hit.Bounds.Height > 400-statusHeight || hit.Disabled != (runtime.GOOS != "windows" && (index == 1 || index == 2)) {
 					t.Fatalf("containing-folder row %d invalid: %+v", index, hit)
 				}
 			}

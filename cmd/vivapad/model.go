@@ -462,6 +462,7 @@ type model struct {
 	folderWatching                map[string]os.FileInfo
 	folderWatchUnavailable        bool
 	revealPath                    func(string) error
+	openConsole                   func(external.ConsoleKind, string) error
 	launchSelectedFile            func(string) error
 	revealSelectedPath            func(string) error
 	trashPath                     func(string) error
@@ -743,6 +744,10 @@ const (
 func newModel() *model {
 	workingDirectory, _ := os.Getwd()
 	space := workspace.New()
+	var openConsole func(external.ConsoleKind, string) error
+	if runtime.GOOS == "windows" {
+		openConsole = external.OpenConsole
+	}
 	return &model{
 		changeView: newChangeViewCache(),
 		space:      space, editors: make(map[*document.Document]*components.CodeEditor),
@@ -762,6 +767,7 @@ func newModel() *model {
 		functionSymbols: make(map[*document.Document]functionSymbolCache),
 		functionFilter:  text.NewEditor(""), functionSelected: -1,
 		revealPath:         external.Reveal,
+		openConsole:        openConsole,
 		launchSelectedFile: external.LaunchEditor,
 		revealSelectedPath: external.RevealSelection,
 		trashPath:          external.Trash,
@@ -2785,6 +2791,10 @@ func (state *model) command(command string) {
 		state.menuOpen, state.containingMenuOpen = 0, true
 	case "Explorer":
 		state.revealCurrentFile()
+	case openCommandPromptCommand:
+		state.openCurrentConsole(external.CommandPrompt, "Command Prompt")
+	case openPowerShellCommand:
+		state.openCurrentConsole(external.WindowsPowerShell, "PowerShell")
 	case "Open in Default Viewer":
 		state.openDefaultViewer()
 	case "Open File from Selection":

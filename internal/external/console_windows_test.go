@@ -24,9 +24,7 @@ func TestWindowsConsoleProcessUsesFreshConsoleAndLiteralDirectory(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.EqualFold(string(got), dir) {
-		t.Fatalf("console working directory = %q, want %q", got, dir)
-	}
+	requireSameConsoleDirectory(t, string(got), dir)
 }
 
 func TestWindowsConsoleProbeChild(t *testing.T) {
@@ -74,9 +72,22 @@ func TestWindowsConfiguredShellsStartInContainingDirectory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.EqualFold(strings.TrimSpace(string(got)), dir) {
-			t.Fatalf("%s working directory = %q, want %q", tc.file, got, dir)
-		}
+		requireSameConsoleDirectory(t, strings.TrimSpace(string(got)), dir)
+	}
+}
+
+func requireSameConsoleDirectory(t *testing.T, reported, expected string) {
+	t.Helper()
+	got, err := os.Stat(reported)
+	if err != nil {
+		t.Fatalf("console reported directory %q: %v", reported, err)
+	}
+	want, err := os.Stat(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsDir() || !os.SameFile(got, want) {
+		t.Fatalf("console working directory = %q, want the directory at %q", reported, expected)
 	}
 }
 
