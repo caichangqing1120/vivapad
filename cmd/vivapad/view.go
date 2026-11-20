@@ -50,6 +50,7 @@ var menuCommands = [...][]string{
 	{"Run..."},
 	{},
 	{"Sort By", "Windows...", "Recent Window"},
+	{aboutHelpCommand, debugHelpCommand},
 }
 
 func fileMenuCount() int {
@@ -214,6 +215,9 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	}
 	if state.summaryOpen {
 		state.paintSummary(canvas, size)
+	}
+	if state.helpMode != noHelp {
+		state.paintHelp(canvas, size)
 	}
 	if state.runDialogOpen {
 		state.paintRunDialog(canvas, size)

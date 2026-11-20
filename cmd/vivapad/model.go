@@ -92,6 +92,10 @@ var (
 	documentListNextID         = tree.ID(page, "document-list-next")
 	summaryCloseID             = tree.ID(page, "summary-close")
 	summaryRowScope            = tree.Sub(page, tree.Name("summary-rows"))
+	helpDialogID               = tree.ID(page, "help-dialog")
+	helpCloseID                = tree.ID(page, "help-close")
+	helpCopyID                 = tree.ID(page, "help-copy")
+	helpRowScope               = tree.Sub(page, tree.Name("help-rows"))
 	languagePanelID            = tree.ID(page, "language-panel")
 	languagePrevID             = tree.ID(page, "language-previous")
 	languageNextID             = tree.ID(page, "language-next")
@@ -425,6 +429,9 @@ type model struct {
 	syncScrollSeenX               [2]float32
 	syncScrollDocs                [2]*document.Document
 	summaryOpen                   bool
+	helpMode                      uint8
+	helpDetails                   buildDetails
+	helpCopyStatus                string
 	summary                       documentSummary
 	monitors                      map[*document.Document]*fileMonitor
 	closeWindow                   func()
@@ -1189,7 +1196,7 @@ func newConfig(state *model) app.Config {
 			state.viewMenuOffset = min(max(0, state.viewMenuOffset+step), max(0, len(menuCommands[3])-state.viewMenuVisible))
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if state.summaryOpen {
+		if state.summaryOpen || state.helpMode != noHelp {
 			return gfx.EventResult{Handled: true}
 		}
 		if state.documentListVisible && state.activeDock() == "documents" &&
@@ -1316,7 +1323,7 @@ func newConfig(state *model) app.Config {
 		return result
 	}
 	config.OnFileDrop = func(event gfx.FileDropEvent) gfx.EventResult {
-		if state.saveSessionOptionsOpen || state.columnDialogOpen || state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen || state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil || state.dateTimeDialogOpen || state.hashDialogOpen || state.windowsDialogOpen {
+		if state.saveSessionOptionsOpen || state.columnDialogOpen || state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen || state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil || state.dateTimeDialogOpen || state.hashDialogOpen || state.windowsDialogOpen {
 			return gfx.EventResult{}
 		}
 		if event.Phase == gfx.FileDropDrop {
@@ -1349,7 +1356,7 @@ func newConfig(state *model) app.Config {
 			}
 			return gfx.EventResult{Handled: true}
 		}
-		if state.summaryOpen {
+		if state.summaryOpen || state.helpMode != noHelp {
 			return gfx.EventResult{Handled: true}
 		}
 		if state.windowsDialogOpen {
@@ -1612,6 +1619,13 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{}
 			}
 			return gfx.EventResult{Handled: true}
+		}
+		if state.helpMode != noHelp {
+			if event.Key == gfx.KeyEscape {
+				state.closeHelp()
+				return gfx.EventResult{Handled: true, Repaint: true}
+			}
+			return gfx.EventResult{}
 		}
 		if state.summaryOpen {
 			if event.Key == gfx.KeyEscape || event.Key == gfx.KeyEnter {
@@ -2856,6 +2870,10 @@ func (state *model) command(command string) {
 			summaryDoc = state.paneDocument(state.activePane)
 		}
 		state.summary, state.summaryOpen = summaryFor(summaryDoc), true
+	case aboutHelpCommand:
+		state.openHelp(aboutHelp)
+	case debugHelpCommand:
+		state.openHelp(debugHelp)
 	case "Monitoring (tail -f)":
 		state.toggleMonitoring()
 	case "Synchronize Vertical Scrolling":

@@ -141,7 +141,7 @@ func (state *model) resolveTextInput(context app.TextInputContext) *app.TextInpu
 		}
 		return nil
 	}
-	if state.summaryOpen {
+	if state.summaryOpen || state.helpMode != noHelp {
 		return nil
 	}
 	if state.windowsDialogOpen {

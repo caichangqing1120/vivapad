@@ -8,7 +8,7 @@ import (
 
 func (state *model) editorCommandFocusBlocked() bool {
 	return state.menuOpen >= 0 || state.saveSessionOptionsOpen || state.columnDialogOpen ||
-		state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.windowsDialogOpen ||
+		state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.windowsDialogOpen ||
 		state.macroSaveOpen || state.macroRunOpen || state.hashDialogOpen || state.dateTimeDialogOpen ||
 		state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil ||
 		state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen
