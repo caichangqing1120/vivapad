@@ -243,7 +243,13 @@ func TestFinderDirectoryResultUsesOpenFileIdentityAcrossCaseSpellings(t *testing
 }
 
 func TestFinderDirectoryResultUsesOpenFileIdentityAcrossUnicodeSpellings(t *testing.T) {
-	testFinderDirectoryResultPathSpellings(t, "caf\u00e9.txt", "cafe\u0301.txt")
+	const composed, decomposed = "caf\u00e9.txt", "cafe\u0301.txt"
+	t.Run("composed", func(t *testing.T) {
+		testFinderDirectoryResultPathSpellings(t, composed, decomposed)
+	})
+	t.Run("decomposed", func(t *testing.T) {
+		testFinderDirectoryResultPathSpellings(t, decomposed, composed)
+	})
 }
 
 func testFinderDirectoryResultPathSpellings(t *testing.T, name, alternate string) {
@@ -254,7 +260,11 @@ func testFinderDirectoryResultPathSpellings(t *testing.T, name, alternate string
 	if err := os.WriteFile(path, []byte(saved), 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := os.Stat(other)
+	source, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alternateSource, err := os.Stat(other)
 	alias := err == nil
 	if !alias {
 		if !os.IsNotExist(err) {
@@ -263,6 +273,8 @@ func testFinderDirectoryResultPathSpellings(t *testing.T, name, alternate string
 		if err := os.WriteFile(other, []byte(saved), 0600); err != nil {
 			t.Fatal(err)
 		}
+	} else if !os.SameFile(source, alternateSource) {
+		t.Fatal("fixture resolved the alternate spelling to a different file")
 	}
 	state := newModelWithFiles([]string{other})
 	opened := state.space.Current()
@@ -280,7 +292,12 @@ func testFinderDirectoryResultPathSpellings(t *testing.T, name, alternate string
 	state.query.Insert("cat")
 	collectFinderSnapshot(t, state, "directory", root)
 	index := slices.IndexFunc(state.fileResults.Matches, func(match searchfiles.Match) bool {
-		return filepath.Base(match.Path) == name && match.Start == 4
+		// Directory enumeration may normalize the spelling on disk.
+		if match.Start != 4 {
+			return false
+		}
+		info, err := os.Stat(match.Path)
+		return err == nil && os.SameFile(source, info)
 	})
 	if index < 0 {
 		t.Fatalf("fixture did not find the second occurrence in %q", name)
@@ -304,7 +321,7 @@ func testFinderDirectoryResultPathSpellings(t *testing.T, name, alternate string
 			t.Fatalf("stale aliased directory result opened another document: tabs=%d selection=%d notice=%q", len(state.space.Documents), state.resultSelected, state.notice)
 		}
 	} else if len(state.space.Documents) != 2 || state.space.Current() == opened || state.resultSelected != index ||
-		filepath.Base(state.space.Current().Path) != name {
+		state.space.Current().Path != state.fileResults.Matches[index].Path {
 		t.Fatal("distinct files were treated as aliases")
 	}
 	if opened.Editor.String() != draft || opened.Editor.Selection() != selection || opened.Editor.Caret() != caret || !opened.Dirty() {
@@ -384,6 +401,65 @@ func TestFinderDoesNotFollowRedirectedDirectoryResult(t *testing.T) {
 	for _, name := range []string{path, other} {
 		if data, err := os.ReadFile(name); err != nil || string(data) != contents {
 			t.Fatalf("result activation changed %q: %q, %v", name, data, err)
+		}
+	}
+}
+
+func TestFinderDoesNotReuseRedirectedOpenTabAsAlias(t *testing.T) {
+	root := t.TempDir()
+	target, oldPath := filepath.Join(root, "source.txt"), filepath.Join(root, "SOURCE.TXT")
+	const saved = "prefix cat\r\n"
+	if err := os.WriteFile(target, []byte(saved), 0600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(oldPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if os.IsExist(err) {
+		t.Skip("test requires a case-sensitive filesystem")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr := file.WriteString(saved)
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		t.Fatalf("write the old tab source: %v, %v", writeErr, closeErr)
+	}
+	state, driver := startDriver(t)
+	if err := state.space.Open(oldPath); err != nil {
+		t.Fatal(err)
+	}
+	old := state.space.Current()
+	state.showInActivePane(old)
+	selection := text.Range{Start: 0, End: 4}
+	old.Editor.SetSelection(selection)
+	found, err := searchfiles.Find(t.Context(), root, "cat", document.SearchOptions{}, searchfiles.Options{Pattern: "source.txt"})
+	if err != nil || len(found.Matches) != 1 {
+		t.Fatalf("collect directory result: %v, %v", found, err)
+	}
+	state.fileResults, state.resultsOpen, state.resultSelected = found, true, -1
+	parked := filepath.Join(root, "parked.txt")
+	if err := os.Rename(oldPath, parked); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, oldPath); err != nil {
+		if os.IsPermission(err) {
+			t.Skipf("file symlinks are unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyF4, 0); err != nil {
+		t.Fatal(err)
+	}
+	if opened := state.space.Current(); len(state.space.Documents) != 2 || opened == old || opened.Path != found.Matches[0].Path ||
+		opened.Editor.Selection() != (text.Range{Start: 7, End: 10}) || state.resultSelected != 0 {
+		t.Fatalf("result did not open its real source: tabs=%d current=%q notice=%q", len(state.space.Documents), opened.Path, state.notice)
+	}
+	if old.Editor.Selection() != selection || old.Editor.String() != "prefix cat\n" || old.Dirty() {
+		t.Fatal("result changed the redirected tab's editor")
+	}
+	for _, path := range []string{target, parked} {
+		if data, err := os.ReadFile(path); err != nil || string(data) != saved {
+			t.Fatalf("result changed disk bytes at %q: %q, %v", path, data, err)
 		}
 	}
 }

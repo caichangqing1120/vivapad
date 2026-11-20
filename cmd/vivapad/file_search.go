@@ -332,8 +332,8 @@ func (state *model) directoryResultTab(path string) *document.Document {
 				return nil
 			}
 		}
-		// Case and Unicode spelling variants can also name distinct files.
-		if info, err := os.Stat(doc.Path); err == nil && os.SameFile(target, info) {
+		// A redirected tab must not acquire the identity of its new target.
+		if info, err := os.Stat(doc.Path); err == nil && os.SameFile(target, info) && doc.CheckDiskPath() == nil {
 			return doc
 		}
 	}
