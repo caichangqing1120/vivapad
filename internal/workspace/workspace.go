@@ -75,6 +75,10 @@ func (space *Workspace) OpenInteractive(path string) error {
 	return space.open(path, nil, openInteractive)
 }
 
+func (space *Workspace) OpenInteractiveWithEncoding(path string, encoding document.Encoding) error {
+	return space.open(path, &encoding, openInteractive)
+}
+
 // OpenRecorded opens an entry whose path was canonicalized when recorded.
 // UTF8 is the history default and requests normal encoding detection.
 func (space *Workspace) OpenRecorded(path string, encoding document.Encoding) error {
@@ -104,20 +108,23 @@ func (space *Workspace) open(path string, encoding *document.Encoding, mode open
 	} else if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
 		absolute = resolved
 	}
+	openIndex := -1
 	for index, doc := range space.Documents {
 		if doc.Path == absolute {
-			if encoding != nil && doc.Encoding() != *encoding {
-				return fmt.Errorf("%s is already open as %s", doc.Name, doc.EncodingLabel())
-			}
-			space.Active = index
-			return nil
+			openIndex = index
+			break
 		}
 	}
-	if mode == openInteractive {
-		if index := space.findOpenSpellingAlias(absolute); index >= 0 {
-			space.Active = index
-			return nil
+	if openIndex < 0 && mode == openInteractive {
+		openIndex = space.findOpenSpellingAlias(absolute)
+	}
+	if openIndex >= 0 {
+		doc := space.Documents[openIndex]
+		if encoding != nil && doc.Encoding() != *encoding {
+			return fmt.Errorf("%s is already open as %s", doc.Name, doc.EncodingLabel())
 		}
+		space.Active = openIndex
+		return nil
 	}
 	var doc *document.Document
 	if encoding == nil {

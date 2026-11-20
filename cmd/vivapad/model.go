@@ -2215,7 +2215,7 @@ func (state *model) openFilesWithEncoding(encoding document.Encoding) {
 		return
 	}
 	for _, path := range paths {
-		if err := state.space.OpenWithEncoding(path, encoding); err != nil {
+		if err := state.space.OpenInteractiveWithEncoding(path, encoding); err != nil {
 			state.notice = err.Error()
 		} else {
 			state.showInActivePane(state.space.Current())
