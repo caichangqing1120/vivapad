@@ -80,6 +80,9 @@ var languages = [...]Language{
 	{"Microsoft Transact-SQL", ".tsql", "mssql", "IDM_LANG_MSSQL", "Transact-SQL", "--", ""},
 	{"TeX", "lang:tex", "tex", "IDM_LANG_TEX", "TeX", "%", ""},
 	{"JSON5", ".json5", "json5", "IDM_LANG_JSON5", "JSON5", "//", "{[("},
+	{"Intel HEX", ".hex", "ihex", "IDM_LANG_IHEX", "Intel HEX", "", ""},
+	{"S-Record", ".srec", "srec", "IDM_LANG_SREC", "Motorola S-Record", "", ""},
+	{"Tektronix extended HEX", ".tek", "tehex", "IDM_LANG_TEHEX", "Tektronix extended HEX", "", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
@@ -110,6 +113,8 @@ func LanguageByMode(mode string) (Language, bool) {
 		mode = ".nsi"
 	case ".jsonc":
 		mode = ".json5"
+	case ".mot":
+		mode = ".srec"
 	}
 	for _, spec := range languages {
 		if spec.Mode == mode {

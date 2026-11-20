@@ -57,6 +57,7 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 		return dst
 	}
 	var runs []components.CodeEditorRun
+	_, record := lexer.(*hexRecordLexer)
 	for offset := 0; ; {
 		token := iterator()
 		if token == chroma.EOF {
@@ -64,7 +65,11 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 		}
 		start := max(0, offset-len(prefix))
 		end := min(offset+len(token.Value)-len(prefix), len(line))
-		if color, ok := tokenColor(token.Type); ok && end > start {
+		color, ok := tokenColor(token.Type)
+		if record && token.Type == chroma.Error {
+			color, ok = gfx.RGB(177, 39, 58), true
+		}
+		if ok && end > start {
 			runs = append(runs, components.CodeEditorRun{Start: start, End: end, Color: color})
 		}
 		offset += len(token.Value)
