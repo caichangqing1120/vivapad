@@ -278,10 +278,14 @@ func (state *model) loadNPPSession() {
 	}
 	var prepared []preparedNPPFile
 	var paneFiles [2][]*document.Document
-	seen := make(map[string]*document.Document)
+	preparedByPath := make(map[string]int)
+	openByPath := make(map[string]*document.Document, len(state.space.Documents))
 	resolvedPaths := make(nppSessionPaths)
 	for _, doc := range state.space.Documents {
 		if doc.Path != "" {
+			if _, ok := openByPath[doc.Path]; !ok {
+				openByPath[doc.Path] = doc
+			}
 			key := nppSessionPathKey(doc.Path)
 			resolvedPaths[key] = append(resolvedPaths[key], doc.Path)
 		}
@@ -304,14 +308,10 @@ func (state *model) loadNPPSession() {
 				return
 			}
 			seenInView[canonical] = true
-			doc := seen[canonical]
-			if doc == nil {
-				for _, existing := range state.space.Documents {
-					if existing.Path == canonical {
-						doc = existing
-						break
-					}
-				}
+			prior, shared := preparedByPath[canonical]
+			doc := openByPath[canonical]
+			if shared {
+				doc = prepared[prior].doc
 			}
 			format, explicit := document.EncodingFromCodePage(file.Encoding)
 			if doc == nil {
@@ -337,30 +337,33 @@ func (state *model) loadNPPSession() {
 					return
 				}
 			}
-			foldMode := language
-			if file.Language == "" {
-				foldMode = state.languageFor(doc)
-			}
-			regions := syntax.FoldRegions(foldMode, doc.Editor.String())
-			validFolds := make(map[int]bool, len(regions))
-			for _, region := range regions {
-				validFolds[region.Header] = true
-			}
-			for _, line := range file.Folds {
-				if !validFolds[line] {
-					state.notice = fmt.Sprintf("Session fold line %d is unavailable in %s", line, canonical)
-					return
+			if len(file.Folds) != 0 {
+				foldMode := language
+				if file.Language == "" {
+					foldMode = state.languageFor(doc)
 				}
-			}
-			if existing := seen[canonical]; existing != nil {
-				for _, item := range prepared {
-					if item.doc == existing && (!slices.Equal(item.file.Marks, file.Marks) || !slices.Equal(item.file.Folds, file.Folds) || item.file.ReadOnly != file.ReadOnly || item.file.Pinned != file.Pinned || item.file.Color != file.Color || item.language != language) {
-						state.notice = "Session has conflicting document state for " + canonical
+				regions := syntax.FoldRegions(foldMode, doc.Editor.String())
+				validFolds := make(map[int]bool, len(regions))
+				for _, region := range regions {
+					validFolds[region.Header] = true
+				}
+				for _, line := range file.Folds {
+					if !validFolds[line] {
+						state.notice = fmt.Sprintf("Session fold line %d is unavailable in %s", line, canonical)
 						return
 					}
 				}
 			}
-			seen[canonical] = doc
+			if shared {
+				item := prepared[prior]
+				if !slices.Equal(item.file.Marks, file.Marks) || !slices.Equal(item.file.Folds, file.Folds) ||
+					item.file.ReadOnly != file.ReadOnly || item.file.Pinned != file.Pinned || item.file.Color != file.Color || item.language != language {
+					state.notice = "Session has conflicting document state for " + canonical
+					return
+				}
+			} else {
+				preparedByPath[canonical] = len(prepared)
+			}
 			prepared = append(prepared, preparedNPPFile{file: file, doc: doc, pane: pane, language: language})
 			paneFiles[pane] = append(paneFiles[pane], doc)
 		}
@@ -446,5 +449,5 @@ func (state *model) loadNPPSession() {
 		state.notice = "Session folders partially loaded: " + err.Error()
 		return
 	}
-	state.notice = fmt.Sprintf("Loaded %d session file(s), %d folder(s)", len(seen), len(folders))
+	state.notice = fmt.Sprintf("Loaded %d session file(s), %d folder(s)", len(preparedByPath), len(folders))
 }
