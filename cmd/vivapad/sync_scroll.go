@@ -17,7 +17,7 @@ func (state *model) captureSyncScroll() {
 }
 
 func (state *model) syncScrollFrom(pane int) {
-	if !state.splitEnabled || pane < 0 || pane > 1 || !state.syncVertical && !state.syncHorizontal {
+	if state.distractionFree || !state.splitEnabled || pane < 0 || pane > 1 || !state.syncVertical && !state.syncHorizontal {
 		return
 	}
 	source, peer := state.codeEditorForPane(pane), state.codeEditorForPane(1-pane)

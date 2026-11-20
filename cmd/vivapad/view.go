@@ -41,7 +41,7 @@ var menuCommands = [...][]string{
 		"Replace in Files...", "Find All in Current Document", "Find All in Open Documents", "Replace All in Open Documents",
 		"Clear Marks", "Next Change", "Previous Change", "Clear Change History",
 	},
-	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views"},
+	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand},
 	{"Unix (LF)", "Windows (CR LF)", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE", "GB18030", "Windows-1252", "Character sets"},
 	{"Normal Text", "Go", "JavaScript", "TypeScript", "Python", "JSON", "HTML", "CSS", "Markdown", "SQL"},
 	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off"},
@@ -83,19 +83,28 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 		state.paintMenuBar(canvas, size.Width)
 		state.paintToolbar(canvas, size.Width)
 	}
-	state.paintTabs(canvas, size.Width)
+	if !state.distractionFree {
+		state.paintTabs(canvas, size.Width)
+	}
 	if state.fullscreen {
 		bounds := gfx.Rect{X: size.Width - 30, Width: 30, Height: tabHeight}
 		canvas.Border(bounds, 1, palette.border, palette.tabs)
 		canvas.DrawIcon(fullscreenRestoreIcon, bounds.Inset(gfx.All(6)), palette.text)
-		canvas.HitWithOptions(fullscreenRestoreID, bounds, "Exit full screen", gfx.HitOptions{Role: gfx.RoleButton, Hint: "Restore window"})
+		label := "Exit full screen"
+		if state.distractionFree {
+			label = "Exit Distraction Free Mode"
+		}
+		canvas.HitWithOptions(fullscreenRestoreID, bounds, label, gfx.HitOptions{Role: gfx.RoleButton, Hint: "Restore window"})
 		if canvas.Clicked(fullscreenRestoreID) {
-			state.command("Toggle Full Screen Mode")
+			state.command(state.fullscreenExitCommand())
 		}
 	}
 
 	bottom := size.Height - statusHeight
-	showResults := state.resultsOpen && !state.searchOpen && !state.goToOpen && !state.incrementOpen
+	if state.distractionFree {
+		bottom = size.Height
+	}
+	showResults := !state.distractionFree && state.resultsOpen && !state.searchOpen && !state.goToOpen && !state.incrementOpen
 	if showResults {
 		bottom -= resultPaneHeight(size.Height)
 	}
@@ -118,6 +127,9 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	if state.fullscreen {
 		top = tabHeight
 	}
+	if state.distractionFree {
+		panelWidth, mapWidth, top = 0, 0, 0
+	}
 	editorBounds := gfx.Rect{X: panelWidth, Y: top, Width: size.Width - panelWidth - mapWidth, Height: max(64, bottom-top)}
 	if panelWidth > 0 {
 		leftBounds := gfx.Rect{Y: editorBounds.Y, Width: panelWidth, Height: editorBounds.Height}
@@ -134,8 +146,14 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 			state.paintFolderPanel(canvas, leftBounds)
 		}
 	}
-	state.paintEditor(canvas, editorBounds)
-	if state.documentMapVisible {
+	if state.distractionFree {
+		padding := editorBounds.Width / 4
+		editorBounds.X, editorBounds.Width = padding, editorBounds.Width-2*padding
+		state.paintPane(canvas, editorBounds, state.activePane, state.paneDocument(state.activePane))
+	} else {
+		state.paintEditor(canvas, editorBounds)
+	}
+	if !state.distractionFree && state.documentMapVisible {
 		state.paintDocumentMap(canvas, gfx.Rect{X: size.Width - mapWidth, Y: editorBounds.Y, Width: mapWidth, Height: editorBounds.Height}, editorBounds.Height)
 	}
 	if state.searchOpen {
@@ -148,7 +166,9 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	if showResults {
 		state.paintFileResults(canvas, size.Width, size.Height-statusHeight-resultPaneHeight(size.Height), resultPaneHeight(size.Height))
 	}
-	state.paintStatus(canvas, size.Width, size.Height-statusHeight)
+	if !state.distractionFree {
+		state.paintStatus(canvas, size.Width, size.Height-statusHeight)
+	}
 	if !state.fullscreen {
 		state.paintOpenMenu(canvas, size)
 	}
@@ -1470,6 +1490,8 @@ func (state *model) menuSelected(command string) bool {
 		return state.splitEnabled
 	case "Toggle Full Screen Mode":
 		return state.fullscreen
+	case distractionFreeCommand:
+		return state.distractionFree
 	case "Synchronize Zoom Across Views":
 		return state.zoomSync
 	case "Folder as Workspace":

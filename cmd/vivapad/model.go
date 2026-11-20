@@ -419,6 +419,8 @@ type model struct {
 	closeWindow                   func()
 	requestFullscreen             func(bool) error
 	fullscreen                    bool
+	distractionFree               bool
+	distractionFreeEntering       bool
 	requestAlwaysOnTop            func(bool) error
 	alwaysOnTop                   bool
 	functionListVisible           bool
@@ -959,11 +961,7 @@ func newConfig(state *model) app.Config {
 		}
 		state.invalidator.Invalidate()
 	}
-	config.OnFullscreen = func(fullscreen bool) {
-		state.fullscreen = fullscreen
-		state.menuOpen, state.menuOverflowOpen = -1, false
-		state.invalidator.Invalidate()
-	}
+	config.OnFullscreen = state.observeFullscreen
 	config.TextInput = func(context app.TextInputContext) *app.TextInput {
 		input := state.resolveTextInput(context)
 		state.reconcileTextOwner(context.ID, input)
@@ -1808,7 +1806,7 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.fullscreen {
-				state.command("Toggle Full Screen Mode")
+				state.command(state.fullscreenExitCommand())
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
@@ -3315,6 +3313,8 @@ func (state *model) command(command string) {
 		} else if err := state.requestFullscreen(!state.fullscreen); err != nil {
 			state.notice = "Full screen unavailable: " + err.Error()
 		}
+	case distractionFreeCommand:
+		state.toggleDistractionFree()
 	case "Always on Top":
 		if state.requestAlwaysOnTop == nil {
 			state.notice = "Always on Top unavailable"
