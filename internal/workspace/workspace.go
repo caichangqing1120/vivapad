@@ -3,9 +3,12 @@ package workspace
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"golang.org/x/text/unicode/norm"
 
 	"vivapad/internal/document"
 )
@@ -60,28 +63,41 @@ func (space *Workspace) Select(index int) bool {
 }
 
 func (space *Workspace) Open(path string) error {
-	return space.open(path, nil, false)
+	return space.open(path, nil, openExplicit)
 }
 
 func (space *Workspace) OpenWithEncoding(path string, encoding document.Encoding) error {
-	return space.open(path, &encoding, false)
+	return space.open(path, &encoding, openExplicit)
+}
+
+// OpenInteractive reuses open tabs for verified spelling aliases of a user-selected path.
+func (space *Workspace) OpenInteractive(path string) error {
+	return space.open(path, nil, openInteractive)
 }
 
 // OpenRecorded opens an entry whose path was canonicalized when recorded.
 // UTF8 is the history default and requests normal encoding detection.
 func (space *Workspace) OpenRecorded(path string, encoding document.Encoding) error {
 	if encoding == document.UTF8 {
-		return space.open(path, nil, true)
+		return space.open(path, nil, openRecorded)
 	}
-	return space.open(path, &encoding, true)
+	return space.open(path, &encoding, openRecorded)
 }
 
-func (space *Workspace) open(path string, encoding *document.Encoding, recorded bool) error {
+type openMode uint8
+
+const (
+	openExplicit openMode = iota
+	openRecorded
+	openInteractive
+)
+
+func (space *Workspace) open(path string, encoding *document.Encoding, mode openMode) error {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return err
 	}
-	if recorded {
+	if mode == openRecorded {
 		if err := document.CheckRecordedPath(path); err != nil {
 			return err
 		}
@@ -97,6 +113,12 @@ func (space *Workspace) open(path string, encoding *document.Encoding, recorded 
 			return nil
 		}
 	}
+	if mode == openInteractive {
+		if index := space.findOpenSpellingAlias(absolute); index >= 0 {
+			space.Active = index
+			return nil
+		}
+	}
 	var doc *document.Document
 	if encoding == nil {
 		doc, err = document.Open(absolute)
@@ -106,10 +128,35 @@ func (space *Workspace) open(path string, encoding *document.Encoding, recorded 
 	if err != nil {
 		return err
 	}
-	if recorded && doc.Path != path {
+	if mode == openRecorded && doc.Path != path {
 		return document.ErrDiskPathRedirected
 	}
 	return space.AddOpened(doc)
+}
+
+func (space *Workspace) findOpenSpellingAlias(path string) int {
+	spelling := norm.NFC.String(path)
+	var incoming os.FileInfo
+	for index, doc := range space.Documents {
+		if doc.Path == "" || !strings.EqualFold(spelling, norm.NFC.String(doc.Path)) {
+			continue
+		}
+		if incoming == nil {
+			info, err := os.Stat(path)
+			if err != nil || !info.Mode().IsRegular() {
+				return -1
+			}
+			incoming = info
+		}
+		// A spelling match is only a hint: distinct files and redirected tabs
+		// must keep their own bindings.
+		if doc.CheckDiskPath() == nil {
+			if existing, err := os.Lstat(doc.Path); err == nil && os.SameFile(existing, incoming) {
+				return index
+			}
+		}
+	}
+	return -1
 }
 
 func (space *Workspace) AddOpened(doc *document.Document) error {

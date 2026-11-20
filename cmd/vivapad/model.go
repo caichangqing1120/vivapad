@@ -2191,7 +2191,7 @@ func (state *model) openFiles() {
 
 func (state *model) openDocumentPaths(paths []string) (opened bool) {
 	for _, path := range paths {
-		if err := state.space.Open(path); err != nil {
+		if err := state.space.OpenInteractive(path); err != nil {
 			state.notice = err.Error()
 		} else {
 			state.showInActivePane(state.space.Current())

@@ -68,3 +68,79 @@ func TestSystemDocumentsWaitForDirtyCloseDecision(t *testing.T) {
 		t.Fatal("canceling Close did not preserve the draft and open the queued document")
 	}
 }
+
+func TestSystemDocumentsReuseFileSpellingAlias(t *testing.T) {
+	for _, test := range []struct{ name, original, alias string }{
+		{"case", "Report.txt", "report.txt"},
+		{"normalization", "caf\u00e9.txt", "cafe\u0301.txt"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			path, alias := filepath.Join(root, test.original), filepath.Join(root, test.alias)
+			const disk = "saved\r\ntext"
+			if err := os.WriteFile(path, []byte(disk), 0600); err != nil {
+				t.Fatal(err)
+			}
+			// Case-sensitive filesystems need a second name for the same file.
+			if _, err := os.Stat(alias); os.IsNotExist(err) {
+				if err := os.Link(path, alias); err != nil {
+					t.Fatalf("create spelling alias: %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			state, driver := startDriver(t)
+			state.queueSystemDocument(path)
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			opened := state.space.Current()
+			opened.Editor.Insert("draft ")
+			before := opened.Editor.String()
+			state.queueSystemDocument(alias)
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			if len(state.space.Documents) != 1 || state.space.Current() != opened || !opened.Dirty() || opened.Editor.String() != before {
+				t.Fatalf("alias did not reuse the dirty tab: %d tabs, current %q, notice %q", len(state.space.Documents), state.space.Current().Path, state.notice)
+			}
+			if len(state.recentEntries) != 1 || state.recentEntries[0].Path != opened.Path {
+				t.Fatalf("alias changed recent paths: %+v", state.recentEntries)
+			}
+			if read, err := os.ReadFile(path); err != nil || string(read) != disk {
+				t.Fatalf("source bytes = %q, error = %v", read, err)
+			}
+		})
+	}
+}
+
+func TestSystemDocumentsKeepDistinctFileSpellings(t *testing.T) {
+	root := t.TempDir()
+	first, second := filepath.Join(root, "Report.txt"), filepath.Join(root, "report.txt")
+	if err := os.WriteFile(first, []byte("first"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(second, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if os.IsExist(err) {
+		t.Skip("test filesystem does not distinguish case")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("second"); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	state, driver := startDriver(t)
+	state.queueSystemDocument(first)
+	state.queueSystemDocument(second)
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.space.Documents) != 2 || state.space.Current().Editor.String() != "second" {
+		t.Fatal("distinct files with the same folded spelling were merged")
+	}
+}
