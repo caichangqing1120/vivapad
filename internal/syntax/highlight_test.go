@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/vivaui/viva/gfx"
 )
 
@@ -99,5 +100,42 @@ func TestJSON5HighlightsExtendedTokensWithoutChangingJSON(t *testing.T) {
 	}
 	if ordinary := ranges(".json", line); slices.Contains(ordinary, painted("+0x2A", chroma.LiteralNumber)) {
 		t.Fatalf("plain JSON inherited the JSON5 number rule: %v", ordinary)
+	}
+}
+
+func TestJSON5HighlightsKeysWithBlockCommentsBeforeColon(t *testing.T) {
+	lexer := lexers.Get("JSON5")
+	for _, tc := range []struct {
+		name, key, gap string
+		comments       []string
+	}{
+		{"identifier", "answer", "/* : inside */", []string{"/* : inside */"}},
+		{"quoted", `'title'`, " \t/**/  /* stars ***/ ", []string{"/**/", "/* stars ***/"}},
+		{"escaped Unicode", `caf\u00e9`, "/* \u6807\u7b7e */", []string{"/* \u6807\u7b7e */"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tokenise := func(source string) []chroma.Token {
+				t.Helper()
+				iter, err := lexer.Tokenise(nil, source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return iter.Tokens()
+			}
+			const value = `"value"`
+			tokens := tokenise("{" + tc.key + tc.gap + ": " + value + " /* : here */}")
+			key := chroma.Token{Type: chroma.NameTag, Value: tc.key}
+			if !slices.Contains(tokens, key) || !slices.Contains(tokens, chroma.Token{Type: chroma.LiteralStringDouble, Value: value}) {
+				t.Errorf("property or string highlighted incorrectly: %v", tokens)
+			}
+			for _, value := range tc.comments {
+				if !slices.Contains(tokens, chroma.Token{Type: chroma.CommentMultiline, Value: value}) {
+					t.Errorf("comment %q was not highlighted separately: %v", value, tokens)
+				}
+			}
+			if slices.Contains(tokenise(tc.key+" /* unterminated :"), key) {
+				t.Error("colon inside an unclosed comment highlighted a property")
+			}
+		})
 	}
 }

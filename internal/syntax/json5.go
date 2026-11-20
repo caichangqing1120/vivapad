@@ -8,14 +8,15 @@ import (
 // JSON5 adds identifier keys, quoted strings, comments, and signed decimal,
 // hexadecimal, and nonfinite numbers beyond Chroma's stock JSON rules.
 const (
-	json5Space  = `[\t\v\f \p{Zs}\uFEFF]`
-	json5Key    = `(?=` + json5Space + `*:)`
-	json5Ident  = `(?:[$_\p{L}\p{Nl}]|\\u[0-9a-fA-F]{4})(?:[$_\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}\u200C\u200D]|\\u[0-9a-fA-F]{4})*`
-	json5SQBody = `'(?:\\(?:\r\n|[\s\S])|[^'\\\r\n])*`
-	json5DQBody = `"(?:\\(?:\r\n|[\s\S])|[^"\\\r\n])*`
-	json5SQ     = json5SQBody + `'`
-	json5DQ     = json5DQBody + `"`
-	json5End    = `(?![$_\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}\u200C\u200D])`
+	json5Space       = `[\t\v\f \p{Zs}\uFEFF]`
+	json5InlineBlock = `/\*(?:[^*\r\n]|\*(?!/))*\*/`
+	json5Key         = `(?=(?:` + json5Space + `|` + json5InlineBlock + `)*:)`
+	json5Ident       = `(?:[$_\p{L}\p{Nl}]|\\u[0-9a-fA-F]{4})(?:[$_\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}\u200C\u200D]|\\u[0-9a-fA-F]{4})*`
+	json5SQBody      = `'(?:\\(?:\r\n|[\s\S])|[^'\\\r\n])*`
+	json5DQBody      = `"(?:\\(?:\r\n|[\s\S])|[^"\\\r\n])*`
+	json5SQ          = json5SQBody + `'`
+	json5DQ          = json5DQBody + `"`
+	json5End         = `(?![$_\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}\u200C\u200D])`
 )
 
 var _ = lexers.Register(chroma.MustNewLexer(&chroma.Config{Name: "JSON5"}, func() chroma.Rules {
