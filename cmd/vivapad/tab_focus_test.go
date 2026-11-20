@@ -87,3 +87,49 @@ func TestSplitTabClickFocusesSelectedPane(t *testing.T) {
 		t.Fatalf("split edits: left=%q right=%q", left.Editor.String(), right.Editor.String())
 	}
 }
+
+func TestTabClickRequestsEditorFocusDuringTheClick(t *testing.T) {
+	for _, split := range []bool{false, true} {
+		name := "single pane"
+		if split {
+			name = "split panes"
+		}
+		t.Run(name, func(t *testing.T) {
+			state := newModel()
+			left := state.space.Current()
+			left.Editor.Insert("left")
+			right := state.space.NewDocument()
+			right.Editor.Insert("right")
+			steps := []struct {
+				tab, editor gfx.ID
+			}{{tabScope.At(0), editorID}, {tabScope.At(1), editorID}}
+			if split {
+				state.toggleSplit()
+				steps[0].tab = leftTabScope.At(0)
+				steps[1].tab, steps[1].editor = rightTabScope.At(1), rightEditorID
+			}
+			config := newConfig(state)
+			paint := config.Paint
+			requests := make(map[gfx.ID]gfx.ID)
+			config.Paint = func(canvas *gfx.Canvas, size gfx.Size) {
+				paint(canvas, size)
+				for _, step := range steps {
+					if canvas.Clicked(step.tab) {
+						requests[step.tab] = canvas.FocusRequest()
+					}
+				}
+			}
+			driver, err := app.NewDriver(config, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer driver.Close()
+			for _, step := range steps {
+				clickID(t, driver, step.tab)
+				if got := requests[step.tab]; got != step.editor {
+					t.Errorf("click on %v requested focus %v during its event; want %v", step.tab, got, step.editor)
+				}
+			}
+		})
+	}
+}

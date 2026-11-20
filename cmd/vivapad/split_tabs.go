@@ -115,7 +115,7 @@ func (state *model) paintPaneTabs(canvas *gfx.Canvas, pane int, bounds gfx.Rect)
 		state.activePane = pane
 		state.space.Select(chosen)
 		state.paneDocs[pane] = state.space.Current()
-		state.requestEditorCommandFocus()
+		state.focusEditorOnTabClick(canvas)
 	}
 	if closing >= 0 {
 		state.closePaneTab(pane, state.space.Documents[closing])

@@ -63,14 +63,27 @@ func (state *model) requestNativeChooserFocus() {
 	state.invalidator.Invalidate()
 }
 
+func (state *model) focusEditorOnTabClick(canvas *gfx.Canvas) {
+	if state.editorCommandFocusBlocked() {
+		return
+	}
+	// Carry focus out of this click so native input does not wait for a redraw.
+	state.focusViewRequested, state.focusViewArmed = false, false
+	canvas.RequestFocus(state.commandEditorFocusID())
+}
+
+func (state *model) commandEditorFocusID() gfx.ID {
+	if state.splitEnabled && state.activePane == 1 {
+		return rightEditorID
+	}
+	return editorID
+}
+
 func (state *model) paintEditorCommandFocus(canvas *gfx.Canvas) {
 	if !state.focusViewRequested {
 		return
 	}
-	focus := editorID
-	if state.splitEnabled && state.activePane == 1 {
-		focus = rightEditorID
-	}
+	focus := state.commandEditorFocusID()
 	requested := canvas.FocusRequest()
 	if state.editorCommandFocusBlocked() || requested != (gfx.ID{}) && requested != focus {
 		state.focusViewRequested, state.focusViewArmed = false, false
