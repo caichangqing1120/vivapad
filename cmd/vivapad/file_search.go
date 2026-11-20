@@ -104,10 +104,10 @@ func matchesReplacePath(openedPath, plannedPath string) bool {
 	if openedPath == plannedPath {
 		return true
 	}
-	if !strings.EqualFold(openedPath, plannedPath) {
+	if !strings.EqualFold(norm.NFC.String(openedPath), norm.NFC.String(plannedPath)) {
 		return false
 	}
-	// On case-sensitive volumes, different spellings can name different files.
+	// Case and Unicode spelling variants can also name distinct files.
 	opened, err := os.Stat(openedPath)
 	if err != nil {
 		return false

@@ -13,25 +13,43 @@ import (
 )
 
 func TestDirectoryReplaceRespectsCaseAliasesOfOpenTabs(t *testing.T) {
+	testDirectoryReplacePathSpellings(t, "replace.txt", "REPLACE.txt")
+}
+
+func TestDirectoryReplaceRespectsUnicodeAliasesOfOpenTabs(t *testing.T) {
+	testDirectoryReplacePathSpellings(t, "caf\u00e9.txt", "cafe\u0301.txt")
+}
+
+func testDirectoryReplacePathSpellings(t *testing.T, name, alternate string) {
+	t.Helper()
 	for _, tc := range []struct {
 		name           string
 		alias, isDirty bool
 	}{
 		{"dirty alias", true, true},
 		{"clean alias", true, false},
-		{"different files on a case-sensitive volume", false, true},
+		{"distinct files", false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
-			path := filepath.Join(root, "replace.txt")
-			opened := filepath.Join(root, "REPLACE.txt")
+			path := filepath.Join(root, name)
 			const original, replaced = "\xef\xbb\xbfcat\r\n", "\xef\xbb\xbfdog\r\n"
 			if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 				t.Fatal(err)
 			}
-			_, err := os.Stat(opened)
+			entries, err := os.ReadDir(root)
+			if err != nil || len(entries) != 1 {
+				t.Fatalf("test directory entries = %v: %v", entries, err)
+			}
+			diskName, otherName := entries[0].Name(), alternate
+			if diskName == alternate {
+				otherName = name
+			}
+			path = filepath.Join(root, diskName)
+			opened := filepath.Join(root, otherName)
+			_, err = os.Stat(opened)
 			if tc.alias && os.IsNotExist(err) || !tc.alias && err == nil {
-				t.Skip("test requires a different filesystem case mode")
+				t.Skip("test requires different filename equivalence rules")
 			}
 			if tc.alias && err != nil || !tc.alias && !os.IsNotExist(err) {
 				t.Fatal(err)
@@ -48,9 +66,12 @@ func TestDirectoryReplaceRespectsCaseAliasesOfOpenTabs(t *testing.T) {
 				previous.Editor.Insert("local")
 			}
 			text, caret := previous.Editor.String(), previous.Editor.Caret()
-			plan, err := searchfiles.PreviewReplace(t.Context(), root, "cat", "dog", document.SearchOptions{}, searchfiles.Options{Pattern: "replace.txt"})
+			plan, err := searchfiles.PreviewReplace(t.Context(), root, "cat", "dog", document.SearchOptions{}, searchfiles.Options{Pattern: diskName})
 			if err != nil || len(plan.Changes) != 1 {
 				t.Fatalf("expected one planned file: %+v, %v", plan, err)
+			}
+			if previous.Path == plan.Changes[0].Path {
+				t.Fatal("test did not preserve the two path spellings")
 			}
 			state.replacePlan, state.replaceConfirmOpen = plan, true
 			driver, err := app.NewDriver(newConfig(state), nil)
