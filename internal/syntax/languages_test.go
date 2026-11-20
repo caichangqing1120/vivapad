@@ -143,3 +143,28 @@ func TestYAMLExtensionAliasUsesRegisteredLexer(t *testing.T) {
 		t.Fatal("YAML alias has no highlighted tokens")
 	}
 }
+
+func TestCatalogExtensionAliasesResolveToTheirPrimaryModes(t *testing.T) {
+	for _, tc := range []struct{ extension, primary, line string }{
+		{".ADB", ".ada", "procedure Demo is"},
+		{".ads", ".ada", "package Demo is"},
+		{".cmd", ".bat", "REM an example"},
+		{".mli", ".ml", "val answer : int"},
+		{".cpy", ".cob", "       IDENTIFICATION DIVISION."},
+		{".nsh", ".nsi", "Section \"Demo\""},
+	} {
+		t.Run(tc.extension, func(t *testing.T) {
+			primary, ok := LanguageByMode(tc.primary)
+			alias, matched := LanguageByMode(tc.extension)
+			if !ok || !matched || alias != primary {
+				t.Fatalf("%s = %+v (%v); want %+v", tc.extension, alias, matched, primary)
+			}
+			var highlighter Highlighter
+			want := highlighter.Highlight(tc.primary, tc.line, nil)
+			got := highlighter.Highlight(tc.extension, tc.line, nil)
+			if len(want) == 0 || !slices.Equal(got, want) {
+				t.Fatalf("%s rendered different highlight runs: %v; want %v", tc.extension, got, want)
+			}
+		})
+	}
+}

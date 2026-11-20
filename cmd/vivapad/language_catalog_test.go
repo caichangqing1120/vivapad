@@ -342,3 +342,46 @@ func TestExplicitLanguageVariantsKeepExtensionDefaults(t *testing.T) {
 		})
 	}
 }
+
+func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testing.T) {
+	for _, tc := range []struct{ file, label, nppName, comment string }{
+		{"demo.ADB", "Ada", "ada", "--"},
+		{"demo.ads", "Ada", "ada", "--"},
+		{"demo.cmd", "Batch", "batch", "REM"},
+		{"demo.mli", "Caml", "caml", ""},
+		{"demo.cpy", "COBOL", "cobol", ""},
+		{"demo.nsh", "NSIS", "nsis", ";"},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), tc.file)
+			const source = "example\r\n"
+			if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+				t.Fatal(err)
+			}
+			state := newModelWithFiles([]string{path})
+			doc := state.space.Current()
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(driver.Close)
+			if !state.menuSelected(tc.label) {
+				t.Errorf("%s did not select %s automatically", tc.file, tc.label)
+			}
+			if options, ok := doc.Editor.Code(); !ok || options.LineComment != tc.comment {
+				t.Errorf("%s editing options = %+v (%v), want comment %q", tc.file, options, ok, tc.comment)
+			}
+			if exported, err := state.nppSessionState(); err != nil || len(exported.Main) != 1 || exported.Main[0].Language != tc.nppName {
+				t.Errorf("%s exported session = %+v, %v; want %q", tc.file, exported, err, tc.nppName)
+			}
+			state.command("Normal Text")
+			exported, err := state.nppSessionState()
+			if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != "normal" || state.menuSelected(tc.label) {
+				t.Errorf("%s ignored explicit Normal Text: %+v, %v", tc.file, exported, err)
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != source || doc.Dirty() {
+				t.Errorf("language detection or override modified document: %q, %v", data, err)
+			}
+		})
+	}
+}

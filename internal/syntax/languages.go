@@ -93,11 +93,23 @@ func LanguageByLabel(label string) (Language, bool) {
 }
 
 func LanguageByMode(mode string) (Language, bool) {
-	if strings.EqualFold(mode, ".yml") {
+	mode = strings.ToLower(mode)
+	switch mode {
+	case ".yml":
 		mode = ".yaml"
+	case ".adb", ".ads":
+		mode = ".ada"
+	case ".cmd":
+		mode = ".bat"
+	case ".mli":
+		mode = ".ml"
+	case ".cpy":
+		mode = ".cob"
+	case ".nsh":
+		mode = ".nsi"
 	}
 	for _, spec := range languages {
-		if spec.Mode == strings.ToLower(mode) {
+		if spec.Mode == mode {
 			return spec, true
 		}
 	}
