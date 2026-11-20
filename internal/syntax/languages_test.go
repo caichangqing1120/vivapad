@@ -75,6 +75,47 @@ func TestExpandedLanguageModesHighlightWithSelectedLexer(t *testing.T) {
 	}
 }
 
+func TestResourceFileHighlightsResourceSyntax(t *testing.T) {
+	var highlighter Highlighter
+	for _, tc := range []struct {
+		line, token string
+		kind        chroma.TokenType
+	}{
+		{`IDD_MAIN DIALOGEX 0, 0, 120, 60`, "DIALOGEX", chroma.Keyword},
+		{`IDR_MAIN RCDATA "theme.dat"`, "RCDATA", chroma.Keyword},
+		{`    CAPTION "DIALOGEX"`, "DIALOGEX", chroma.LiteralString},
+		{`// DIALOGEX`, "DIALOGEX", chroma.Comment},
+		{`/* STRINGTABLE */`, "STRINGTABLE", chroma.Comment},
+		{`  #include "resource.h"`, "#", chroma.Comment},
+		{`LANGUAGE 0x09, 1`, "0x09", chroma.LiteralNumber},
+	} {
+		start := strings.Index(tc.line, tc.token)
+		want, _ := tokenColor(tc.kind)
+		var covered int
+		for _, run := range highlighter.Highlight(".rc", tc.line, nil) {
+			if run.Color == want {
+				covered += max(0, min(start+len(tc.token), run.End)-max(start, run.Start))
+			}
+		}
+		if covered != len(tc.token) {
+			t.Errorf("%q in %q: highlighted %d/%d bytes as %v", tc.token, tc.line, covered, len(tc.token), tc.kind)
+		}
+	}
+	const ordinary = "dialogex DIALOGEX_ID IDD_MAIN class"
+	if runs := highlighter.Highlight(".rc", ordinary, nil); len(runs) != 0 {
+		t.Errorf("Resource file highlighted ordinary identifiers in %q: %+v", ordinary, runs)
+	}
+	for _, name := range []string{"C", "C++"} {
+		next, err := lexers.Get(name).Tokenise(nil, "DIALOGEX")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := next(); got.Value != "DIALOGEX" || got.Type != chroma.Name {
+			t.Errorf("%s resource identifier = %+v, want ordinary name", name, got)
+		}
+	}
+}
+
 func TestAdditionalOriginalLanguagesHighlight(t *testing.T) {
 	var highlighter Highlighter
 	for _, tc := range []struct{ name, id, line string }{

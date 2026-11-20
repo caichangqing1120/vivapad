@@ -83,6 +83,7 @@ var languages = [...]Language{
 	{"Intel HEX", ".hex", "ihex", "IDM_LANG_IHEX", "Intel HEX", "", ""},
 	{"S-Record", ".srec", "srec", "IDM_LANG_SREC", "Motorola S-Record", "", ""},
 	{"Tektronix extended HEX", ".tek", "tehex", "IDM_LANG_TEHEX", "Tektronix extended HEX", "", ""},
+	{"Resource file", ".rc", "rc", "IDM_LANG_RC", "Windows Resource", "//", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }

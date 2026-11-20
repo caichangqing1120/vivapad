@@ -353,6 +353,7 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.cpy", "COBOL", "cobol", ""},
 		{"demo.nsh", "NSIS", "nsis", ";"},
 		{"demo.jsonc", "JSON5", "json5", "//"},
+		{"demo.RC", "Resource file", "rc", "//"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)
@@ -385,5 +386,56 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 				t.Errorf("language detection or override modified document: %q, %v", data, err)
 			}
 		})
+	}
+}
+
+func TestResourceFileMenuRoundTripsSessionsWithoutEditing(t *testing.T) {
+	root := t.TempDir()
+	path, sessionPath := filepath.Join(root, "resources.txt"), filepath.Join(root, "session.json")
+	const source = "\xef\xbb\xbfSTRINGTABLE\r\nBEGIN\r\n  IDS_TITLE \"Demo\"\r\nEND\r\n"
+	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newStartupModel([]string{path}, sessionPath)
+	doc := state.space.Current()
+	before := doc.Editor.String()
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(5))
+	clickLanguage(t, driver, "Resource file")
+	if !state.menuSelected("Resource file") || doc.Dirty() || doc.Editor.CanUndo() || doc.Editor.String() != before {
+		t.Fatal("selecting Resource file did not keep the clean buffer and history")
+	}
+	newConfig(state).OnCloseRequest(func() {})
+	reopened := newStartupModel(nil, sessionPath)
+	if doc := reopened.space.Current(); doc.Path == "" || reopened.languageFor(doc) != ".rc" || doc.Editor.String() != before {
+		t.Fatalf("private session did not restore Resource file: %q", reopened.notice)
+	}
+	exported, err := reopened.nppSessionState()
+	if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != "rc" {
+		t.Fatalf("Resource file export = %+v, %v", exported, err)
+	}
+	xmlPath := filepath.Join(root, "session.xml")
+	if err := session.SaveNPP(xmlPath, exported); err != nil {
+		t.Fatal(err)
+	}
+	loaded, loader := startDriver(t)
+	if err := loader.QueueOpenFiles([]string{xmlPath}, nil); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, loader, menuScope.At(0))
+	clickID(t, loader, menuItemScope.At(13))
+	clickID(t, loader, sessionScope.At(0))
+	if doc := loaded.space.Current(); doc.Path == "" || loaded.languageFor(doc) != ".rc" || doc.Dirty() || doc.Editor.String() != before {
+		t.Fatalf("NPP session did not restore Resource file: %q", loaded.notice)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != source {
+		t.Fatalf("language round trip changed disk bytes = %q, %v", data, err)
 	}
 }
