@@ -88,6 +88,14 @@ func (lexer *hexRecordLexer) line(tokens []chroma.Token, line string) []chroma.T
 	case ':':
 		count, countOK := hexByte(line, 1)
 		kind, typeOK := hexByte(line, 7)
+		switch kind {
+		case 1:
+			countOK = countOK && count == 0
+		case 2, 4:
+			countOK = countOK && count == 2
+		case 3, 5:
+			countOK = countOK && count == 4
+		}
 		checksum := 9 + 2*count
 		end := checksum + 2
 		field(1, 3, chroma.LiteralNumber, countOK && len(line) == end)
@@ -98,8 +106,10 @@ func (lexer *hexRecordLexer) line(tokens []chroma.Token, line string) []chroma.T
 		field(end, len(line), chroma.Error, false)
 	case 'S':
 		addrBytes := 0
+		var kind byte
 		if len(line) > 1 {
-			switch line[1] {
+			kind = line[1]
+			switch kind {
 			case '0', '1', '5', '9':
 				addrBytes = 2
 			case '2', '6', '8':
@@ -109,6 +119,9 @@ func (lexer *hexRecordLexer) line(tokens []chroma.Token, line string) []chroma.T
 			}
 		}
 		count, countOK := hexByte(line, 2)
+		if kind >= '5' && kind <= '9' {
+			countOK = countOK && count == addrBytes+1
+		}
 		addressEnd := 4 + 2*addrBytes
 		checksum := max(addressEnd, 2+2*count)
 		end := checksum + 2

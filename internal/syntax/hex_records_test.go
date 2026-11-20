@@ -90,3 +90,37 @@ func TestHexRecordLanguageMappings(t *testing.T) {
 		}
 	}
 }
+
+func TestHexRecordCountsFollowRecordType(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode, record string
+		countIndex         int
+		valid              bool
+	}{
+		{"Intel EOF without data", "ihex", ":00000001FF", 1, true},
+		{"Intel EOF with data", "ihex", ":0100000101FD", 1, false},
+		{"Intel extended address", "ihex", ":020000020100FB", 1, true},
+		{"Intel short extended address", "ihex", ":0100000201FC", 1, false},
+		{"Intel start address", "ihex", ":0400000300010002F6", 1, true},
+		{"Intel short start address", "ihex", ":020000030102F8", 1, false},
+		{"S-Record count without data", "srec", "S5030001FB", 2, true},
+		{"S-Record count with data", "srec", "S5040001AA50", 2, false},
+		{"S-Record start without data", "srec", "S9031234B6", 2, true},
+		{"S-Record start with data", "srec", "S70600001234AA09", 2, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			iterator, err := lexers.Get(tc.mode).Tokenise(nil, tc.record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := iterator.Tokens()
+			want := chroma.Error
+			if tc.valid {
+				want = chroma.LiteralNumber
+			}
+			if len(got) <= tc.countIndex || got[tc.countIndex].Type != want || got[len(got)-1].Type != chroma.Comment {
+				t.Fatalf("count should be %v and checksum should remain valid: %v", want, got)
+			}
+		})
+	}
+}
