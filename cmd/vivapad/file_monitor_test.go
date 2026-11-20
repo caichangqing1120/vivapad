@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,6 +84,69 @@ func TestFileMonitorSignalsAppendReplaceAndPersistentDeletion(t *testing.T) {
 	case <-wake:
 		t.Fatal("closed monitor retained a live wake")
 	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestMonitoringKeepsUnchangedBindingAndReloadsSameLengthEdits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "current.log")
+	before := bytes.Repeat([]byte("start\r\n"), 12_000)
+	if err := os.WriteFile(path, before, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{path})
+	doc := state.space.Current()
+	state.toggleMonitoring()
+	t.Cleanup(state.stopAllMonitors)
+	watcher := state.monitors[doc]
+	if watcher == nil {
+		t.Fatalf("monitoring did not start: %q", state.notice)
+	}
+	doc.Editor.MoveTo(2, false)
+	watcher.changed.Store(true)
+	state.consumeMonitorChanges()
+	if state.space.Current() != doc || doc.Editor.Caret() != 2 {
+		t.Fatal("unchanged bytes replaced the document or moved the caret")
+	}
+	before[len(before)-3] = '!'
+	if err := os.WriteFile(path, before, 0600); err != nil {
+		t.Fatal(err)
+	}
+	watcher.changed.Store(true)
+	state.consumeMonitorChanges()
+	updated := state.space.Current()
+	if updated == doc || !strings.HasSuffix(updated.Editor.String(), "star!\n") ||
+		updated.Editor.Caret() != updated.Editor.RuneCount() || state.monitors[updated] != watcher {
+		t.Fatal("monitor failed to reload the same-length edit and follow its end")
+	}
+}
+
+func BenchmarkMonitoringUnchangedNotification(b *testing.B) {
+	for _, tc := range []struct {
+		name string
+		size int
+	}{{"1MiB", 1 << 20}, {"16MiB", 16 << 20}} {
+		b.Run(tc.name, func(b *testing.B) {
+			path := filepath.Join(b.TempDir(), "current.log")
+			line := append(bytes.Repeat([]byte("x"), 127), '\n')
+			if err := os.WriteFile(path, bytes.Repeat(line, tc.size/len(line)), 0600); err != nil {
+				b.Fatal(err)
+			}
+			state := newModelWithFiles([]string{path})
+			doc := state.space.Current()
+			if doc.Path == "" {
+				b.Fatalf("fixture was not opened: %q", state.notice)
+			}
+			watcher := &fileMonitor{}
+			state.monitors = map[*document.Document]*fileMonitor{doc: watcher}
+			b.ReportAllocs()
+			for b.Loop() {
+				watcher.changed.Store(true)
+				state.consumeMonitorChanges()
+				if state.space.Current() != doc {
+					b.Fatal("unchanged bytes replaced the document")
+				}
+			}
+		})
 	}
 }
 

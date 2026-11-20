@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"os"
 	"time"
@@ -91,7 +89,7 @@ func (state *model) consumeMonitorChanges() {
 			state.invalidator.Invalidate()
 			continue
 		}
-		data, err := os.ReadFile(doc.Path)
+		unchanged, err := doc.DiskMatchesSaved()
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
@@ -100,8 +98,7 @@ func (state *model) consumeMonitorChanges() {
 			state.invalidator.Invalidate()
 			continue
 		}
-		digest := sha256.Sum256(data)
-		if hex.EncodeToString(digest[:]) == doc.DiskDigest() {
+		if unchanged {
 			continue
 		}
 		index := state.documentIndex(doc)

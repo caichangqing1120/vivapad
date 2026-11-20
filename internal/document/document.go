@@ -267,6 +267,12 @@ func (doc *Document) Save(path string) error {
 	return nil
 }
 
+// DiskMatchesSaved compares the current file with the saved bytes without
+// decoding it or allocating another copy of the file.
+func (doc *Document) DiskMatchesSaved() (bool, error) {
+	return diskBytesMatch(doc.Path, doc.savedDisk)
+}
+
 func diskBytesMatch(path string, expected []byte) (bool, error) {
 	file, err := os.Open(path)
 	if err != nil {
