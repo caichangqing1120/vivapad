@@ -95,11 +95,11 @@ func intelHEXFoldRegions(value string) []FoldRegion {
 			kind, valid := hexByte(line, 7)
 			if !valid || kind != 0 {
 				finish()
-				// Wait for all fields, including the checksum digits, before
-				// folding. A checksum mismatch is handled by highlighting.
+				// A header must match its declared width, including the checksum
+				// digits. Highlighting handles checksum mismatches.
 				count, known := hexByte(line, 1)
 				if valid && (kind == 2 || kind == 4) && known && count == 2 &&
-					hexDigits(line, 3, 15) {
+					len(line) == 15 && hexDigits(line, 3, len(line)) {
 					header = lineNumber
 				}
 			}

@@ -82,6 +82,8 @@ func TestIntelHEXFoldRegionsRequireCompleteAddressRecords(t *testing.T) {
 		{"missing checksum padded with spaces", ":020000040002  ", false},
 		{"incomplete checksum", ":020000040002F ", false},
 		{"nonhex address", ":02oops040002F8", false},
+		{"extra segment address byte", ":020000020100FB00", false},
+		{"invalid suffix after linear address", ":020000040002F8oops", false},
 		{"well formed checksum mismatch", ":02000004000200", true},
 		{"complete segment address", "\t:020000020100fb", true},
 	} {
