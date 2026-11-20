@@ -369,6 +369,7 @@ type model struct {
 	oscriptHighlighters           map[*document.Document]*syntax.OScriptHighlighter
 	pureBasicHighlighters         map[*document.Document]*syntax.PureBasicHighlighter
 	gui4CliHighlighters           map[*document.Document]*syntax.Gui4CliHighlighter
+	txt2tagsHighlighters          map[*document.Document]*syntax.Txt2tagsHighlighter
 	query                         *text.Editor
 	incrementQuery                *text.Editor
 	incrementOpen                 bool
@@ -2348,6 +2349,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.oscriptHighlighters, doc)
 	delete(state.pureBasicHighlighters, doc)
 	delete(state.gui4CliHighlighters, doc)
+	delete(state.txt2tagsHighlighters, doc)
 	delete(state.bookmarks, doc)
 	delete(state.changeView, doc)
 	if state.noChangeNoticeDoc == doc {

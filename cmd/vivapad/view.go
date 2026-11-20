@@ -746,6 +746,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.gui4CliHighlighters, doc)
 	}
+	if language.Mode == ".t2t" {
+		highlighter := state.txt2tagsHighlighters[doc]
+		if highlighter == nil {
+			if state.txt2tagsHighlighters == nil {
+				state.txt2tagsHighlighters = make(map[*document.Document]*syntax.Txt2tagsHighlighter)
+			}
+			highlighter = syntax.NewTxt2tagsHighlighter()
+			state.txt2tagsHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.txt2tagsHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)
