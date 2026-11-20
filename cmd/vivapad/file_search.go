@@ -97,25 +97,45 @@ func (state *model) startReplacePreview() {
 	}()
 }
 
+func matchesReplacePath(openedPath, plannedPath string) bool {
+	if openedPath == "" {
+		return false
+	}
+	if openedPath == plannedPath {
+		return true
+	}
+	if !strings.EqualFold(openedPath, plannedPath) {
+		return false
+	}
+	// On case-sensitive volumes, different spellings can name different files.
+	opened, err := os.Stat(openedPath)
+	if err != nil {
+		return false
+	}
+	planned, err := os.Stat(plannedPath)
+	return err == nil && os.SameFile(opened, planned)
+}
+
 func (state *model) startReplaceApply() {
 	if state.replacePlan == nil || state.filesApplying {
 		return
 	}
 	for _, change := range state.replacePlan.Changes {
 		for _, doc := range state.space.Documents {
-			if doc.Path == change.Path {
-				if state.isReadOnly(doc) {
-					state.notice = "Read-only open tab cannot be replaced on disk"
-					return
-				}
-				if doc.Dirty() {
-					state.notice = "Save or close modified tabs before replacing files"
-					return
-				}
-				if doc.Encoding() != change.Encoding {
-					state.notice = "Close tabs opened with another encoding before replacing files"
-					return
-				}
+			if !matchesReplacePath(doc.Path, change.Path) {
+				continue
+			}
+			if state.isReadOnly(doc) {
+				state.notice = "Read-only open tab cannot be replaced on disk"
+				return
+			}
+			if doc.Dirty() {
+				state.notice = "Save or close modified tabs before replacing files"
+				return
+			}
+			if doc.Encoding() != change.Encoding {
+				state.notice = "Close tabs opened with another encoding before replacing files"
+				return
 			}
 		}
 	}
@@ -235,7 +255,7 @@ func (state *model) refreshReplacedTabs(result searchfiles.ApplyResult) error {
 	var reloadErrors []error
 	for _, path := range result.Paths {
 		for index, doc := range state.space.Documents {
-			if doc.Path != path {
+			if !matchesReplacePath(doc.Path, path) {
 				continue
 			}
 			old, err := state.space.Reload(index)
