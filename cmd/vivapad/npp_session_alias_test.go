@@ -15,16 +15,19 @@ import (
 func TestLoadNPPCanonicalizesFileIdentityPerPane(t *testing.T) {
 	for _, tc := range []struct {
 		name, sharedName, aliasName string
-		split, distinct             bool
+		split, distinct, link       bool
 	}{
-		{"duplicate within pane", "shared.txt", "", false, false},
-		{"clone across panes", "shared.txt", "", true, false},
-		{"case alias within pane", "shared.txt", "SHARED.TXT", false, false},
-		{"case alias across panes", "shared.txt", "SHARED.TXT", true, false},
-		{"distinct files with different case", "shared.txt", "SHARED.TXT", false, true},
-		{"Unicode alias within pane", "caf\u00e9.txt", "cafe\u0301.txt", false, false},
-		{"Unicode alias across panes", "caf\u00e9.txt", "cafe\u0301.txt", true, false},
-		{"distinct files with different Unicode forms", "caf\u00e9.txt", "cafe\u0301.txt", false, true},
+		{name: "duplicate within pane", sharedName: "shared.txt"},
+		{name: "clone across panes", sharedName: "shared.txt", split: true},
+		{name: "case alias within pane", sharedName: "shared.txt", aliasName: "SHARED.TXT"},
+		{name: "case alias across panes", sharedName: "shared.txt", aliasName: "SHARED.TXT", split: true},
+		{name: "distinct files with different case", sharedName: "shared.txt", aliasName: "SHARED.TXT", distinct: true},
+		{name: "Unicode alias within pane", sharedName: "caf\u00e9.txt", aliasName: "cafe\u0301.txt"},
+		{name: "Unicode alias across panes", sharedName: "caf\u00e9.txt", aliasName: "cafe\u0301.txt", split: true},
+		{name: "distinct files with different Unicode forms", sharedName: "caf\u00e9.txt", aliasName: "cafe\u0301.txt", distinct: true},
+		{name: "Unicode case fold within pane", sharedName: "shared.txt", aliasName: "\u017fhared.txt", link: true},
+		{name: "Unicode case fold across panes", sharedName: "shared.txt", aliasName: "\u017fhared.txt", split: true, link: true},
+		{name: "distinct files with the same Unicode case fold", sharedName: "shared.txt", aliasName: "\u017fhared.txt", distinct: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -52,6 +55,12 @@ func TestLoadNPPCanonicalizesFileIdentityPerPane(t *testing.T) {
 				}
 			} else if tc.aliasName != "" {
 				info, err := os.Stat(alias)
+				if tc.link && os.IsNotExist(err) {
+					if err := os.Link(shared, alias); err != nil {
+						t.Fatal(err)
+					}
+					info, err = os.Stat(alias)
+				}
 				if os.IsNotExist(err) {
 					t.Skip("temporary filesystem distinguishes these names")
 				}

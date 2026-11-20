@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/vivaui/viva/app"
@@ -222,7 +223,17 @@ type preparedNPPFile struct {
 type nppSessionPaths map[string][]string
 
 func nppSessionPathKey(path string) string {
-	return strings.ToLower(norm.NFC.String(path))
+	// Use one key for every spelling in a Unicode simple-fold cycle.
+	return strings.Map(func(r rune) rune {
+		if r <= unicode.MaxASCII {
+			return unicode.ToUpper(r)
+		}
+		key := r
+		for next := unicode.SimpleFold(r); next != r; next = unicode.SimpleFold(next) {
+			key = min(key, next)
+		}
+		return key
+	}, norm.NFC.String(path))
 }
 
 func (paths nppSessionPaths) resolve(path string) (string, error) {
