@@ -237,6 +237,82 @@ func TestRecoveryKeepsDraftsSeparateWhenSavedPathBecomesAlias(t *testing.T) {
 	}
 }
 
+func TestSinglePaneRecoveryDoesNotOpenRedirectedFile(t *testing.T) {
+	for _, name := range []string{"file", "parent directory"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			sourceDir, targetDir := filepath.Join(root, "source"), filepath.Join(root, "target")
+			for _, dir := range []string{sourceDir, targetDir} {
+				if err := os.Mkdir(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			leftPath := filepath.Join(root, "left.txt")
+			sourcePath, targetPath := filepath.Join(sourceDir, "draft.txt"), filepath.Join(targetDir, "draft.txt")
+			const saved = "original\r\nlast\n"
+			for _, path := range []string{leftPath, sourcePath, targetPath} {
+				if err := os.WriteFile(path, []byte(saved), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			sessionPath := filepath.Join(root, "settings", "session.json")
+			state := newStartupModel([]string{leftPath, sourcePath}, sessionPath)
+			state.toggleSplit()
+			state.activatePane(1)
+			draft := state.space.Current()
+			if draft.Name != "draft.txt" || state.paneOwner[draft] != 1 {
+				t.Fatal("fixture did not put the saved document in the right pane")
+			}
+			draft.Editor.MoveTo(0, false)
+			draft.Editor.Insert("unsaved: ")
+			state.toggleSplit()
+			selection := text.Range{Start: 1, End: 5}
+			draft.Editor.SetSelection(selection)
+			state.snapshotRecovery()
+			if err := state.recoveryWriter.Wait(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
+				t.Fatalf("fixture unexpectedly has a saved session: %v", err)
+			}
+
+			from, to := sourcePath, targetPath
+			if name == "parent directory" {
+				from, to = sourceDir, targetDir
+			}
+			parked := filepath.Join(root, "parked")
+			if err := os.Rename(from, parked); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(to, from); err != nil {
+				if os.IsPermission(err) {
+					t.Skipf("symlinks are unavailable: %v", err)
+				}
+				t.Fatal(err)
+			}
+
+			restored := newStartupModel(nil, sessionPath)
+			if len(restored.space.Documents) != 1 {
+				t.Errorf("crash recovery opened %d tabs; want only the recovered draft", len(restored.space.Documents))
+			}
+			doc := restored.space.Current()
+			if restored.splitEnabled || doc.Path != "" || doc.Name != "Recovered draft.txt" || !doc.Dirty() ||
+				doc.Editor.String() != "unsaved: original\nlast\n" || doc.Editor.Selection() != selection || doc.EOLSequence() != "WL" {
+				t.Fatalf("recovered path=%q, text=%q, selection=%+v, endings=%q", doc.Path, doc.Editor.String(), doc.Editor.Selection(), doc.EOLSequence())
+			}
+			parkedFile := parked
+			if name == "parent directory" {
+				parkedFile = filepath.Join(parked, "draft.txt")
+			}
+			for _, path := range []string{targetPath, parkedFile} {
+				if data, err := os.ReadFile(path); err != nil || string(data) != saved {
+					t.Fatalf("recovery changed saved bytes at %q: %q, %v", path, data, err)
+				}
+			}
+		})
+	}
+}
+
 func TestWindowActivationRetriesFailedUnchangedRecovery(t *testing.T) {
 	root := t.TempDir()
 	settings := filepath.Join(root, "settings")

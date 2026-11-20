@@ -28,16 +28,13 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 	for index, tab := range stored.Tabs {
 		var doc *document.Document
 		if tab.Path != "" {
-			var err error
+			encoding := document.UTF8
 			if tab.DiskEncoding.IsLegacy() {
-				err = state.space.OpenWithEncoding(tab.Path, tab.DiskEncoding)
-			} else {
-				err = state.space.Open(tab.Path)
+				encoding = tab.DiskEncoding
 			}
-			if err == nil {
+			if err := state.space.OpenRecorded(tab.Path, encoding); err == nil {
 				candidate := state.space.Current()
-				// Matching bytes can belong to a different file after a path is
-				// redirected, or decode differently in a tab already open.
+				// Matching bytes can decode differently in a tab already open.
 				if candidate.Path == tab.Path && !candidate.Dirty() &&
 					candidate.DiskDigest() == tab.DiskDigest && candidate.SavedEncoding() == tab.DiskEncoding {
 					doc = candidate
