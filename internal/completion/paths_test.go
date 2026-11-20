@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestPathsPreservesAbsoluteQuotedAndRelativeForms(t *testing.T) {
@@ -116,6 +117,38 @@ func TestPathsIgnoresApostrophesInsideWordsBeforeQuotedPath(t *testing.T) {
 	}
 }
 
+func TestPathsCompletesLongLineWithoutCopyingIt(t *testing.T) {
+	root := t.TempDir()
+	const target = "\u732b draft.txt"
+	if err := os.WriteFile(filepath.Join(root, target), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	const prefix, tail = "\u732b dr", "-\u65e7.txt"
+	left := strings.Repeat("log \u732b ", 1<<19) + `it's ready: "`
+	value := left + prefix + tail + `" now`
+	start := utf8.RuneCountInString(left)
+	caret := start + utf8.RuneCountInString(prefix)
+	end := start + utf8.RuneCountInString(prefix+tail)
+	var initial, final runtime.MemStats
+	const attempts = 3
+	runtime.ReadMemStats(&initial)
+	for range attempts {
+		got, err := Paths(value, caret, root)
+		if err != nil || got.Start != start || got.End != end || !reflect.DeepEqual(got.Candidates, []string{target}) {
+			t.Fatalf("long line completion = %+v, %v; want %q at %d", got, err, target, start)
+		}
+	}
+	runtime.ReadMemStats(&final)
+	allocated := (final.TotalAlloc - initial.TotalAlloc) / attempts
+	t.Logf("%d source bytes: %d bytes allocated per lookup", len(value), allocated)
+	if allocated > 1<<20 {
+		t.Errorf("path lookup allocated %d bytes for a short token on a long line", allocated)
+	}
+	if token, tokenStart, tokenEnd := PathTokenAtCaret(value, caret); token != prefix+tail || tokenStart != start || tokenEnd != end {
+		t.Fatalf("selected path = %q at %d:%d, want %q at %d:%d", token, tokenStart, tokenEnd, prefix+tail, start, end)
+	}
+}
+
 func TestPathsExpandTildeWithoutChangingCandidateText(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("HOME environment is platform-specific on Windows")
@@ -158,7 +191,7 @@ func TestPathsReportsMissingParentAndFollowsExplicitDirectoryLink(t *testing.T) 
 			t.Fatalf("explicit linked path candidates = %+v, %v", result, err)
 		}
 	}
-	if raw, start := pathAtCaret([]rune("before C:\\Wind"), len("before C:\\Wind")); raw != `C:\Wind` || start != len("before ") {
+	if raw, start := pathAtCaret("before C:\\Wind", len("before C:\\Wind")); raw != `C:\Wind` || start != len("before ") {
 		t.Fatalf("Windows drive extraction = %q at %d", raw, start)
 	}
 }

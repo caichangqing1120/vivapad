@@ -17,8 +17,11 @@ import (
 const pathPunctuation = "\"'()[]<>"
 
 func Paths(value string, caret int, base string) (Result, error) {
-	characters := []rune(value)
-	raw, start := pathAtCaret(characters, caret)
+	offset := pathCaretByteOffset(value, caret)
+	if offset <= 0 {
+		return Result{}, nil
+	}
+	raw, start := pathAtCaret(value, offset)
 	if raw == "" {
 		return Result{}, nil
 	}
@@ -28,10 +31,10 @@ func Paths(value string, caret int, base string) (Result, error) {
 	if runtime.GOOS != "windows" && len(raw) >= 3 && unicode.IsLetter(rune(raw[0])) && raw[1] == ':' && (raw[2] == '\\' || raw[2] == '/') {
 		return Result{}, fmt.Errorf("Windows path completion requires Windows")
 	}
-	end := pathTokenEnd(characters, start, caret)
-	result := Result{Start: start, End: end}
-	if end > caret {
-		tail := string(characters[caret:end])
+	end := pathTokenEnd(value, start, offset)
+	tail := value[offset:end]
+	result := Result{Start: caret - utf8.RuneCountInString(raw), End: caret + utf8.RuneCountInString(tail)}
+	if tail != "" {
 		if strings.ContainsRune(tail, '/') || runtime.GOOS == "windows" && strings.ContainsRune(tail, '\\') {
 			return result, nil
 		}
@@ -65,8 +68,8 @@ func Paths(value string, caret int, base string) (Result, error) {
 	}
 	switch {
 	case err == nil && info.Mode().IsRegular():
-		if end > caret {
-			result.Candidates = []string{raw}
+		if tail != "" {
+			result.Candidates = []string{strings.Clone(raw)}
 		}
 		return result, nil
 	case err == nil && info.IsDir():
@@ -104,7 +107,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 		directory bool
 	}
 	var matches []candidate
-	quote := pathTokenQuote(characters, start)
+	quote := pathTokenQuote(value, start)
 	for _, entry := range entries {
 		name := entry.Name()
 		if name == "." || name == ".." || !pathPrefix(name, suffix) || !pathNameFitsToken(name, quote) {
@@ -218,88 +221,116 @@ func pathPrefix(name, prefix string) bool {
 	return strings.EqualFold(name[:end], prefix)
 }
 
-func pathAtCaret(characters []rune, caret int) (string, int) {
-	if caret <= 0 || caret > len(characters) {
+func pathCaretByteOffset(value string, caret int) int {
+	if caret < 0 || caret > len(value) {
+		return -1
+	}
+	for offset := range value {
+		if caret == 0 {
+			return offset
+		}
+		caret--
+	}
+	if caret == 0 {
+		return len(value)
+	}
+	return -1
+}
+
+// Path token scanning uses byte offsets so a filename on a long log line
+// does not require a second copy of the line.
+func pathAtCaret(value string, caret int) (string, int) {
+	if caret <= 0 {
 		return "", 0
 	}
-	lineStart := caret
-	for lineStart > 0 && characters[lineStart-1] != '\n' && characters[lineStart-1] != '\r' {
-		lineStart--
-	}
-	quoteStart, quote := -1, rune(0)
-	for index := lineStart; index < caret; index++ {
-		if characters[index] != '\'' && characters[index] != '"' {
-			continue
+	lineStart := strings.LastIndexAny(value[:caret], "\r\n") + 1
+	quoteStart, quote := -1, byte(0)
+	for from := lineStart; from < caret; {
+		next := strings.IndexAny(value[from:caret], "\"'")
+		if next < 0 {
+			break
 		}
+		index := from + next
+		from = index + 1
 		if quoteStart < 0 {
 			// An apostrophe inside a word in surrounding prose cannot open a path.
-			if characters[index] == '\'' && index > lineStart && index+1 < caret &&
-				unicode.In(characters[index-1], unicode.L, unicode.M, unicode.N) &&
-				unicode.In(characters[index+1], unicode.L, unicode.M, unicode.N) {
-				continue
+			if value[index] == '\'' && index > lineStart && from < caret {
+				before, _ := utf8.DecodeLastRuneInString(value[lineStart:index])
+				after, _ := utf8.DecodeRuneInString(value[from:caret])
+				if unicode.In(before, unicode.L, unicode.M, unicode.N) && unicode.In(after, unicode.L, unicode.M, unicode.N) {
+					continue
+				}
 			}
-			quoteStart, quote = index, characters[index]
-		} else if characters[index] == quote {
+			quoteStart, quote = index, value[index]
+		} else if value[index] == quote {
 			quoteStart, quote = -1, 0
 		}
 	}
-	if quoteStart >= 0 {
-		start := quoteStart + 1
-		raw := string(characters[start:caret])
-		if pathLike(raw) {
-			return raw, start
-		}
+	if quoteStart >= 0 && quoteStart+1 < caret {
+		return value[quoteStart+1 : caret], quoteStart + 1
 	}
-	for index := caret - 1; index >= lineStart && !strings.ContainsRune(pathPunctuation, characters[index]); index-- {
-		if index+2 >= caret || !unicode.IsLetter(characters[index]) || characters[index+1] != ':' || characters[index+2] != '\\' && characters[index+2] != '/' {
+	for end := caret; end > lineStart; {
+		character, width := utf8.DecodeLastRuneInString(value[lineStart:end])
+		index := end - width
+		if strings.ContainsRune(pathPunctuation, character) {
+			break
+		}
+		delimiter := end
+		end = index
+		if delimiter+1 >= caret || value[delimiter] != ':' || value[delimiter+1] != '\\' && value[delimiter+1] != '/' || !unicode.IsLetter(character) {
 			continue
 		}
-		if index == lineStart || barePathBoundary(characters[index-1]) {
-			return string(characters[index:caret]), index
+		before, _ := utf8.DecodeLastRuneInString(value[lineStart:index])
+		if index == lineStart || barePathBoundary(before) {
+			return value[index:caret], index
 		}
 	}
 	start := caret
-	for start > lineStart && !barePathBoundary(characters[start-1]) {
-		start--
+	for start > lineStart {
+		character, width := utf8.DecodeLastRuneInString(value[lineStart:start])
+		if barePathBoundary(character) {
+			break
+		}
+		start -= width
 	}
-	raw := string(characters[start:caret])
-	if pathLike(raw) {
-		return raw, start
+	if start < caret {
+		return value[start:caret], start
 	}
 	return "", 0
 }
 
 func PathTokenAtCaret(value string, caret int) (string, int, int) {
-	characters := []rune(value)
-	if caret < 0 || caret > len(characters) {
+	offset := pathCaretByteOffset(value, caret)
+	if offset < 0 {
 		return "", 0, 0
 	}
-	_, start := pathAtCaret(characters, caret)
-	if caret == 0 || start == 0 && barePathBoundary(characters[caret-1]) {
-		start = caret
+	_, start := pathAtCaret(value, offset)
+	before, _ := utf8.DecodeLastRuneInString(value[:offset])
+	if offset == 0 || start == 0 && barePathBoundary(before) {
+		start = offset
 	}
-	end := pathTokenEnd(characters, start, caret)
-	if start >= end || end-start > 4096 {
+	end := pathTokenEnd(value, start, offset)
+	length := utf8.RuneCountInString(value[start:end])
+	if length == 0 || length > 4096 {
 		return "", 0, 0
 	}
-	return string(characters[start:end]), start, end
+	startRune := caret - utf8.RuneCountInString(value[start:offset])
+	return strings.Clone(value[start:end]), startRune, startRune + length
 }
 
-func pathTokenEnd(characters []rune, start, caret int) int {
-	quote := pathTokenQuote(characters, start)
-	end := caret
-	for end < len(characters) {
-		if pathTokenBoundary(characters[end], quote) {
-			break
+func pathTokenEnd(value string, start, caret int) int {
+	quote := pathTokenQuote(value, start)
+	for offset, character := range value[caret:] {
+		if pathTokenBoundary(character, quote) {
+			return caret + offset
 		}
-		end++
 	}
-	return end
+	return len(value)
 }
 
-func pathTokenQuote(characters []rune, start int) rune {
-	if start > 0 && (characters[start-1] == '"' || characters[start-1] == '\'') {
-		return characters[start-1]
+func pathTokenQuote(value string, start int) rune {
+	if start > 0 && (value[start-1] == '"' || value[start-1] == '\'') {
+		return rune(value[start-1])
 	}
 	return 0
 }
@@ -317,8 +348,4 @@ func pathTokenBoundary(character, quote rune) bool {
 
 func barePathBoundary(character rune) bool {
 	return unicode.IsSpace(character) || strings.ContainsRune(pathPunctuation, character)
-}
-
-func pathLike(raw string) bool {
-	return raw != ""
 }
