@@ -21,6 +21,7 @@ func TestPathCompletionAtInteriorCaret(t *testing.T) {
 		{"interior directory component", "al/child.txt", `"`, `"`, len("al"), true},
 		{"square bracket wrapper", "al-old.txt", "[", "]", len("al"), false},
 		{"angle bracket wrapper", "al-old.txt", "<", ">", len("al"), false},
+		{"relative path after another drive path", "al-old.txt", `C:\old then ./`, "", len("al"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()

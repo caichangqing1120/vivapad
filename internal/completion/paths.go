@@ -21,7 +21,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 	if offset <= 0 {
 		return Result{}, nil
 	}
-	raw, start := pathAtCaret(value, offset)
+	raw, start := pathAtCaret(value, offset, false)
 	if raw == "" {
 		return Result{}, nil
 	}
@@ -239,7 +239,7 @@ func pathCaretByteOffset(value string, caret int) int {
 
 // Path token scanning uses byte offsets so a filename on a long log line
 // does not require a second copy of the line.
-func pathAtCaret(value string, caret int) (string, int) {
+func pathAtCaret(value string, caret int, allowSpacedDrive bool) (string, int) {
 	if caret <= 0 {
 		return "", 0
 	}
@@ -269,20 +269,22 @@ func pathAtCaret(value string, caret int) (string, int) {
 	if quoteStart >= 0 && quoteStart+1 < caret {
 		return value[quoteStart+1 : caret], quoteStart + 1
 	}
-	for end := caret; end > lineStart; {
-		character, width := utf8.DecodeLastRuneInString(value[lineStart:end])
-		index := end - width
-		if strings.ContainsRune(pathPunctuation, character) {
-			break
-		}
-		delimiter := end
-		end = index
-		if delimiter+1 >= caret || value[delimiter] != ':' || value[delimiter+1] != '\\' && value[delimiter+1] != '/' || !unicode.IsLetter(character) {
-			continue
-		}
-		before, _ := utf8.DecodeLastRuneInString(value[lineStart:index])
-		if index == lineStart || barePathBoundary(before) {
-			return value[index:caret], index
+	if allowSpacedDrive {
+		for end := caret; end > lineStart; {
+			character, width := utf8.DecodeLastRuneInString(value[lineStart:end])
+			index := end - width
+			if strings.ContainsRune(pathPunctuation, character) {
+				break
+			}
+			delimiter := end
+			end = index
+			if delimiter+1 >= caret || value[delimiter] != ':' || value[delimiter+1] != '\\' && value[delimiter+1] != '/' || !unicode.IsLetter(character) {
+				continue
+			}
+			before, _ := utf8.DecodeLastRuneInString(value[lineStart:index])
+			if index == lineStart || barePathBoundary(before) {
+				return value[index:caret], index
+			}
 		}
 	}
 	start := caret
@@ -304,7 +306,8 @@ func PathTokenAtCaret(value string, caret int) (string, int, int) {
 	if offset < 0 {
 		return "", 0, 0
 	}
-	_, start := pathAtCaret(value, offset)
+	// Opening an existing drive path permits spaces to the left of the caret.
+	_, start := pathAtCaret(value, offset, true)
 	before, _ := utf8.DecodeLastRuneInString(value[:offset])
 	if offset == 0 || start == 0 && barePathBoundary(before) {
 		start = offset
