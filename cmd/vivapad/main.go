@@ -46,6 +46,7 @@ func main() {
 			}
 			return printing.Execute(job, float64(state.paneFontSize(state.activePane)), state.tabWidth, variables, state.syntax.Highlight)
 		}
+		application.OnOpenFile(state.queueSystemDocument)
 		return nil
 	}); err != nil {
 		log.Fatal(err)

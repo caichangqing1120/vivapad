@@ -581,6 +581,7 @@ type model struct {
 	recentEntries                 []recent.Entry
 	closedPath                    string
 	closedHistory                 []recent.Entry
+	pendingSystemDocuments        []string
 	pendingClose                  int
 	batchActive                   bool
 	batchQueue                    []closeTarget
@@ -1300,14 +1301,7 @@ func newConfig(state *model) app.Config {
 			if pane := paneForTarget(event.Target); pane >= 0 {
 				state.activatePane(pane)
 			}
-			for _, path := range event.Paths {
-				if err := state.space.Open(path); err != nil {
-					state.notice = err.Error()
-				} else {
-					state.showInActivePane(state.space.Current())
-					state.rememberRecent(state.space.Current())
-				}
-			}
+			state.openDocumentPaths(event.Paths)
 		}
 		return gfx.EventResult{Handled: true, Repaint: event.Phase == gfx.FileDropDrop}
 	}
@@ -2184,14 +2178,20 @@ func (state *model) openFiles() {
 		}
 		return
 	}
+	state.openDocumentPaths(paths)
+}
+
+func (state *model) openDocumentPaths(paths []string) (opened bool) {
 	for _, path := range paths {
 		if err := state.space.Open(path); err != nil {
 			state.notice = err.Error()
 		} else {
 			state.showInActivePane(state.space.Current())
 			state.rememberRecent(state.space.Current())
+			opened = true
 		}
 	}
+	return opened
 }
 
 func (state *model) openFilesWithEncoding(encoding document.Encoding) {

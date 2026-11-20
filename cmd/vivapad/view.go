@@ -76,6 +76,7 @@ func resultPaneHeight(windowHeight float32) float32 {
 }
 
 func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
+	state.consumeSystemDocuments()
 	window := gfx.Rect{Width: size.Width, Height: size.Height}
 	canvas.Fill(window, palette.white)
 	if !state.fullscreen {
