@@ -14,16 +14,20 @@ import (
 //go:embed rebol_words.txt
 var rebolWordData string
 
-var rebolWords = func() map[string]chroma.TokenType {
+var rebolWords = parseREBOLWords(rebolWordData)
+
+func parseREBOLWords(data string) map[string]chroma.TokenType {
 	kinds := [...]chroma.TokenType{chroma.Keyword, chroma.NameFunction, chroma.KeywordType}
 	words := make(map[string]chroma.TokenType)
-	for i, group := range strings.Split(strings.TrimSpace(rebolWordData), "\n\n") {
+	// Git-backed checkouts may use CRLF for the embedded word list.
+	data = strings.ReplaceAll(data, "\r\n", "\n")
+	for i, group := range strings.Split(strings.TrimSpace(data), "\n\n") {
 		for _, word := range strings.Fields(group) {
 			words[word] = kinds[i]
 		}
 	}
 	return words
-}()
+}
 
 var rebolHeader = regexp.MustCompile(`(?i)\brebol[ \t]*\[`)
 

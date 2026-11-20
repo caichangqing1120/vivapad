@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -8,6 +9,17 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 )
+
+func TestREBOLWordGroupsSurviveCRLFCheckout(t *testing.T) {
+	lf := strings.ReplaceAll(rebolWordData, "\r\n", "\n")
+	withCRLF := parseREBOLWords(strings.ReplaceAll(lf, "\n", "\r\n"))
+	if !maps.Equal(withCRLF, parseREBOLWords(lf)) {
+		t.Fatal("CRLF changed the REBOL word groups")
+	}
+	if withCRLF["print"] != chroma.Keyword || withCRLF["integer?"] != chroma.NameFunction || withCRLF["integer!"] != chroma.KeywordType {
+		t.Fatal("CRLF did not preserve the command, function and datatype groups")
+	}
+}
 
 func TestREBOLLexerRetainsMultilineSyntaxAndBytes(t *testing.T) {
 	const source = "shell preface\r\nrebol [Title: \"Caf\u00e9\"]\r\nPrint/only -2.5\nINTEGER! integer? ; note\r" +
