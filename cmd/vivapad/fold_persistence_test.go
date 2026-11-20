@@ -122,6 +122,13 @@ func TestAviSynthFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) 
 		[]string{"return BlankClip()", "still comment"})
 }
 
+func TestFreeBasicFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.BI", "freebasic",
+		"\xef\xbb\xbfSub Demo()\r\n  Print &h2a\r\nEnd Sub\r\nType Packet\r\n  value As Integer\r\nEnd Type\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"Print &h2a", "value As Integer"})
+}
+
 func checkLanguageFoldingRoundTrip(t *testing.T, name, language, original string, want []components.CodeEditorFoldRange, bodies []string) {
 	t.Helper()
 	root := t.TempDir()

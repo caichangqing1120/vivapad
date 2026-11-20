@@ -365,6 +365,7 @@ type model struct {
 	csoundHighlighters            map[*document.Document]*syntax.CSoundHighlighter
 	rebolHighlighters             map[*document.Document]*syntax.REBOLHighlighter
 	avsHighlighters               map[*document.Document]*syntax.AviSynthHighlighter
+	freeBasicHighlighters         map[*document.Document]*syntax.FreeBasicHighlighter
 	query                         *text.Editor
 	incrementQuery                *text.Editor
 	incrementOpen                 bool
@@ -2340,6 +2341,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.csoundHighlighters, doc)
 	delete(state.rebolHighlighters, doc)
 	delete(state.avsHighlighters, doc)
+	delete(state.freeBasicHighlighters, doc)
 	delete(state.bookmarks, doc)
 	delete(state.changeView, doc)
 	if state.noChangeNoticeDoc == doc {

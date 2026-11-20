@@ -93,6 +93,7 @@ var languages = [...]Language{
 	{"CSound", ".orc", "csound", "IDM_LANG_CSOUND", "CSound", ";", ""},
 	{"REBOL", ".reb", "rebol", "IDM_LANG_REBOL", "REBOL", ";", ""},
 	{"AviSynth", ".avs", "avs", "IDM_LANG_AVS", "AviSynth", "#", ""},
+	{"FreeBasic", ".bas", "freebasic", "IDM_LANG_FREEBASIC", "FreeBasic", "", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
@@ -133,6 +134,8 @@ func LanguageByMode(mode string) (Language, bool) {
 		mode = ".reb"
 	case ".avsi":
 		mode = ".avs"
+	case ".bi":
+		mode = ".bas"
 	}
 	for _, spec := range languages {
 		if spec.Mode == mode {
