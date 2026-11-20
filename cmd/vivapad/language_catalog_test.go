@@ -307,6 +307,7 @@ func TestExplicitLanguageVariantsKeepExtensionDefaults(t *testing.T) {
 		{".tex", "TeX", "latex", "tex", "lang:tex"},
 		{".sql", "Microsoft Transact-SQL", "sql", "mssql", ".tsql"},
 		{".json", "JSON5", "json", "json5", ".json5"},
+		{".txt", "Inno Setup", "normal", "inno", ".iss"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "notes"+tc.extension)
@@ -354,6 +355,7 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.nsh", "NSIS", "nsis", ";"},
 		{"demo.jsonc", "JSON5", "json5", "//"},
 		{"demo.RC", "Resource file", "rc", "//"},
+		{"demo.ISS", "Inno Setup", "inno", ";"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)
@@ -389,10 +391,21 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 	}
 }
 
-func TestResourceFileMenuRoundTripsSessionsWithoutEditing(t *testing.T) {
+func TestNewLanguageModesRoundTripSessionsWithoutEditing(t *testing.T) {
+	for _, tc := range []struct{ label, mode, nppName, source string }{
+		{"Resource file", ".rc", "rc", "\xef\xbb\xbfSTRINGTABLE\r\nBEGIN\r\n  IDS_TITLE \"Demo\"\r\nEND\r\n"},
+		{"Inno Setup", ".iss", "inno", "\xef\xbb\xbf[Setup]\r\nAppName=Demo\r\n[Code]\r\nbegin\r\nend;\r\n"},
+	} {
+		t.Run(tc.nppName, func(t *testing.T) {
+			checkLanguageSessionRoundTrip(t, tc.label, tc.mode, tc.nppName, tc.source)
+		})
+	}
+}
+
+func checkLanguageSessionRoundTrip(t *testing.T, label, mode, nppName, source string) {
+	t.Helper()
 	root := t.TempDir()
-	path, sessionPath := filepath.Join(root, "resources.txt"), filepath.Join(root, "session.json")
-	const source = "\xef\xbb\xbfSTRINGTABLE\r\nBEGIN\r\n  IDS_TITLE \"Demo\"\r\nEND\r\n"
+	path, sessionPath := filepath.Join(root, "script.txt"), filepath.Join(root, "session.json")
 	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -408,18 +421,18 @@ func TestResourceFileMenuRoundTripsSessionsWithoutEditing(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(5))
-	clickLanguage(t, driver, "Resource file")
-	if !state.menuSelected("Resource file") || doc.Dirty() || doc.Editor.CanUndo() || doc.Editor.String() != before {
-		t.Fatal("selecting Resource file did not keep the clean buffer and history")
+	clickLanguage(t, driver, label)
+	if !state.menuSelected(label) || doc.Dirty() || doc.Editor.CanUndo() || doc.Editor.String() != before {
+		t.Fatalf("selecting %s did not keep the clean buffer and history", label)
 	}
 	newConfig(state).OnCloseRequest(func() {})
 	reopened := newStartupModel(nil, sessionPath)
-	if doc := reopened.space.Current(); doc.Path == "" || reopened.languageFor(doc) != ".rc" || doc.Editor.String() != before {
-		t.Fatalf("private session did not restore Resource file: %q", reopened.notice)
+	if doc := reopened.space.Current(); doc.Path == "" || reopened.languageFor(doc) != mode || doc.Editor.String() != before {
+		t.Fatalf("private session did not restore %s: %q", label, reopened.notice)
 	}
 	exported, err := reopened.nppSessionState()
-	if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != "rc" {
-		t.Fatalf("Resource file export = %+v, %v", exported, err)
+	if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != nppName {
+		t.Fatalf("%s export = %+v, %v", label, exported, err)
 	}
 	xmlPath := filepath.Join(root, "session.xml")
 	if err := session.SaveNPP(xmlPath, exported); err != nil {
@@ -432,8 +445,8 @@ func TestResourceFileMenuRoundTripsSessionsWithoutEditing(t *testing.T) {
 	clickID(t, loader, menuScope.At(0))
 	clickID(t, loader, menuItemScope.At(13))
 	clickID(t, loader, sessionScope.At(0))
-	if doc := loaded.space.Current(); doc.Path == "" || loaded.languageFor(doc) != ".rc" || doc.Dirty() || doc.Editor.String() != before {
-		t.Fatalf("NPP session did not restore Resource file: %q", loaded.notice)
+	if doc := loaded.space.Current(); doc.Path == "" || loaded.languageFor(doc) != mode || doc.Dirty() || doc.Editor.String() != before {
+		t.Fatalf("NPP session did not restore %s: %q", label, loaded.notice)
 	}
 	if data, err := os.ReadFile(path); err != nil || string(data) != source {
 		t.Fatalf("language round trip changed disk bytes = %q, %v", data, err)

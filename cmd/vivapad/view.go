@@ -615,6 +615,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.json5Highlighters, doc)
 	}
+	if strings.EqualFold(snapshot.Language, ".iss") {
+		highlighter := state.innoHighlighters[doc]
+		if highlighter == nil {
+			if state.innoHighlighters == nil {
+				state.innoHighlighters = make(map[*document.Document]*syntax.InnoHighlighter)
+			}
+			highlighter = syntax.NewInnoHighlighter()
+			state.innoHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.innoHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)

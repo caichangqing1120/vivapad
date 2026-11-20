@@ -359,6 +359,7 @@ type model struct {
 	languages                     map[*document.Document]string
 	syntax                        syntax.Highlighter
 	json5Highlighters             map[*document.Document]*syntax.JSON5Highlighter
+	innoHighlighters              map[*document.Document]*syntax.InnoHighlighter
 	query                         *text.Editor
 	incrementQuery                *text.Editor
 	incrementOpen                 bool
@@ -2328,6 +2329,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.paneOwner, doc)
 	delete(state.languages, doc)
 	delete(state.json5Highlighters, doc)
+	delete(state.innoHighlighters, doc)
 	delete(state.bookmarks, doc)
 	delete(state.changeView, doc)
 	if state.noChangeNoticeDoc == doc {
