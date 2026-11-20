@@ -97,6 +97,7 @@ var languages = [...]Language{
 	{"OScript", ".osx", "oscript", "IDM_LANG_OSCRIPT", "OScript", "//", ""},
 	{"PureBasic", ".pb", "purebasic", "IDM_LANG_PUREBASIC", "PureBasic", "", ""},
 	{"Gui4Cli", ".gui", "gui4cli", "IDM_LANG_GUI4CLI", "Gui4Cli", "//", ""},
+	{"Nncrontab", ".tab", "nncrontab", "IDM_LANG_NNCRONTAB", "Nncrontab", "\\", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
@@ -139,6 +140,8 @@ func LanguageByMode(mode string) (Language, bool) {
 		mode = ".avs"
 	case ".bi":
 		mode = ".bas"
+	case ".spf":
+		mode = ".tab"
 	}
 	for _, spec := range languages {
 		if spec.Mode == mode {
