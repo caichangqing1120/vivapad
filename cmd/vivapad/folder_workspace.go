@@ -110,7 +110,7 @@ func (state *model) folderRows() []folderRow {
 			return
 		}
 		children, ok := state.folderCache[path]
-		if !ok || !state.folderWatching[path] && !state.folderWatchUnavailable {
+		if !ok || state.folderWatching[path] == nil && !state.folderWatchUnavailable {
 			if err := foldertree.CheckCanonicalPath(path); err != nil {
 				state.stopFolderBranch(path)
 				state.notice = "Folder unavailable: " + err.Error()

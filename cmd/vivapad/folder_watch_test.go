@@ -22,7 +22,7 @@ func TestExpandedWorkspaceAutoRefreshesCreateRenameAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(driver.Close)
-	if state.folderWatcher == nil || !state.folderWatching[canonical] {
+	if state.folderWatcher == nil || state.folderWatching[canonical] == nil {
 		t.Fatal("expanded root was not watched")
 	}
 	contains := func(path string) bool {
@@ -62,7 +62,7 @@ func TestExpandedWorkspaceAutoRefreshesCreateRenameAndRemove(t *testing.T) {
 	}
 	wait("", renamed)
 	state.activateFolderRow(folderRow{path: canonical, directory: true})
-	if state.folderWatching[canonical] {
+	if state.folderWatching[canonical] != nil {
 		t.Fatal("collapsed root still holds a watch")
 	}
 	state.command("Folder as Workspace")
@@ -75,7 +75,7 @@ func TestExpandedWorkspaceAutoRefreshesCreateRenameAndRemove(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	if state.folderWatcher == nil || !state.folderWatching[canonical] {
+	if state.folderWatcher == nil || state.folderWatching[canonical] == nil {
 		t.Fatal("reopened dock did not resume watching")
 	}
 }
@@ -98,11 +98,11 @@ func TestCollapsedBranchRereadsDiskAndWindowCloseReleasesWatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(driver.Close)
-	if !state.folderWatching[canonical] || !state.folderWatching[canonicalChild] {
+	if state.folderWatching[canonical] == nil || state.folderWatching[canonicalChild] == nil {
 		t.Fatalf("expanded ancestors were not watched: %+v", state.folderWatching)
 	}
 	state.activateFolderRow(folderRow{path: canonicalChild, directory: true})
-	if state.folderWatching[canonicalChild] || !state.folderWatching[canonical] {
+	if state.folderWatching[canonicalChild] != nil || state.folderWatching[canonical] == nil {
 		t.Fatalf("collapse did not release only its branch: %+v", state.folderWatching)
 	}
 	newFile := filepath.Join(canonicalChild, "while-collapsed.txt")
@@ -114,7 +114,7 @@ func TestCollapsedBranchRereadsDiskAndWindowCloseReleasesWatches(t *testing.T) {
 	for _, row := range state.folderRows() {
 		found = found || row.path == newFile
 	}
-	if !found || !state.folderWatching[canonicalChild] {
+	if !found || state.folderWatching[canonicalChild] == nil {
 		t.Fatalf("reopened branch reused stale cache: rows=%+v watches=%+v", state.folderRows(), state.folderWatching)
 	}
 	driver.Close()
@@ -145,7 +145,7 @@ func TestFolderRefreshWorksAfterWatcherFailure(t *testing.T) {
 	for _, row := range state.folderRows() {
 		found = found || row.path == file
 	}
-	if !found || state.folderWatcher == nil || !state.folderWatching[canonical] {
+	if !found || state.folderWatcher == nil || state.folderWatching[canonical] == nil {
 		t.Fatalf("manual refresh did not recover: found=%v watcher=%p watched=%+v", found, state.folderWatcher, state.folderWatching)
 	}
 	state.stopFolderWatching()
@@ -175,7 +175,7 @@ func TestWorkspaceReopenRefreshesChangesWhileUnwatched(t *testing.T) {
 		}
 		return old, fresh
 	}
-	if old, fresh := rows(); !old || fresh || !state.folderWatching[canonical] {
+	if old, fresh := rows(); !old || fresh || state.folderWatching[canonical] == nil {
 		t.Fatal("initial expanded tree was not shown and watched")
 	}
 	clickID(t, driver, folderCloseID)
@@ -190,7 +190,7 @@ func TestWorkspaceReopenRefreshesChangesWhileUnwatched(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	if old, fresh := rows(); old || !fresh || !state.folderWatching[canonical] {
+	if old, fresh := rows(); old || !fresh || state.folderWatching[canonical] == nil {
 		t.Fatalf("reopened dock used stale rows: old=%v new=%v watched=%v", old, fresh, state.folderWatching[canonical])
 	}
 }

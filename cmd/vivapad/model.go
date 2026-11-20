@@ -445,7 +445,7 @@ type model struct {
 	folderSelected                string
 	folderOffset                  int
 	folderWatcher                 *foldertree.Watcher
-	folderWatching                map[string]bool
+	folderWatching                map[string]os.FileInfo
 	folderWatchUnavailable        bool
 	revealPath                    func(string) error
 	launchSelectedFile            func(string) error
@@ -743,7 +743,7 @@ func newModel() *model {
 		pinned:         make(map[*document.Document]bool),
 		tabColors:      make(map[*document.Document]uint8),
 		folderExpanded: make(map[string]bool), folderCache: make(map[string][]foldertree.Entry),
-		folderWatching:  make(map[string]bool),
+		folderWatching:  make(map[string]os.FileInfo),
 		functionSymbols: make(map[*document.Document]functionSymbolCache),
 		functionFilter:  text.NewEditor(""), functionSelected: -1,
 		revealPath:         external.Reveal,

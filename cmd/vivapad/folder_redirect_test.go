@@ -52,7 +52,7 @@ func TestWorkspaceDoesNotFollowReplacedRoot(t *testing.T) {
 	t.Run("reopen", func(t *testing.T) {
 		state.command("Folder as Workspace")
 		defer state.stopFolderWatching()
-		if rows := state.folderRows(); len(rows) != 1 || state.folderWatching[canonical] || !strings.Contains(state.notice, "Folder unavailable") {
+		if rows := state.folderRows(); len(rows) != 1 || state.folderWatching[canonical] != nil || !strings.Contains(state.notice, "Folder unavailable") {
 			t.Fatalf("reopened redirected root: rows=%+v watched=%v notice=%q", rows, state.folderWatching[canonical], state.notice)
 		}
 	})

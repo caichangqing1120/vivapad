@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -8,7 +10,12 @@ import (
 )
 
 func (state *model) ensureFolderWatch(path string) {
-	if !state.folderVisible || state.folderWatchUnavailable || state.folderWatching[path] {
+	if !state.folderVisible || state.folderWatchUnavailable || state.folderWatching[path] != nil {
+		return
+	}
+	info, err := folderWatchIdentity(path)
+	if err != nil {
+		state.notice = "Folder unavailable: " + err.Error()
 		return
 	}
 	if state.folderWatcher == nil {
@@ -26,7 +33,22 @@ func (state *model) ensureFolderWatch(path string) {
 		state.stopFolderWatching()
 		return
 	}
-	state.folderWatching[path] = true
+	state.folderWatching[path] = info
+}
+
+func folderWatchIdentity(path string) (os.FileInfo, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	// On Windows a path-based stat can defer looking up the file ID until
+	// SameFile is called, by which time the name can refer to another directory.
+	info, err := file.Stat()
+	if err == nil && !info.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory", path)
+	}
+	return info, err
 }
 
 func (state *model) stopFolderBranch(path string) {
@@ -77,17 +99,27 @@ func (state *model) consumeFolderChanges() {
 	for _, path := range state.folderWatcher.WatchList() {
 		active[path] = struct{}{}
 	}
-	for path := range state.folderWatching {
-		if resolved, err := foldertree.CanonicalRoot(path); err != nil || resolved != path {
-			_ = state.folderWatcher.Remove(path)
-			delete(state.folderWatching, path)
+	reset := false
+	for path, previous := range state.folderWatching {
+		err := foldertree.CheckCanonicalPath(path)
+		var current os.FileInfo
+		if err == nil {
+			current, err = folderWatchIdentity(path)
+		}
+		if err != nil {
 			delete(state.folderExpanded, path)
-			if err == nil {
-				state.notice = "Folder unavailable: path now points elsewhere: " + path
-			}
+			state.notice = "Folder unavailable: " + err.Error()
+			reset = true
+		} else if !os.SameFile(previous, current) {
+			// A backend may keep the old handle and report the original name.
+			// Closing the watcher releases handles that Remove(path) cannot find.
+			reset = true
 		} else if _, watched := active[path]; !watched {
 			// The OS dropped the old directory watch. Paint can attach to its replacement.
 			delete(state.folderWatching, path)
 		}
+	}
+	if reset {
+		state.stopFolderWatching()
 	}
 }
