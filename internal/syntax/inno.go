@@ -33,35 +33,39 @@ func (*innoLexer) Tokenise(_ *chroma.TokeniseOptions, value string) (chroma.Iter
 	var state innoState
 	var tokens []chroma.Token
 	for value != "" {
-		end := strings.IndexAny(value, "\r\n")
-		if end < 0 {
-			end = len(value)
-		}
+		end, next := innoLineBounds(value)
 		line, cursor := value[:end], 0
-		state = scanInnoLine(line, state, func(start, end int, kind chroma.TokenType) {
+		state, _ = scanInnoLine(line, state, func(start, end int, kind chroma.TokenType) {
 			if cursor < start {
 				tokens = append(tokens, chroma.Token{Type: chroma.Text, Value: line[cursor:start]})
 			}
 			tokens = append(tokens, chroma.Token{Type: kind, Value: line[start:end]})
 			cursor = end
 		})
-		if end < len(value) {
-			end++
-			if value[end-1] == '\r' && end < len(value) && value[end] == '\n' {
-				end++
-			}
+		if cursor < next {
+			tokens = append(tokens, chroma.Token{Type: chroma.Text, Value: value[cursor:next]})
 		}
-		if cursor < end {
-			tokens = append(tokens, chroma.Token{Type: chroma.Text, Value: value[cursor:end]})
-		}
-		value = value[end:]
+		value = value[next:]
 	}
 	return chroma.Literator(tokens...), nil
 }
 
-// scanInnoLine emits styled byte ranges and returns the state of the next line.
-// The editor also uses it without an emitter to index lines outside the viewport.
-func scanInnoLine(line string, state innoState, emit func(int, int, chroma.TokenType)) innoState {
+func innoLineBounds(value string) (end, next int) {
+	end = strings.IndexAny(value, "\r\n")
+	if end < 0 {
+		return len(value), len(value)
+	}
+	next = end + 1
+	if value[end] == '\r' && next < len(value) && value[next] == '\n' {
+		next++
+	}
+	return end, next
+}
+
+// scanInnoLine reports the next line state and whether this line starts a section.
+// Fold discovery and the editor's line index do not need the styled byte ranges.
+func scanInnoLine(line string, state innoState, emit func(int, int, chroma.TokenType)) (innoState, bool) {
+	header := false
 	style := func(start, end int, kind chroma.TokenType) {
 		if emit != nil && start < end {
 			emit(start, end, kind)
@@ -93,7 +97,7 @@ func scanInnoLine(line string, state innoState, emit func(int, int, chroma.Token
 			case ';':
 				if state.section != innoCode {
 					style(i, len(line), chroma.CommentSingle)
-					return state
+					return state, header
 				}
 			case '[':
 				end := innoWordEnd(line, i+1)
@@ -101,6 +105,7 @@ func scanInnoLine(line string, state innoState, emit func(int, int, chroma.Token
 					name := strings.ToLower(line[i+1 : end])
 					i = end + 1
 					if innoSections[name] {
+						header = true
 						style(start, i, chroma.NameTag)
 						switch name {
 						case "code":
@@ -132,7 +137,7 @@ func scanInnoLine(line string, state innoState, emit func(int, int, chroma.Token
 			i = block(i, i+2)
 		case state.section == innoCode && strings.HasPrefix(rest, "//"):
 			style(i, len(line), chroma.CommentSingle)
-			return state
+			return state, header
 		case state.section != innoCode && rest[0] == '{':
 			if strings.HasPrefix(rest, "{{") {
 				i += 2
@@ -140,7 +145,7 @@ func scanInnoLine(line string, state innoState, emit func(int, int, chroma.Token
 				i += end + 2
 				style(start, i, chroma.LiteralStringInterpol)
 			} else {
-				return state
+				return state, header
 			}
 		case state.section != innoMessages && (rest[0] == '\'' || rest[0] == '"'):
 			kind := chroma.LiteralStringSingle
@@ -173,7 +178,7 @@ func scanInnoLine(line string, state innoState, emit func(int, int, chroma.Token
 			i++
 		}
 	}
-	return state
+	return state, header
 }
 
 func innoWordByte(ch byte) bool {

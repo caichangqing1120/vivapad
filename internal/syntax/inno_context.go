@@ -59,7 +59,8 @@ func (h *InnoHighlighter) highlightLine(_ string, index int, line string, dst []
 		if end < 0 {
 			return dst
 		}
-		h.lines = append(h.lines, innoLine{prev.start + end + 1, scanInnoLine(remaining[:end], prev.state, nil)})
+		state, _ := scanInnoLine(remaining[:end], prev.state, nil)
+		h.lines = append(h.lines, innoLine{prev.start + end + 1, state})
 	}
 	scanInnoLine(line, h.lines[index].state, func(start, end int, kind chroma.TokenType) {
 		if color, ok := tokenColor(kind); ok {

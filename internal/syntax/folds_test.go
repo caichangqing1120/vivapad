@@ -44,6 +44,37 @@ func TestFoldRegionsFollowPythonIndentationAndSkipBlankComments(t *testing.T) {
 	}
 }
 
+func TestInnoSetupFoldRegionsFollowRecognizedSections(t *testing.T) {
+	lines := []string{
+		"preamble",
+		"[Setup]", // An adjacent recognized section leaves it empty.
+		"\t[cOdE]",
+		"(*",
+		"[Files]", // Comment text does not end the Code section.
+		"*)",
+		"begin",
+		"end;",
+		"[Unknown]",
+		"[Setup",
+		"[Files]",
+		`Source: "data.txt"; DestDir: {app}`,
+		"",
+		"[Run]", // EOF without a body must not produce a fold.
+	}
+	want := []FoldRegion{{Header: 2, LastLine: 9, Level: 1}, {Header: 10, LastLine: 12, Level: 1}}
+	for _, eol := range []string{"\n", "\r\n", "\r"} {
+		for _, terminator := range []string{"", eol} {
+			value := strings.Join(lines, eol) + terminator
+			if got := FoldRegions(".ISS", value); !reflect.DeepEqual(got, want) {
+				t.Errorf("Inno folds with EOL %q and terminator %q = %+v, want %+v", eol, terminator, got, want)
+			}
+			if got := FoldRegions("", value); len(got) != 0 {
+				t.Fatalf("Normal Text applied Inno folds: %+v", got)
+			}
+		}
+	}
+}
+
 func TestIntelHEXFoldRegionsFollowExtendedAddresses(t *testing.T) {
 	value := strings.Join([]string{
 		"preamble",

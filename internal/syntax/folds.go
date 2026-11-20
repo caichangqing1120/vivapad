@@ -27,6 +27,9 @@ func FoldRegions(mode, value string) []FoldRegion {
 	if strings.EqualFold(mode, ".hex") {
 		return intelHEXFoldRegions(value)
 	}
+	if strings.EqualFold(mode, ".iss") {
+		return innoFoldRegions(value)
+	}
 	if mode == ".py" || mode == ".yaml" || mode == ".yml" {
 		return indentFoldRegions(value, mode == ".py")
 	}
@@ -77,6 +80,30 @@ func FoldRegions(mode, value string) []FoldRegion {
 		}
 	}
 	return sortedFoldRegions(regions)
+}
+
+func innoFoldRegions(value string) []FoldRegion {
+	var regions []FoldRegion
+	var state innoState
+	header, line := -1, 0
+	finish := func() {
+		if header >= 0 && header < line-1 {
+			regions = append(regions, FoldRegion{Header: header, LastLine: line - 1, Level: 1})
+		}
+	}
+	for value != "" {
+		end, next := innoLineBounds(value)
+		var isHeader bool
+		state, isHeader = scanInnoLine(value[:end], state, nil)
+		if isHeader {
+			finish()
+			header = line
+		}
+		value = value[next:]
+		line++
+	}
+	finish()
+	return regions
 }
 
 func intelHEXFoldRegions(value string) []FoldRegion {

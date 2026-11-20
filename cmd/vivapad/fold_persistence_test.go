@@ -3,9 +3,12 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/components"
 	"vivapad/internal/recovery"
 	"vivapad/internal/session"
 )
@@ -88,6 +91,76 @@ func TestIntelHEXFoldStateRestoresFromSessionWithoutEditing(t *testing.T) {
 	}
 	if value, err := os.ReadFile(path); err != nil || string(value) != original {
 		t.Fatalf("folding modified CRLF bytes: %q, %v", value, err)
+	}
+}
+
+func TestInnoSetupFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	root := t.TempDir()
+	path, sessionPath := filepath.Join(root, "script.ISS"), filepath.Join(root, "session.json")
+	const original = "\xef\xbb\xbf[Setup]\r\nAppName=Demo\r\n[Files]\r\nSource: data.txt\r\n"
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newStartupModel([]string{path}, sessionPath)
+	doc := state.space.Current()
+	before := doc.Editor.String()
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(3))
+	revealViewMenuItem(t, driver, 11)
+	clickID(t, driver, menuItemScope.At(11))
+	want := []components.CodeEditorFoldRange{{Header: 0, LastLine: 1}, {Header: 2, LastLine: 3}}
+	if got := state.foldRanges(doc); !slices.Equal(got, want) {
+		t.Fatalf("Inno Fold All = %+v, want %+v", got, want)
+	}
+	for _, label := range driver.Snapshot().Texts {
+		if strings.Contains(label.Value, "AppName=Demo") || strings.Contains(label.Value, "Source: data.txt") {
+			t.Fatalf("painted a collapsed body: %q", label.Value)
+		}
+	}
+	clickID(t, driver, leftFoldScope.At(0))
+	if got := state.foldRanges(doc); !slices.Equal(got, want[1:]) {
+		t.Fatalf("gutter expansion changed the other section: %+v", got)
+	}
+	clickID(t, driver, leftFoldScope.At(0))
+	if doc.Dirty() || doc.Editor.CanUndo() || doc.Editor.String() != before {
+		t.Fatal("folding changed buffer content or history")
+	}
+	exported, err := state.nppSessionState()
+	if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != "inno" || !slices.Equal(exported.Main[0].Folds, []int{0, 2}) {
+		t.Fatalf("NPP Inno fold export = %+v, %v", exported, err)
+	}
+	newConfig(state).OnCloseRequest(func() {})
+	reopened := newStartupModel(nil, sessionPath)
+	if got := reopened.foldRanges(reopened.space.Current()); !slices.Equal(got, want) {
+		t.Fatalf("private Inno fold restore = %+v; %q", got, reopened.notice)
+	}
+	xmlPath := filepath.Join(root, "session.xml")
+	if err := session.SaveNPP(xmlPath, exported); err != nil {
+		t.Fatal(err)
+	}
+	loaded, loader := startDriver(t)
+	if err := loader.QueueOpenFiles([]string{xmlPath}, nil); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, loader, menuScope.At(0))
+	clickID(t, loader, menuItemScope.At(13))
+	clickID(t, loader, sessionScope.At(0))
+	if got := loaded.foldRanges(loaded.space.Current()); !slices.Equal(got, want) {
+		t.Fatalf("NPP Inno fold import = %+v; %q", got, loaded.notice)
+	}
+	loaded.command("Unfold All")
+	if doc := loaded.space.Current(); len(loaded.foldRanges(doc)) != 0 || doc.Dirty() || doc.Editor.String() != before || doc.Editor.CanUndo() {
+		t.Fatal("Unfold All changed source or history")
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != original {
+		t.Fatalf("Inno folding changed the saved bytes: %q, %v", data, err)
 	}
 }
 
