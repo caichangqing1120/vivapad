@@ -68,6 +68,12 @@ func (state *model) documentTextInput(pane int) *app.TextInput {
 	}
 	if handle := input.OnEvent; handle != nil {
 		input.OnEvent = func(event app.TextEvent) (app.TextState, error) {
+			if event.CompositionPhase == text.CompositionNone && event.Kind == app.TextCommandEvent &&
+				event.Command == app.TextUndo && doc.Editor.TentativeCompositionActive() {
+				// Undo consumes the preedit before a later command reaches committed history.
+				state.cancelDocumentComposition(doc)
+				return app.TextStateOf(doc.Editor), nil
+			}
 			if event.Kind != app.TextSetMarked || event.CompositionPhase != text.CompositionNone {
 				return handle(event)
 			}

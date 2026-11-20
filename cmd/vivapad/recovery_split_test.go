@@ -313,6 +313,51 @@ func TestSinglePaneRecoveryDoesNotOpenRedirectedFile(t *testing.T) {
 	}
 }
 
+func TestFirstNativeUndoKeepsRecoveredDraft(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		name := "preedit"
+		if confirmed {
+			name = "confirmed result"
+		}
+		t.Run(name, func(t *testing.T) {
+			const draft = "xoriginal\nlast\n"
+			config := t.TempDir()
+			if err := recovery.Save(filepath.Join(config, "recovery.json"), recovery.State{
+				Tabs: []recovery.Tab{{
+					Name: "Recovered draft.txt", Content: draft, LineEnding: document.CRLF,
+					LineEndings: "WL", SelectionStart: 1, SelectionEnd: 1,
+				}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			state := newStartupModel(nil, filepath.Join(config, "session.json"))
+			doc := state.space.Current()
+			input := tentativeTextInput(t, state, 0)
+			phase := text.CompositionUpdate
+			if confirmed {
+				phase = text.CompositionResult
+			}
+			if next := sendComposition(t, input, phase, "y"); next.Value != "xyoriginal\nlast\n" || next.Composing == confirmed {
+				t.Fatalf("first input did not reach its expected state: %+v", next)
+			}
+			undo := app.TextEvent{Kind: app.TextCommandEvent, Command: app.TextUndo}
+			if next, err := input.OnEvent(undo); err != nil || next.Value != draft || next.Composing ||
+				doc.EOLSequence() != "WL" || !doc.Editor.CanUndo() || doc.Editor.CanRedo() != confirmed {
+				t.Fatalf("first Undo: text=%q composing=%t endings=%q undo=%t redo=%t err=%v",
+					next.Value, next.Composing, doc.EOLSequence(), doc.Editor.CanUndo(), doc.Editor.CanRedo(), err)
+			}
+			if confirmed {
+				redo := app.TextEvent{Kind: app.TextCommandEvent, Command: app.TextRedo}
+				if next, err := input.OnEvent(redo); err != nil || next.Value != "xyoriginal\nlast\n" || doc.EOLSequence() != "WL" {
+					t.Fatalf("Redo lost the confirmed edit: %+v, %v", next, err)
+				}
+			} else if next, err := input.OnEvent(undo); err != nil || next.Value != "" || doc.Editor.CanUndo() {
+				t.Fatalf("a separate Undo should still reach the recovery operation: %+v, %v", next, err)
+			}
+		})
+	}
+}
+
 func TestWindowActivationRetriesFailedUnchangedRecovery(t *testing.T) {
 	root := t.TempDir()
 	settings := filepath.Join(root, "settings")
