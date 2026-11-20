@@ -30,6 +30,7 @@ import (
 	"vivapad/internal/searchfiles"
 	"vivapad/internal/session"
 	"vivapad/internal/syntax"
+	"vivapad/internal/websearch"
 	"vivapad/internal/workspace"
 )
 
@@ -238,6 +239,11 @@ var (
 	blankScope                 = tree.Sub(page, tree.Name("blank-operations"))
 	copyPathsScope             = tree.Sub(page, tree.Name("copy-paths"))
 	onSelectionScope           = tree.Sub(page, tree.Name("on-selection"))
+	webSearchEngineScope       = tree.Sub(page, tree.Name("web-search-engines"))
+	webSearchDialogID          = tree.ID(page, "web-search-dialog")
+	webSearchTemplateID        = tree.ID(page, "web-search-template")
+	webSearchSaveID            = tree.ID(page, "web-search-save")
+	webSearchCancelID          = tree.ID(page, "web-search-cancel")
 	multiSelectAllScope        = tree.Sub(page, tree.Name("multi-select-all"))
 	multiSelectNextScope       = tree.Sub(page, tree.Name("multi-select-next"))
 	readOnlyScope              = tree.Sub(page, tree.Name("read-only"))
@@ -603,6 +609,12 @@ type model struct {
 	menuPointerShift              bool
 	readOnlyMenuOpen              bool
 	dateTimeDialogOpen            bool
+	webSearch                     websearch.Config
+	webSearchOpen                 bool
+	webSearchChoice               string
+	webSearchDraft                *text.Editor
+	webSearchError                string
+	webSearchErrorTemplate        string
 	dateTimeFocus                 bool
 	dateTimeDraft                 *text.Editor
 	dateTimeDraftReverse          bool
@@ -954,6 +966,7 @@ func (state *model) applyPreferences(stored preferences.State) {
 	state.showNonPrinting, state.showControls, state.representationsReady = stored.ShowNonPrinting, stored.ShowControls, false
 	state.npcMode, state.npcIncludeControls = stored.NPCMode, stored.NPCIncludeControls
 	state.printSettings = stored.Print
+	state.webSearch = stored.WebSearch
 	if stored.ChangeHistoryView == "" {
 		stored.ChangeHistoryView = "margin"
 	}
@@ -975,6 +988,7 @@ func (state *model) savePreferences() error {
 		NPCMode: state.npcMode, NPCIncludeControls: state.npcIncludeControls,
 		ChangeHistoryView: state.changeHistoryView,
 		Print:             state.printSettings,
+		WebSearch:         state.webSearch,
 	}
 	if err := preferences.Save(state.preferencesPath, stored); err != nil {
 		state.notice = "Settings not saved: " + err.Error()
@@ -1208,7 +1222,7 @@ func newConfig(state *model) app.Config {
 			state.viewMenuOffset = min(max(0, state.viewMenuOffset+step), max(0, len(menuCommands[3])-state.viewMenuVisible))
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		if state.summaryOpen || state.helpMode != noHelp {
+		if state.summaryOpen || state.helpMode != noHelp || state.webSearchOpen {
 			return gfx.EventResult{Handled: true}
 		}
 		if state.activeDock() == "characters" && (event.Target == characterPanelID || event.Target.Scope() == characterCellScope) {
@@ -1343,7 +1357,7 @@ func newConfig(state *model) app.Config {
 		return result
 	}
 	config.OnFileDrop = func(event gfx.FileDropEvent) gfx.EventResult {
-		if state.saveSessionOptionsOpen || state.columnDialogOpen || state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen || state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil || state.dateTimeDialogOpen || state.hashDialogOpen || state.windowsDialogOpen {
+		if state.saveSessionOptionsOpen || state.columnDialogOpen || state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.webSearchOpen || state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen || state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil || state.dateTimeDialogOpen || state.hashDialogOpen || state.windowsDialogOpen {
 			return gfx.EventResult{}
 		}
 		if event.Phase == gfx.FileDropDrop {
@@ -1378,6 +1392,9 @@ func newConfig(state *model) app.Config {
 		}
 		if state.summaryOpen || state.helpMode != noHelp {
 			return gfx.EventResult{Handled: true}
+		}
+		if state.webSearchOpen {
+			return gfx.EventResult{Handled: event.Target != webSearchTemplateID}
 		}
 		if state.windowsDialogOpen {
 			return gfx.EventResult{Handled: true}
@@ -1646,6 +1663,17 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			return gfx.EventResult{}
+		}
+		if state.webSearchOpen {
+			switch {
+			case event.Key == gfx.KeyEscape:
+				state.closeWebSearchSettings()
+			case event.Key == gfx.KeyEnter && event.Target == webSearchTemplateID:
+				state.saveWebSearchSettings()
+			default:
+				return gfx.EventResult{}
+			}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.summaryOpen {
 			if event.Key == gfx.KeyEscape || event.Key == gfx.KeyEnter {
@@ -3070,6 +3098,10 @@ func (state *model) command(command string) {
 		state.menuOpen, state.copyPathsMenuOpen = 1, true
 	case "On Selection":
 		state.menuOpen, state.onSelectionMenuOpen = 1, true
+	case webSearchCommand:
+		state.searchActiveEditorOnInternet()
+	case webSearchSettingsCommand:
+		state.openWebSearchSettings()
 	case characterPanelCommand:
 		state.toggleCharacterPanel()
 	case "Multi-select All":

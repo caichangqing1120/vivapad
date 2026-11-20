@@ -221,6 +221,9 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	if state.helpMode != noHelp {
 		state.paintHelp(canvas, size)
 	}
+	if state.webSearchOpen {
+		state.paintWebSearchSettings(canvas, size)
+	}
 	if state.runDialogOpen {
 		state.paintRunDialog(canvas, size)
 	}

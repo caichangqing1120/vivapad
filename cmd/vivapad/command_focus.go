@@ -8,7 +8,7 @@ import (
 
 func (state *model) editorCommandFocusBlocked() bool {
 	return state.menuOpen >= 0 || state.saveSessionOptionsOpen || state.columnDialogOpen ||
-		state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.windowsDialogOpen ||
+		state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.webSearchOpen || state.windowsDialogOpen ||
 		state.macroSaveOpen || state.macroRunOpen || state.hashDialogOpen || state.dateTimeDialogOpen ||
 		state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil ||
 		state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen
@@ -33,7 +33,7 @@ func (state *model) restoreEditorCommandFocus(command string) {
 	}
 	switch command {
 	case "Record Macro", "Stop Recording", "Clear Macro", "Print...", "Print Now",
-		openCommandPromptCommand, openPowerShellCommand,
+		openCommandPromptCommand, openPowerShellCommand, webSearchCommand,
 		"Read-Only on Current Document", "Read-Only for All Documents", "Clear Read-Only for All Documents",
 		"Monitoring (tail -f)",
 		"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Toggle Full Screen Mode", distractionFreeCommand,

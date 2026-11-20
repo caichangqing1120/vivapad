@@ -10,11 +10,12 @@ import (
 
 	"vivapad/internal/datetime"
 	"vivapad/internal/printing"
+	"vivapad/internal/websearch"
 )
 
 const (
 	maxSize = 64 << 10
-	version = 6
+	version = 7
 )
 
 type State struct {
@@ -41,6 +42,7 @@ type State struct {
 	NPCMode            string            `json:"npc_mode,omitempty"`
 	NPCIncludeControls bool              `json:"npc_include_controls,omitempty"`
 	Print              printing.Settings `json:"print_settings"`
+	WebSearch          websearch.Config  `json:"web_search,omitzero"`
 }
 
 type diskState struct {
@@ -76,7 +78,7 @@ func (state State) validate() error {
 	if err := state.Print.Validate(); err != nil {
 		return err
 	}
-	return nil
+	return state.WebSearch.Validate()
 }
 
 func Load(path string) (State, error) {

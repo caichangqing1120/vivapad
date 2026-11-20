@@ -47,7 +47,7 @@ func TestMissingAndInvalidSettings(t *testing.T) {
 	}
 	for name, content := range map[string]string{
 		"invalid JSON":   "{",
-		"future version": `{"version":6}`,
+		"future version": `{"version":8}`,
 		"bad width":      `{"version":1,"font_size":13,"tab_width":0,"line_numbers":true,"auto_indent":true,"auto_close":true,"indent_mode":"language"}`,
 		"unknown field":  `{"version":1,"font_size":13,"tab_width":4,"line_numbers":true,"auto_indent":true,"auto_close":true,"indent_mode":"language","surprise":1}`,
 	} {

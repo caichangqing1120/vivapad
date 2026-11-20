@@ -144,6 +144,12 @@ func (state *model) resolveTextInput(context app.TextInputContext) *app.TextInpu
 	if state.summaryOpen || state.helpMode != noHelp {
 		return nil
 	}
+	if state.webSearchOpen {
+		if context.ID == webSearchTemplateID && state.webSearchChoice == "custom" {
+			return &app.TextInput{Editor: state.webSearchDraft}
+		}
+		return nil
+	}
 	if state.windowsDialogOpen {
 		return nil
 	}
