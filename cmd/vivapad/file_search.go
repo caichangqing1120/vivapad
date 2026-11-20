@@ -400,13 +400,13 @@ func (state *model) openFileResult(index int) bool {
 	}
 	if doc.Editor.CompositionActive() {
 		state.notice = composingResultNotice
-		if match.Source != doc.Editor.CommittedString() {
+		if !match.MatchesSource(doc.Editor.CommittedString()) {
 			state.notice = staleSearchResultNotice
 		}
 		return false
 	}
 	value := doc.Editor.String()
-	if match.Source != value || match.Start < 0 || match.End > len(value) || match.Start >= match.End || value[match.Start:match.End] != match.Text {
+	if !match.MatchesRange(value) {
 		state.notice = staleSearchResultNotice
 		return false
 	}

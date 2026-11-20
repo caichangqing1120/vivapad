@@ -96,8 +96,9 @@ func TestFindBindsMixedEOLResultToDecodedTextAndOriginalBytes(t *testing.T) {
 			}
 			match := result.Matches[0]
 			const prefix = "a\nb\nc\ncaf\u00e9 "
-			if match.Source != prefix+"cat" || match.Encoding != tc.want || match.Line != 4 || match.Column != 6 ||
-				match.Start != len(prefix) || match.End != len(prefix)+3 || match.Text != "cat" ||
+			if !match.MatchesRange(prefix+"cat") || match.MatchesRange("z"+(prefix + "cat")[1:]) ||
+				match.Encoding != tc.want || match.Line != 4 || match.Column != 6 ||
+				match.Start != len(prefix) || match.End != len(prefix)+3 ||
 				match.DiskDigest != fmt.Sprintf("%x", sha256.Sum256([]byte(tc.bytes))) {
 				t.Fatalf("match lost its source coordinates, encoding or disk identity: %+v", match)
 			}
@@ -214,7 +215,8 @@ func TestFindRegisteredCharacterSetFile(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "japanese.txt"), []byte{0x93, 0xfa, 0x96, 0x7b})
 	result, err := Find(context.Background(), root, "日本", document.SearchOptions{}, Options{Pattern: "*.txt", Encoding: document.ShiftJIS})
-	if err != nil || len(result.Matches) != 1 || result.Matches[0].Encoding != document.ShiftJIS || result.Matches[0].Text != "日本" {
+	if err != nil || len(result.Matches) != 1 || result.Matches[0].Encoding != document.ShiftJIS ||
+		result.Matches[0].Start != 0 || result.Matches[0].End != len("日本") || !result.Matches[0].MatchesRange("日本") {
 		t.Fatalf("Shift-JIS directory result = %+v, %v", result, err)
 	}
 }

@@ -500,7 +500,7 @@ func TestFinderDirectoryResultKeepsSourceDecoding(t *testing.T) {
 			recents := slices.Clone(state.recentEntries)
 			state.query.Insert("cat")
 			collectFinderSnapshot(t, state, "directory", root)
-			if matches := state.fileResults.Matches; len(matches) != 2 || matches[1].Encoding != document.UTF8 || matches[1].Source != target.Editor.String() {
+			if matches := state.fileResults.Matches; len(matches) != 2 || matches[1].Encoding != document.UTF8 || !matches[1].MatchesSource(target.Editor.String()) {
 				t.Fatalf("fixture must have equal text from a different decoder: %+v", matches)
 			}
 			if state.openFileResult(1) {

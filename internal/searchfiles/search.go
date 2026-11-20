@@ -2,6 +2,7 @@ package searchfiles
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -32,16 +33,42 @@ func (options Options) fileByteLimit() int64 {
 type Match struct {
 	Path       string
 	DiskDigest string
-	// Source shares the immutable normalized text already retained by Text.
-	Source   string
-	Encoding document.Encoding
-	Line     int
-	Column   int
-	Preview  string
-	Text     string
-	Start    int
-	End      int
+	// Source and Text share an open document's immutable snapshot.
+	Source       string
+	Encoding     document.Encoding
+	Line         int
+	Column       int
+	Preview      string
+	Text         string
+	Start        int
+	End          int
+	fileSnapshot *fileSnapshot
 }
+
+type fileSnapshot struct {
+	length int
+	digest [sha256.Size]byte
+}
+
+func (match Match) MatchesSource(value string) bool {
+	if snapshot := match.fileSnapshot; snapshot != nil {
+		return snapshot.length == len(value) && snapshot.digest == sha256.Sum256([]byte(value))
+	}
+	return match.Source == value
+}
+
+func (match Match) MatchesRange(value string) bool {
+	return match.Start >= 0 && match.Start < match.End && match.End <= len(value) &&
+		match.MatchesSource(value) && (match.fileSnapshot != nil || value[match.Start:match.End] == match.Text)
+}
+
+type matchSnapshot uint8
+
+const (
+	previewOnly matchSnapshot = iota
+	directorySnapshot
+	documentSnapshot
+)
 
 type Result struct {
 	Matches       []Match
@@ -53,10 +80,10 @@ type Result struct {
 var errLimit = errors.New("match limit reached")
 
 func Find(ctx context.Context, root, query string, search document.SearchOptions, options Options) (Result, error) {
-	return find(ctx, root, query, search, options, true)
+	return find(ctx, root, query, search, options, directorySnapshot)
 }
 
-func find(ctx context.Context, root, query string, search document.SearchOptions, options Options, retainSource bool) (Result, error) {
+func find(ctx context.Context, root, query string, search document.SearchOptions, options Options, snapshot matchSnapshot) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -143,7 +170,7 @@ func find(ctx context.Context, root, query string, search document.SearchOptions
 		if err != nil {
 			return err
 		}
-		if err := appendMatches(ctx, &result, source, spans, options.MaxMatches, retainSource); err != nil {
+		if err := appendMatches(ctx, &result, source, spans, options.MaxMatches, snapshot); err != nil {
 			return err
 		}
 		if truncated {
@@ -172,15 +199,19 @@ func FindDocument(doc *document.Document, query string, search document.SearchOp
 		return Result{}, err
 	}
 	result := Result{FilesSearched: 1}
-	if err := appendMatches(ctx, &result, source, spans, maxMatches, true); err != nil && !errors.Is(err, errLimit) {
+	if err := appendMatches(ctx, &result, source, spans, maxMatches, documentSnapshot); err != nil && !errors.Is(err, errLimit) {
 		return Result{}, err
 	}
 	result.Truncated = result.Truncated || truncated
 	return result, nil
 }
 
-func appendMatches(ctx context.Context, result *Result, source document.SearchSource, spans []text.Span, maxMatches int, retainSource bool) error {
+func appendMatches(ctx context.Context, result *Result, source document.SearchSource, spans []text.Span, maxMatches int, snapshot matchSnapshot) error {
 	value := source.Text
+	var fingerprint *fileSnapshot
+	if snapshot == directorySnapshot && len(spans) != 0 {
+		fingerprint = &fileSnapshot{length: len(value), digest: sha256.Sum256([]byte(value))}
+	}
 	line, column, lineStart, scanned, lineEnd, cachedLineStart := 1, 1, 0, 0, 0, -1
 	for _, span := range spans {
 		if err := ctx.Err(); err != nil {
@@ -211,11 +242,12 @@ func appendMatches(ctx context.Context, result *Result, source document.SearchSo
 			Path: source.Path, DiskDigest: source.DiskDigest, Encoding: source.Encoding, Line: line, Column: column,
 			Preview: preview, Start: span.Start, End: span.End,
 		}
-		if retainSource {
+		if snapshot == documentSnapshot {
 			match.Source, match.Text = value, value[span.Start:span.End]
 		} else {
 			// Short previews can be slices of the complete source string.
 			match.Preview = strings.Clone(preview)
+			match.fileSnapshot = fingerprint
 		}
 		result.Matches = append(result.Matches, match)
 	}

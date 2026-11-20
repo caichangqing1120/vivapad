@@ -36,7 +36,7 @@ type ApplyResult struct {
 }
 
 func PreviewReplace(ctx context.Context, root, query, replacement string, search document.SearchOptions, options Options) (*ReplacePlan, error) {
-	found, err := find(ctx, root, query, search, options, false)
+	found, err := find(ctx, root, query, search, options, previewOnly)
 	if err != nil {
 		return nil, err
 	}
