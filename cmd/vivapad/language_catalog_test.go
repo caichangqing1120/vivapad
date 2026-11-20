@@ -356,6 +356,7 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.jsonc", "JSON5", "json5", "//"},
 		{"demo.RC", "Resource file", "rc", "//"},
 		{"demo.ISS", "Inno Setup", "inno", ";"},
+		{"demo.MIB", "ASN.1", "asn1", ""},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)
@@ -395,6 +396,7 @@ func TestNewLanguageModesRoundTripSessionsWithoutEditing(t *testing.T) {
 	for _, tc := range []struct{ label, mode, nppName, source string }{
 		{"Resource file", ".rc", "rc", "\xef\xbb\xbfSTRINGTABLE\r\nBEGIN\r\n  IDS_TITLE \"Demo\"\r\nEND\r\n"},
 		{"Inno Setup", ".iss", "inno", "\xef\xbb\xbf[Setup]\r\nAppName=Demo\r\n[Code]\r\nbegin\r\nend;\r\n"},
+		{"ASN.1", ".mib", "asn1", "\xef\xbb\xbfDEMO DEFINITIONS ::= BEGIN\r\nitem OBJECT IDENTIFIER ::= { parent 42 }\r\nEND\r\n"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			checkLanguageSessionRoundTrip(t, tc.label, tc.mode, tc.nppName, tc.source)

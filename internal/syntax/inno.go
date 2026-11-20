@@ -30,36 +30,18 @@ func (l *innoLexer) SetAnalyser(func(string) float32) chroma.Lexer  { return l }
 func (*innoLexer) AnalyseText(string) float32                       { return 0 }
 
 func (*innoLexer) Tokenise(_ *chroma.TokeniseOptions, value string) (chroma.Iterator, error) {
-	var state innoState
-	var tokens []chroma.Token
-	for value != "" {
-		end, next := innoLineBounds(value)
-		line, cursor := value[:end], 0
-		state, _ = scanInnoLine(line, state, func(start, end int, kind chroma.TokenType) {
-			if cursor < start {
-				tokens = append(tokens, chroma.Token{Type: chroma.Text, Value: line[cursor:start]})
-			}
-			tokens = append(tokens, chroma.Token{Type: kind, Value: line[start:end]})
-			cursor = end
-		})
-		if cursor < next {
-			tokens = append(tokens, chroma.Token{Type: chroma.Text, Value: value[cursor:next]})
-		}
-		value = value[next:]
-	}
-	return chroma.Literator(tokens...), nil
+	return tokeniseSyntaxLines(value, scanInnoTokens), nil
 }
 
-func innoLineBounds(value string) (end, next int) {
-	end = strings.IndexAny(value, "\r\n")
-	if end < 0 {
-		return len(value), len(value)
-	}
-	next = end + 1
-	if value[end] == '\r' && next < len(value) && value[next] == '\n' {
-		next++
-	}
-	return end, next
+type InnoHighlighter struct{ *lineHighlighter[innoState] }
+
+func NewInnoHighlighter() *InnoHighlighter {
+	return &InnoHighlighter{newLineHighlighter(scanInnoTokens)}
+}
+
+func scanInnoTokens(line string, state innoState, emit func(int, int, chroma.TokenType)) innoState {
+	next, _ := scanInnoLine(line, state, emit)
+	return next
 }
 
 // scanInnoLine reports the next line state and whether this line starts a section.

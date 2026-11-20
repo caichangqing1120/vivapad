@@ -628,6 +628,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.innoHighlighters, doc)
 	}
+	if strings.EqualFold(snapshot.Language, ".mib") {
+		highlighter := state.asn1Highlighters[doc]
+		if highlighter == nil {
+			if state.asn1Highlighters == nil {
+				state.asn1Highlighters = make(map[*document.Document]*syntax.ASN1Highlighter)
+			}
+			highlighter = syntax.NewASN1Highlighter()
+			state.asn1Highlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.asn1Highlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)

@@ -92,7 +92,7 @@ func innoFoldRegions(value string) []FoldRegion {
 		}
 	}
 	for value != "" {
-		end, next := innoLineBounds(value)
+		end, next := syntaxLineBounds(value)
 		var isHeader bool
 		state, isHeader = scanInnoLine(value[:end], state, nil)
 		if isHeader {
