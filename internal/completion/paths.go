@@ -100,6 +100,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 	}
 	type candidate struct {
 		name      string
+		folded    string
 		directory bool
 	}
 	var matches []candidate
@@ -118,7 +119,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 			mode = info.Mode()
 		}
 		if mode.IsDir() || mode.IsRegular() {
-			matches = append(matches, candidate{name: name, directory: mode.IsDir()})
+			matches = append(matches, candidate{name: name, folded: strings.ToLower(name), directory: mode.IsDir()})
 		}
 	}
 	slices.SortFunc(matches, func(first, second candidate) int {
@@ -128,7 +129,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 			}
 			return 1
 		}
-		if order := strings.Compare(strings.ToLower(first.name), strings.ToLower(second.name)); order != 0 {
+		if order := strings.Compare(first.folded, second.folded); order != 0 {
 			return order
 		}
 		return strings.Compare(first.name, second.name)
@@ -202,8 +203,19 @@ func joinLookupPath(dir, tail string) string {
 }
 
 func pathPrefix(name, prefix string) bool {
-	nameRunes, prefixRunes := []rune(name), []rune(prefix)
-	return len(nameRunes) >= len(prefixRunes) && strings.EqualFold(string(nameRunes[:len(prefixRunes)]), prefix)
+	if strings.HasPrefix(name, prefix) {
+		return true
+	}
+	// Case folding can match runes with different UTF-8 widths, such as K and Kelvin sign.
+	end := 0
+	for range prefix {
+		if end == len(name) {
+			return false
+		}
+		_, width := utf8.DecodeRuneInString(name[end:])
+		end += width
+	}
+	return strings.EqualFold(name[:end], prefix)
 }
 
 func pathAtCaret(characters []rune, caret int) (string, int) {

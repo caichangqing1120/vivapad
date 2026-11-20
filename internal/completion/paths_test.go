@@ -303,3 +303,47 @@ func TestPathsBoundsDirectoryEntries(t *testing.T) {
 		t.Fatalf("candidate changed base: %q", result.Candidates[0])
 	}
 }
+
+func TestPathPrefixMatchesCaseFoldWithoutAllocating(t *testing.T) {
+	for _, tc := range []struct {
+		name, prefix string
+		want         bool
+	}{
+		{"alpha", "", true},
+		{"ALPHA", "alpha", true},
+		{"\u212aite.txt", "ki", true},
+		{"Kite.txt", "\u212ai", true},
+		{"\u00c9tude.txt", "\u00e9t", true},
+		{"\u00e9.txt", "e\u0301", false},
+		{"no", "none", false},
+	} {
+		if got := pathPrefix(tc.name, tc.prefix); got != tc.want {
+			t.Errorf("pathPrefix(%q, %q) = %v, want %v", tc.name, tc.prefix, got, tc.want)
+		}
+	}
+	name, prefix := strings.Repeat("Quarter", 25)+".txt", strings.Repeat("quarter", 20)
+	if allocs := testing.AllocsPerRun(100, func() {
+		if !pathPrefix(name, prefix) {
+			t.Fatal("long mixed-case prefix did not match")
+		}
+	}); allocs != 0 {
+		t.Errorf("matching a long filename prefix allocated %.1f times", allocs)
+	}
+}
+
+func BenchmarkPathsLargeMixedCaseDirectory(b *testing.B) {
+	root := b.TempDir()
+	for index := range 2000 {
+		name := fmt.Sprintf("Report-%04d-Quarterly-Summary-Archive.txt", index)
+		if err := os.WriteFile(filepath.Join(root, name), nil, 0600); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		result, err := Paths("report-", len("report-"), root)
+		if err != nil || len(result.Candidates) != 2000 {
+			b.Fatalf("got %d candidates, err=%v", len(result.Candidates), err)
+		}
+	}
+}
