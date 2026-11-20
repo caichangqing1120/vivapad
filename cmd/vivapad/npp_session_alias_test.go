@@ -176,6 +176,46 @@ func TestLoadNPPSharedAliasUsesActiveViewsSelection(t *testing.T) {
 	}
 }
 
+func TestLoadNPPRejectsMissingAndExplicitNormalLanguageOnSharedFile(t *testing.T) {
+	root := t.TempDir()
+	first, shared := filepath.Join(root, "first.txt"), filepath.Join(root, "shared.go")
+	const saved = "package main\r\n"
+	for _, path := range []string{first, shared} {
+		if err := os.WriteFile(path, []byte(saved), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	xmlPath := filepath.Join(root, "session.xml")
+	if err := session.SaveNPP(xmlPath, session.NPPState{
+		Main: []session.NPPFile{{Path: first, Encoding: -1}, {Path: shared, Encoding: -1}},
+		Sub:  []session.NPPFile{{Path: shared, Encoding: -1, Language: "normal"}}, ActiveView: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state, driver := startDriver(t)
+	if err := state.space.Open(shared); err != nil {
+		t.Fatal(err)
+	}
+	draft := state.space.Current()
+	state.showInActivePane(draft)
+	draft.Editor.Insert("// draft\n")
+	selection := text.Range{Start: 2, End: 5}
+	draft.Editor.SetSelection(selection)
+	before := draft.Editor.String()
+	if err := driver.QueueOpenFiles([]string{xmlPath}, nil); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(0))
+	clickID(t, driver, menuItemScope.At(13))
+	clickID(t, driver, sessionScope.At(0))
+	if !strings.Contains(state.notice, "conflicting document state") || len(state.space.Documents) != 1 ||
+		state.space.Current() != draft || state.splitEnabled || state.languageFor(draft) != ".go" ||
+		!draft.Dirty() || draft.Editor.String() != before || draft.Editor.Selection() != selection {
+		t.Fatalf("conflicting language changed the workspace: %d tabs, split=%t, mode=%q, notice=%q",
+			len(state.space.Documents), state.splitEnabled, state.languageFor(draft), state.notice)
+	}
+}
+
 func TestLoadNPPSharedAliasUsesSavedEncodingDuringPendingConversion(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

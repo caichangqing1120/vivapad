@@ -367,8 +367,10 @@ func (state *model) loadNPPSession() {
 			}
 			if shared {
 				item := prepared[prior]
+				// Omitted language leaves the existing mode; explicit Normal Text clears it.
+				sameLanguage := item.language == language && (item.file.Language == "") == (file.Language == "")
 				if !slices.Equal(item.file.Marks, file.Marks) || !slices.Equal(item.file.Folds, file.Folds) ||
-					item.file.ReadOnly != file.ReadOnly || item.file.Pinned != file.Pinned || item.file.Color != file.Color || item.language != language {
+					item.file.ReadOnly != file.ReadOnly || item.file.Pinned != file.Pinned || item.file.Color != file.Color || !sameLanguage {
 					state.notice = "Session has conflicting document state for " + canonical
 					return
 				}
