@@ -92,6 +92,41 @@ func TestHexRecordLanguageMappings(t *testing.T) {
 	}
 }
 
+func TestIntelHexAddressPayloadUsesAddressStyle(t *testing.T) {
+	address, _ := tokenColor(chroma.NameFunction)
+	checksum, _ := tokenColor(chroma.Comment)
+	var highlighter Highlighter
+	for _, record := range []string{
+		":020000020100FB",
+		":020000040002F8",
+		":0400000300010002F6",
+		":0400000500010002F4",
+	} {
+		end := len(record) - 2
+		var addressRuns, checksumRuns int
+		for _, run := range highlighter.Highlight(".hex", record, nil) {
+			if run.Start >= 9 && run.End <= end {
+				addressRuns++
+				if run.Start != 9 || run.End != end || run.Color != address {
+					t.Errorf("%s address payload was not one address field: %+v", record, run)
+				}
+			}
+			if run.Start == end && run.End == len(record) && run.Color == checksum {
+				checksumRuns++
+			}
+		}
+		if addressRuns != 1 || checksumRuns != 1 {
+			t.Errorf("%s has %d address payload runs and %d valid checksum runs", record, addressRuns, checksumRuns)
+		}
+	}
+	const data = ":020000000102FB"
+	runs := highlighter.Highlight(".hex", data, nil)
+	if len(runs) != 7 || runs[4].Start != 9 || runs[5].End != len(data)-2 ||
+		runs[4].Color == address || runs[5].Color == address || runs[4].Color == runs[5].Color {
+		t.Fatalf("ordinary data lost its alternating byte colors: %+v", runs)
+	}
+}
+
 func TestHexRecordHighlightKeepsMalformedUnicodeIntact(t *testing.T) {
 	for _, tc := range []struct{ mode, valid string }{
 		{".hex", ":020000000102FB"},

@@ -106,7 +106,12 @@ func (lexer *hexRecordLexer) line(tokens []chroma.Token, line string) []chroma.T
 		field(1, 3, chroma.LiteralNumber, countOK && len(line) == end)
 		field(3, 7, chroma.NameFunction, hexDigits(line, 3, 7))
 		field(7, 9, chroma.NameTag, typeOK && kind <= 5)
-		data(9, checksum)
+		switch kind {
+		case 2, 3, 4, 5:
+			field(9, checksum, chroma.NameFunction, hexDigits(line, 9, checksum))
+		default:
+			data(9, checksum)
+		}
 		field(checksum, end, chroma.Comment, hexChecksum(line, end, 0))
 		field(end, len(line), chroma.Error, false)
 	case 'S':
