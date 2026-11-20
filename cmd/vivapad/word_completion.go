@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/completion"
@@ -81,7 +83,7 @@ func (state *model) startPathCompletion() {
 		return
 	}
 	value := doc.Editor.String()
-	result, err := completion.Paths(value, doc.Editor.Caret(), base)
+	result, err := pathCompletionsAtCaret(doc.Editor, value, base)
 	if err != nil {
 		state.notice = "Path completion: " + err.Error()
 		return
@@ -103,6 +105,25 @@ func (state *model) startPathCompletion() {
 	} else {
 		state.notice = ""
 	}
+}
+
+func pathCompletionsAtCaret(editor *text.Editor, value, base string) (completion.Result, error) {
+	caret := editor.Caret()
+	offset := editor.ByteOffset(caret)
+	start := strings.LastIndexAny(value[:offset], "\r\n") + 1
+	end := len(value)
+	if newline := strings.IndexAny(value[offset:], "\r\n"); newline >= 0 {
+		end = offset + newline
+	}
+	lineCaret := utf8.RuneCountInString(value[start:offset])
+	result, err := completion.Paths(value[start:end], lineCaret, base)
+	if err != nil || len(result.Candidates) == 0 {
+		return result, err
+	}
+	lineStart := caret - lineCaret
+	result.Start += lineStart
+	result.End += lineStart
+	return result, nil
 }
 
 func (state *model) validWordCompletion() bool {
@@ -161,7 +182,7 @@ func (state *model) updateWordCompletionAfterInput(doc *document.Document) {
 	var result completion.Result
 	if current.kind == completionPath {
 		var err error
-		result, err = completion.Paths(value, doc.Editor.Caret(), current.base)
+		result, err = pathCompletionsAtCaret(doc.Editor, value, current.base)
 		if err != nil {
 			state.wordCompletion = nil
 			state.notice = "Path completion: " + err.Error()

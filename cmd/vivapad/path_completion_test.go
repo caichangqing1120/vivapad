@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -11,6 +12,55 @@ import (
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 )
+
+func TestPathCompletionAllocatesForCaretLineAndPreservesUnicodeOffsets(t *testing.T) {
+	root := t.TempDir()
+	const target = "alpha.txt"
+	if err := os.WriteFile(filepath.Join(root, target), []byte("candidate"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	background := strings.Repeat("unrelated \u732b\n", 1<<16)
+	const left, typed, right = "open \u732b \"", "al-old.txt", "\" keep\n"
+	before := background + left + typed + right + background
+	path := filepath.Join(root, "buffer.txt")
+	if err := os.WriteFile(path, []byte(before), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{path})
+	doc := state.space.Current()
+	start := doc.Editor.RuneIndex(len(background) + len(left))
+	doc.Editor.MoveTo(start+len("al"), false)
+	if doc.Editor.String() != before {
+		t.Fatal("source was not opened as expected")
+	}
+	var initial, final runtime.MemStats
+	const lookups = 3
+	runtime.ReadMemStats(&initial)
+	for range lookups {
+		state.startPathCompletion()
+	}
+	runtime.ReadMemStats(&final)
+	bytesPerLookup := (final.TotalAlloc - initial.TotalAlloc) / lookups
+	t.Logf("%d source bytes, %d allocated bytes per path lookup", len(before), bytesPerLookup)
+	if bytesPerLookup > 512<<10 {
+		t.Errorf("path completion allocated %d bytes per lookup for a short caret line", bytesPerLookup)
+	}
+	current := state.wordCompletion
+	if current == nil || current.start != start || current.end != start+len(typed) || len(current.items) != 1 || current.items[0] != target {
+		t.Fatalf("path popup had the wrong range or candidate, notice=%q", state.notice)
+	}
+	state.acceptWordCompletion(0)
+	if doc.Editor.String() != background+left+target+right+background {
+		t.Fatal("completion changed the quoted range or surrounding text")
+	}
+	state.command("Undo")
+	if doc.Editor.String() != before {
+		t.Fatal("completion did not undo in a single step")
+	}
+	if saved, err := os.ReadFile(path); err != nil || string(saved) != before {
+		t.Fatalf("completion changed the saved file: %v", err)
+	}
+}
 
 func TestPathCompletionMenuQuotesAndUndo(t *testing.T) {
 	root := t.TempDir()
