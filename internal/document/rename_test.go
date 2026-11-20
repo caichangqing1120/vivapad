@@ -166,3 +166,34 @@ func TestRenameRejectsByteIdenticalReplacementAfterPreview(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkPrepareRenameExistingTarget(b *testing.B) {
+	for _, tc := range []struct {
+		name string
+		size int64
+	}{{"1MiB", 1 << 20}, {"16MiB", 16 << 20}} {
+		b.Run(tc.name, func(b *testing.B) {
+			root := b.TempDir()
+			source, target := filepath.Join(root, "source.txt"), filepath.Join(root, "target.txt")
+			if err := os.WriteFile(source, []byte("original\r\n"), 0600); err != nil {
+				b.Fatal(err)
+			}
+			if err := os.WriteFile(target, nil, 0600); err != nil {
+				b.Fatal(err)
+			}
+			if err := os.Truncate(target, tc.size); err != nil {
+				b.Fatal(err)
+			}
+			doc, err := Open(source)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				if plan, err := doc.PrepareRename(target); err != nil || !plan.TargetExists {
+					b.Fatalf("rename plan = %v, %v", plan, err)
+				}
+			}
+		})
+	}
+}
