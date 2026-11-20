@@ -1,8 +1,8 @@
 package printing
 
 import (
-	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"sync"
@@ -270,28 +270,28 @@ func (renderer *pdfRenderer) paintRun(pdf *fpdf.Fpdf, run pdfFontRun, x, y, size
 	return advance, nil
 }
 
-func (renderer *pdfRenderer) Render(job Job, pages []Page, device DeviceMetrics) ([]byte, error) {
+func (renderer *pdfRenderer) writePDF(output io.Writer, job Job, pages []Page, device DeviceMetrics) error {
 	if renderer == nil || len(pages) == 0 || len(pages) > maxPrintPages {
-		return nil, ErrNoPages
+		return ErrNoPages
 	}
 	if _, err := BodyBounds(job, device); err != nil {
-		return nil, err
+		return err
 	}
 	pdf := newPDFDocument(renderer.fonts, renderer.fontSize)
 	if err := pdf.Error(); err != nil {
-		return nil, err
+		return err
 	}
 	baseAscent := float64(pdf.GetFontDesc("", "").Ascent) * renderer.fontSize / 1000
 	for _, page := range pages {
 		if page.Number < 1 || len(page.Styles) != 0 && len(page.Styles) != len(page.Rows) {
-			return nil, fmt.Errorf("printing: invalid PDF page rows or styles")
+			return fmt.Errorf("printing: invalid PDF page rows or styles")
 		}
 		pdf.AddPageFormat("P", fpdf.SizeType{Wd: device.PaperWidth, Ht: device.PaperHeight})
 		if err := renderer.drawPDFBand(pdf, page.Header, job.Settings.HeaderFont, page.Bounds, true); err != nil {
-			return nil, err
+			return err
 		}
 		if err := renderer.drawPDFBand(pdf, page.Footer, job.Settings.FooterFont, page.Bounds, false); err != nil {
-			return nil, err
+			return err
 		}
 		for index, row := range page.Rows {
 			if printBodyBackground(job.Settings) {
@@ -305,7 +305,7 @@ func (renderer *pdfRenderer) Render(job Job, pages []Page, device DeviceMetrics)
 			}
 			segments, err := Segments(job, row, styles, renderer.tabWidth)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			y := page.Bounds.Top + float64(index)*renderer.lineHeight + baseAscent
 			if row.LineNumber > 0 && job.Settings.LineNumbers {
@@ -317,25 +317,24 @@ func (renderer *pdfRenderer) Render(job Job, pages []Page, device DeviceMetrics)
 			for _, segment := range segments {
 				runs, err := renderer.fontRuns(segment.Text)
 				if err != nil {
-					return nil, err
+					return err
 				}
 				red, green, blue := pdfColor(segment.Color)
 				pdf.SetTextColor(red, green, blue)
 				for _, run := range runs {
 					advance, err := renderer.paintRun(pdf, run, x, y, renderer.fontSize, false)
 					if err != nil {
-						return nil, err
+						return err
 					}
 					x += advance
 				}
 			}
 		}
 	}
-	var output bytes.Buffer
-	if err := pdf.Output(&output); err != nil {
-		return nil, fmt.Errorf("printing: render PDF: %w", err)
+	if err := pdf.Output(output); err != nil {
+		return fmt.Errorf("printing: write PDF: %w", err)
 	}
-	return output.Bytes(), nil
+	return nil
 }
 
 func (renderer *pdfRenderer) drawPDFBand(pdf *fpdf.Fpdf, band TextBand, font BandFont, bounds PageBounds, top bool) error {

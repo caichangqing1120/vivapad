@@ -8,6 +8,7 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -181,17 +182,13 @@ func (printer *Printer) PrintPages(job Job, pages []Page) error {
 	if printer.bus == nil && !printer.cups || job.Scope != printer.choice.Scope {
 		return fmt.Errorf("printing: Linux print portal is closed or page scope changed")
 	}
-	data, err := printer.renderPDF(job, pages)
-	if err != nil {
-		return err
-	}
 	file, err := os.CreateTemp("", "vivapad-print-*.pdf")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(file.Name())
 	defer file.Close()
-	if _, err := file.Write(data); err != nil {
+	if err := printer.writePDF(file, job, pages); err != nil {
 		return err
 	}
 	if _, err := file.Seek(0, 0); err != nil {
@@ -217,17 +214,17 @@ func (printer *Printer) PrintPages(job Job, pages []Page) error {
 	return err
 }
 
-func (printer *Printer) renderPDF(job Job, pages []Page) ([]byte, error) {
+func (printer *Printer) writePDF(output io.Writer, job Job, pages []Page) error {
 	if len(printer.choice.Ranges) != 0 {
 		// Portal submission sends a ready-to-print PDF. Apply the range before
 		// rendering, leaving copy count and other spool settings with the portal.
 		selected, err := SelectPageRanges(pages, printer.choice.Ranges)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		pages = selected
 	}
-	return printer.renderer.Render(job, pages, printer.device)
+	return printer.renderer.writePDF(output, job, pages, printer.device)
 }
 
 func (printer *Printer) Close() {

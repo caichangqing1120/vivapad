@@ -2,12 +2,44 @@ package printing
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/vivaui/viva/gfx"
 )
+
+type failingPDFWriter struct {
+	err error
+}
+
+func (writer failingPDFWriter) Write([]byte) (int, error) { return 0, writer.err }
+
+func (renderer *pdfRenderer) renderBytesForTest(job Job, pages []Page, device DeviceMetrics) ([]byte, error) {
+	var output bytes.Buffer
+	if err := renderer.writePDF(&output, job, pages, device); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+func TestPDFRendererReportsSpoolWriteFailure(t *testing.T) {
+	font, err := os.ReadFile("fonts/NotoSansSC.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderer, err := newPDFRenderer(font, 12, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeErr := errors.New("spool write failed")
+	device := DeviceMetrics{PaperWidth: 595, PaperHeight: 842, HeaderLineHeight: 11, FooterLineHeight: 11}
+	job := Job{Settings: DefaultSettings()}
+	if err := renderer.writePDF(failingPDFWriter{writeErr}, job, []Page{{Number: 1}}, device); !errors.Is(err, writeErr) {
+		t.Fatalf("PDF write error = %v, want %v", err, writeErr)
+	}
+}
 
 func TestPDFRendererUsesEmbeddedFontMetricsAndPrinterPage(t *testing.T) {
 	font, err := os.ReadFile("fonts/NotoSansSC.ttf")
@@ -36,7 +68,7 @@ func TestPDFRendererUsesEmbeddedFontMetricsAndPrinterPage(t *testing.T) {
 		t.Fatalf("PDF pagination = %d pages, %v", len(pages), err)
 	}
 	pages[0].Styles = [][]ColorRun{{{StartByte: 0, EndByte: 5, Color: gfx.RGB(64, 102, 191)}}, nil}
-	output, err := renderer.Render(job, pages, device)
+	output, err := renderer.renderBytesForTest(job, pages, device)
 	if err != nil || len(output) < 1000 || !bytes.HasPrefix(output, []byte("%PDF-")) {
 		t.Fatalf("rendered PDF = %d bytes, %v", len(output), err)
 	}
@@ -50,7 +82,7 @@ func TestPDFRendererUsesEmbeddedFontMetricsAndPrinterPage(t *testing.T) {
 	}
 	inverted := job
 	inverted.Settings.ColorMode = ColorInvertLight
-	invertedPDF, err := renderer.Render(inverted, pages, device)
+	invertedPDF, err := renderer.renderBytesForTest(inverted, pages, device)
 	if err != nil || !bytes.HasPrefix(invertedPDF, []byte("%PDF-")) {
 		t.Fatalf("inverted PDF = %d bytes, %v", len(invertedPDF), err)
 	}
@@ -73,10 +105,10 @@ func TestPDFRendererRejectsInvalidFontAndPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := renderer.Render(Job{Text: "abc"}, []Page{{Number: 1, Rows: []Row{{StartByte: 0, EndByte: 3, Text: "wrong"}}}}, DeviceMetrics{PaperWidth: 595, PaperHeight: 842}); err == nil {
+	if _, err := renderer.renderBytesForTest(Job{Text: "abc"}, []Page{{Number: 1, Rows: []Row{{StartByte: 0, EndByte: 3, Text: "wrong"}}}}, DeviceMetrics{PaperWidth: 595, PaperHeight: 842}); err == nil {
 		t.Fatal("inconsistent page text accepted")
 	}
-	if _, err := renderer.Render(Job{Text: "🙂"}, []Page{{Number: 1, Rows: []Row{{StartByte: 0, EndByte: len("🙂"), Text: "🙂"}}}}, DeviceMetrics{PaperWidth: 595, PaperHeight: 842}); err == nil {
+	if _, err := renderer.renderBytesForTest(Job{Text: "🙂"}, []Page{{Number: 1, Rows: []Row{{StartByte: 0, EndByte: len("🙂"), Text: "🙂"}}}}, DeviceMetrics{PaperWidth: 595, PaperHeight: 842}); err == nil {
 		t.Fatal("missing font glyph was silently omitted")
 	}
 }
@@ -106,7 +138,7 @@ func TestPDFRendererUsesCoveredFallbackForStyledMusicAndBand(t *testing.T) {
 	if err != nil || len(pages) != 1 {
 		t.Fatalf("old pagination = %d pages, %v", len(pages), err)
 	}
-	if _, err := old.Render(job, pages, device); err == nil || !strings.Contains(err.Error(), "U+1D11E") {
+	if _, err := old.renderBytesForTest(job, pages, device); err == nil || !strings.Contains(err.Error(), "U+1D11E") {
 		t.Fatalf("precondition: primary font unexpectedly printed the missing glyph: %v", err)
 	}
 
@@ -127,7 +159,7 @@ func TestPDFRendererUsesCoveredFallbackForStyledMusicAndBand(t *testing.T) {
 	start := strings.Index(value, "\U0001d11e")
 	pages[0].Styles = make([][]ColorRun, len(pages[0].Rows))
 	pages[0].Styles[0] = []ColorRun{{StartByte: start, EndByte: start + len("\U0001d11e"), Color: gfx.RGB(64, 102, 191)}}
-	output, err := renderer.Render(job, pages, device)
+	output, err := renderer.renderBytesForTest(job, pages, device)
 	if err != nil || len(output) < 1000 || !bytes.HasPrefix(output, []byte("%PDF-")) {
 		t.Fatalf("fallback PDF = %d bytes, %v", len(output), err)
 	}
@@ -137,7 +169,7 @@ func TestPDFRendererUsesCoveredFallbackForStyledMusicAndBand(t *testing.T) {
 		}
 	}
 	job.Text = "\U0001f642"
-	if _, err := renderer.Render(job, []Page{{Number: 1, Bounds: pages[0].Bounds,
+	if _, err := renderer.renderBytesForTest(job, []Page{{Number: 1, Bounds: pages[0].Bounds,
 		TextBounds: pages[0].TextBounds, Rows: []Row{{StartByte: 0, EndByte: len(job.Text), Text: job.Text}}}}, device); err == nil || !strings.Contains(err.Error(), "U+1F642") {
 		t.Fatalf("unsupported glyph was accepted or silently omitted: %v", err)
 	}
