@@ -372,6 +372,7 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.AVSI", "AviSynth", "avs", "#"},
 		{"demo.BAS", "FreeBasic", "freebasic", ""},
 		{"demo.BI", "FreeBasic", "freebasic", ""},
+		{"demo.OSX", "OScript", "oscript", "//"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)
@@ -420,6 +421,7 @@ func TestNewLanguageModesRoundTripSessionsWithoutEditing(t *testing.T) {
 		{"REBOL", ".reb", "rebol", "\xef\xbb\xbfREBOL []\r\nprint {demo}\r\n"},
 		{"AviSynth", ".avs", "avs", "\xef\xbb\xbfclip = BlankClip()\r\nReturn clip\r\n"},
 		{"FreeBasic", ".bas", "freebasic", "\xef\xbb\xbfDim As Integer n = &h2a\r\nPrint n\r\n"},
+		{"OScript", ".osx", "oscript", "\xef\xbb\xbfFunction Demo()\r\nEcho(42)\r\nEnd\r\n"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			checkLanguageSessionRoundTrip(t, tc.label, tc.mode, tc.nppName, tc.source)

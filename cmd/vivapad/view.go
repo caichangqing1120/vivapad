@@ -707,6 +707,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.freeBasicHighlighters, doc)
 	}
+	if language.Mode == ".osx" {
+		highlighter := state.oscriptHighlighters[doc]
+		if highlighter == nil {
+			if state.oscriptHighlighters == nil {
+				state.oscriptHighlighters = make(map[*document.Document]*syntax.OScriptHighlighter)
+			}
+			highlighter = syntax.NewOScriptHighlighter()
+			state.oscriptHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.oscriptHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)
