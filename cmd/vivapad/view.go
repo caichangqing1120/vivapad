@@ -654,7 +654,8 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.kixHighlighters, doc)
 	}
-	if language, ok := syntax.LanguageByMode(snapshot.Language); ok && language.Mode == ".orc" {
+	language, _ := syntax.LanguageByMode(snapshot.Language)
+	if language.Mode == ".orc" {
 		highlighter := state.csoundHighlighters[doc]
 		if highlighter == nil {
 			if state.csoundHighlighters == nil {
@@ -666,6 +667,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 		snapshot.HighlightLine = highlighter.ForText(value)
 	} else {
 		delete(state.csoundHighlighters, doc)
+	}
+	if language.Mode == ".reb" {
+		highlighter := state.rebolHighlighters[doc]
+		if highlighter == nil {
+			if state.rebolHighlighters == nil {
+				state.rebolHighlighters = make(map[*document.Document]*syntax.REBOLHighlighter)
+			}
+			highlighter = syntax.NewREBOLHighlighter()
+			state.rebolHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.rebolHighlighters, doc)
 	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)

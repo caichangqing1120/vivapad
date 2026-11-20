@@ -91,6 +91,7 @@ var languages = [...]Language{
 	{"Spice", ".scp", "spice", "IDM_LANG_SPICE", "Spice", "*", ""},
 	{"KIXtart", ".kix", "kix", "IDM_LANG_KIX", "KIXtart", ";", ""},
 	{"CSound", ".orc", "csound", "IDM_LANG_CSOUND", "CSound", ";", ""},
+	{"REBOL", ".reb", "rebol", "IDM_LANG_REBOL", "REBOL", ";", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
@@ -127,6 +128,8 @@ func LanguageByMode(mode string) (Language, bool) {
 		mode = ".scp"
 	case ".sco", ".csd":
 		mode = ".orc"
+	case ".r2", ".r3":
+		mode = ".reb"
 	}
 	for _, spec := range languages {
 		if spec.Mode == mode {

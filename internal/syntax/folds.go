@@ -33,6 +33,10 @@ func FoldRegions(mode, value string) []FoldRegion {
 	if csoundMode(mode) {
 		return csoundFoldRegions(value)
 	}
+	switch strings.ToLower(mode) {
+	case ".reb", ".r2", ".r3":
+		return rebolFoldRegions(value)
+	}
 	if mode == ".py" || mode == ".yaml" || mode == ".yml" {
 		return indentFoldRegions(value, mode == ".py")
 	}

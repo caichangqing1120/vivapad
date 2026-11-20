@@ -108,6 +108,13 @@ func TestCSoundFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
 		[]string{"a1 oscil .5", "out a1"})
 }
 
+func TestREBOLFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.R3", "rebol",
+		"\xef\xbb\xbfREBOL [\r\n  Title: \"demo\"\r\n]\r\nmain: [\r\n  print {inside [ignored]}\r\n]\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"Title:", "inside [ignored]"})
+}
+
 func checkLanguageFoldingRoundTrip(t *testing.T, name, language, original string, want []components.CodeEditorFoldRange, bodies []string) {
 	t.Helper()
 	root := t.TempDir()
