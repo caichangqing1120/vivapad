@@ -52,3 +52,30 @@ func TestJSON5ContextUsesOversizedLineDelimitersWithoutColoringThatLine(t *testi
 		t.Fatalf("block opener after a JSON5 line separator was ignored: %v", runs)
 	}
 }
+
+func TestJSON5ContextReleasesLargeDiscardedSuffix(t *testing.T) {
+	const far = 32768
+	first := "/*\n\u4f60\n"
+	h := NewJSON5Highlighter(&Highlighter{})
+	paint := h.ForText(first + strings.Repeat("long comment\n", far) + "*/")
+	commentColor, _ := tokenColor(chroma.Comment)
+	if runs := paint(".json5", far+1, "long comment", nil); len(runs) != 1 || runs[0].Color != commentColor {
+		t.Fatalf("deep viewport lost its comment state: %v", runs)
+	}
+	if len(h.lines) <= far {
+		t.Fatal("the test did not populate the large index")
+	}
+
+	// Keep the opener and Unicode comment text, but replace the bulk of the
+	// document. The previous scroll must not reserve an index for those lines.
+	last := "*/ {answer: 42}"
+	paint = h.ForText(first + last)
+	if cap(h.lines) >= far/4 {
+		t.Errorf("shortened document still reserves %d line entries", cap(h.lines))
+	}
+	keyColor, _ := tokenColor(chroma.NameTag)
+	if runs := paint(".json5", 2, last, nil); len(runs) != 3 || runs[0] != (components.CodeEditorRun{Start: 0, End: 2, Color: commentColor}) ||
+		runs[1] != (components.CodeEditorRun{Start: 4, End: 10, Color: keyColor}) {
+		t.Fatalf("deleting the suffix lost the kept comment context or colored past its closer: %v", runs)
+	}
+}

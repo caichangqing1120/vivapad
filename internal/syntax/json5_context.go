@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -41,6 +42,11 @@ func (h *JSON5Highlighter) ForText(value string) func(string, int, string, []com
 			}
 		}
 		h.lines = h.lines[:sort.Search(len(h.lines), func(i int) bool { return h.lines[i].start > limit })]
+		// A large deletion can leave an open document holding its peak index.
+		// Reuse the allocation for ordinary edits that only invalidate a suffix.
+		if len(value) < len(h.value)/2 && cap(h.lines) >= 4096 && len(h.lines) < cap(h.lines)/4 {
+			h.lines = slices.Clone(h.lines)
+		}
 		h.value = value
 	}
 	return h.paint
