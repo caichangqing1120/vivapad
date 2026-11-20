@@ -1868,6 +1868,9 @@ func newConfig(state *model) app.Config {
 			return gfx.EventResult{Handled: true}
 		}
 		if event.Key == gfx.KeyF7 && event.Modifiers == 0 {
+			if state.distractionFree {
+				return gfx.EventResult{Handled: true}
+			}
 			if !state.resultsOpen || len(state.fileResults.Matches) == 0 {
 				state.notice = "No search results"
 				return gfx.EventResult{Handled: true, Repaint: true}

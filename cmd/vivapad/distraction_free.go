@@ -25,6 +25,9 @@ func (state *model) observeFullscreen(fullscreen bool) {
 	state.distractionFreeEntering = false
 	state.menuOpen, state.menuOverflowOpen = -1, false
 	if wasDistractionFree != state.distractionFree {
+		if state.distractionFree {
+			state.clearResultFocus()
+		}
 		state.syncNeedsCapture = true
 		state.requestNativeChooserFocus()
 	}

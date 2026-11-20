@@ -159,3 +159,59 @@ func TestDistractionFreeModeFollowsObservedFullscreenState(t *testing.T) {
 		t.Fatal("normal system fullscreen inherited an old distraction-free request")
 	}
 }
+
+func TestDistractionFreeFinderShortcutLeavesFocusOnVisibleControls(t *testing.T) {
+	state, driver := startDriver(t)
+	state.requestFullscreen = driver.SetFullscreen
+	state.space.Current().Editor.Insert("left")
+	right := state.space.NewDocument()
+	right.Editor.Insert("cat cat")
+	state.toggleSplit()
+	state.query.Insert("cat")
+	state.findAllOpenDocuments()
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, resultScope.At(0))
+	state.command(distractionFreeCommand)
+	if !driver.Fullscreen() || state.activePane != 1 {
+		t.Fatal("fixture did not enter fullscreen on the right pane")
+	}
+	requireEditorCommandFocus(t, driver, rightEditorID)
+	selection := right.Editor.Selection()
+	press := func(key gfx.Key) {
+		t.Helper()
+		if err := driver.Key(key, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	press(gfx.KeyF7)
+	if driver.Snapshot().Focused != rightEditorID || state.resultFocusMode {
+		t.Fatal("F7 handed editor focus to the hidden Finder")
+	}
+	state.command("Find...")
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, queryID)
+	press(gfx.KeyF7)
+	if !state.searchOpen || driver.Snapshot().Focused != queryID {
+		t.Fatal("F7 dismissed the visible Find bar or moved its focus")
+	}
+	if right.Editor.Selection() != selection || right.Editor.String() != "cat cat" || state.resultSelected != 0 {
+		t.Fatal("F7 changed the draft or selected result")
+	}
+	press(gfx.KeyEscape)
+	press(gfx.KeyEscape)
+	requireEditorCommandFocus(t, driver, rightEditorID)
+	press(gfx.KeyF7)
+	if driver.Fullscreen() || driver.Snapshot().Focused != resultsPaneID || len(state.fileResults.Matches) != 2 {
+		t.Fatal("F7 did not focus the restored Finder")
+	}
+	press(gfx.KeyF7)
+	if driver.Snapshot().Focused != rightEditorID || right.Editor.Selection() != selection {
+		t.Fatal("returning from the Finder changed the active pane or selection")
+	}
+}
