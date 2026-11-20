@@ -84,6 +84,49 @@ func assertDistractionFreeLayout(t *testing.T, hits []gfx.Hit, width, height flo
 	}
 }
 
+func TestDistractionFreeEscapePreservesHiddenFinder(t *testing.T) {
+	state, driver := startDriver(t)
+	state.requestFullscreen = driver.SetFullscreen
+	doc := state.space.Current()
+	doc.Editor.Insert("cat cat")
+	state.query.Insert("cat")
+	state.findAllOpenDocuments()
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, resultScope.At(0))
+	if !state.resultsOpen || state.resultSelected != 0 || len(state.fileResults.Matches) != 2 {
+		t.Fatal("fixture did not select a Finder result")
+	}
+	state.command(distractionFreeCommand)
+	if !driver.Fullscreen() || !state.distractionFree {
+		t.Fatal("did not enter Distraction Free Mode")
+	}
+	state.command("Find...")
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+		t.Fatal(err)
+	}
+	if state.searchOpen || !driver.Fullscreen() || !state.resultsOpen || state.resultSelected != 0 {
+		t.Fatalf("first Escape should close Find and keep fullscreen and Finder: search=%t fullscreen=%t results=%t selected=%d",
+			state.searchOpen, driver.Fullscreen(), state.resultsOpen, state.resultSelected)
+	}
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+		t.Fatal(err)
+	}
+	if driver.Fullscreen() || !state.resultsOpen || state.resultSelected != 0 || len(state.fileResults.Matches) != 2 {
+		t.Fatal("second Escape did not exit fullscreen and restore the existing Finder")
+	}
+	clickID(t, driver, resultScope.At(1))
+	if doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) || doc.Editor.String() != "cat cat" {
+		t.Fatal("restored Finder did not navigate to the second original result")
+	}
+}
+
 func TestDistractionFreeModeFollowsObservedFullscreenState(t *testing.T) {
 	state, driver := startDriver(t)
 	var requested []bool

@@ -1689,7 +1689,7 @@ func newConfig(state *model) app.Config {
 				state.selectedSearchMenuOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			if state.resultsOpen {
+			if state.resultsOpen && !state.distractionFree {
 				state.discardFileResults()
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
