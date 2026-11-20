@@ -267,6 +267,27 @@ func (doc *Document) Save(path string) error {
 	return nil
 }
 
+var ErrDiskPathRedirected = errors.New("file path no longer resolves to its original location")
+
+// CheckDiskPath verifies that the document still names a regular file at its bound path.
+func (doc *Document) CheckDiskPath() error {
+	resolved, err := filepath.EvalSymlinks(doc.Path)
+	if err != nil {
+		return err
+	}
+	if resolved != doc.Path {
+		return fmt.Errorf("%w: %s", ErrDiskPathRedirected, doc.Path)
+	}
+	info, err := os.Lstat(doc.Path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", doc.Path)
+	}
+	return nil
+}
+
 // DiskMatchesSaved compares the current file with the saved bytes without
 // decoding it or allocating another copy of the file.
 func (doc *Document) DiskMatchesSaved() (bool, error) {

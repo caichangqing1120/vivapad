@@ -120,6 +120,41 @@ func TestMonitoringKeepsUnchangedBindingAndReloadsSameLengthEdits(t *testing.T) 
 	}
 }
 
+func TestMonitoringStopsWhenItsCanonicalPathIsRedirected(t *testing.T) {
+	root := t.TempDir()
+	path, target := filepath.Join(root, "current.log"), filepath.Join(root, "other.log")
+	if err := os.WriteFile(path, []byte("original\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("other\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{path})
+	doc, originalPath := state.space.Current(), state.space.Current().Path
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	state.toggleMonitoring()
+	watcher := state.monitors[doc]
+	if watcher == nil {
+		t.Fatalf("monitoring did not start: %q", state.notice)
+	}
+	if err := os.Rename(path, filepath.Join(root, "parked.log")); err != nil {
+		t.Fatal(err)
+	}
+	workspaceFixtureLink(t, target, path)
+	watcher.changed.Store(true)
+	state.consumeMonitorChanges()
+	if len(state.monitors) != 0 || !strings.Contains(state.notice, "Monitoring stopped") {
+		t.Errorf("redirect left the monitor active: %q", state.notice)
+	}
+	if state.space.Current() != doc || doc.Path != originalPath || doc.Editor.String() != "original\n" {
+		t.Fatal("monitor rebound the tab to a different file")
+	}
+}
+
 func BenchmarkMonitoringUnchangedNotification(b *testing.B) {
 	for _, tc := range []struct {
 		name string

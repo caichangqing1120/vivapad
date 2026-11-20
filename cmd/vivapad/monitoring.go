@@ -27,6 +27,10 @@ func (state *model) toggleMonitoring() {
 		state.notice = "Too many monitored documents"
 		return
 	}
+	if err := doc.CheckDiskPath(); err != nil {
+		state.notice = "Monitoring unavailable: " + err.Error()
+		return
+	}
 	watcher, err := newFileMonitor(doc.Path, state.invalidator.Invalidate, 250*time.Millisecond)
 	if err != nil {
 		state.notice = "Monitoring unavailable: " + err.Error()
@@ -87,6 +91,14 @@ func (state *model) consumeMonitorChanges() {
 			state.stopMonitor(doc)
 			state.notice = "Monitoring stopped: unsaved changes"
 			state.invalidator.Invalidate()
+			continue
+		}
+		if err := doc.CheckDiskPath(); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				state.stopMonitor(doc)
+				state.notice = "Monitoring stopped: " + err.Error()
+				state.invalidator.Invalidate()
+			}
 			continue
 		}
 		unchanged, err := doc.DiskMatchesSaved()

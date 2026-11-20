@@ -139,6 +139,9 @@ func (space *Workspace) reload(index int, discard bool) (*document.Document, err
 	if old.Path == "" {
 		return nil, fmt.Errorf("untitled tab has no disk path")
 	}
+	if err := old.CheckDiskPath(); err != nil {
+		return nil, err
+	}
 	var updated *document.Document
 	var err error
 	if old.SavedEncoding() >= document.GB18030 {
@@ -148,6 +151,9 @@ func (space *Workspace) reload(index int, discard bool) (*document.Document, err
 	}
 	if err != nil {
 		return nil, err
+	}
+	if updated.Path != old.Path {
+		return nil, document.ErrDiskPathRedirected
 	}
 	space.Documents[index] = updated
 	return old, nil
