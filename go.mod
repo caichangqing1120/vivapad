@@ -19,4 +19,11 @@ require (
 
 replace github.com/vivaui/viva => github.com/caichangqing1120/viva v0.6.1-0.20261120041827-42bccfb33dfe
 
-require github.com/dlclark/regexp2/v2 v2.2.1 // indirect
+require (
+	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
+	github.com/dsnet/compress v0.0.0-20171208185109-cc9eb1d7ad76 // indirect
+	github.com/gabstv/go-bsdiff v1.0.5 // indirect
+	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
+)
+
+tool github.com/vivaui/viva/cmd/viva

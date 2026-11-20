@@ -28,10 +28,15 @@ and can be opened with `open build/VivaPad.app`. Only this current package is
 retained after validation; older milestone builds are removed. It is unsigned;
 distribution to other Macs needs
 signing and notarization. Build for Apple Silicon with
-`go run github.com/vivaui/viva/cmd/viva package --target darwin --arch arm64 --format app --no-sign -o build/VivaPad.app`,
+`GOWORK=off go tool viva package --target darwin --arch arm64 --format app --no-sign -o build/VivaPad.app`,
 then run `go run ./tools/icon -app build/VivaPad.app` to preserve the approved
 32/64/128/1024 PNG renditions inside the macOS icon container;
 the package command otherwise defaults to amd64.
+
+The macOS bundle, Linux desktop package, and Windows installer advertise
+VivaPad in Open With for `.txt`, `.md`, `.markdown`, and `.json` files.
+They do not set it as the default editor. Windows and Linux pass the selected
+file to a new VivaPad process; macOS can also open it in a running window.
 
 The source requires official Viva commit `95ea459` and temporarily replaces it
 with published fork commit `ac36aac` for the pending clipboard, indentation

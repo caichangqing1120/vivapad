@@ -4,5 +4,23 @@ id = "dev.vivapad.app"
 package = "./cmd/vivapad"
 icon = "assets/vivapad-icon.png"
 
+[[app.file_types]]
+name = "Plain text"
+extensions = ["txt"]
+mime = "text/plain"
+uti = "public.plain-text"
+
+[[app.file_types]]
+name = "Markdown"
+extensions = ["md", "markdown"]
+mime = "text/markdown"
+uti = "net.daringfireball.markdown"
+
+[[app.file_types]]
+name = "JSON"
+extensions = ["json"]
+mime = "application/json"
+uti = "public.json"
+
 [mac]
 min_system = "12.0"
