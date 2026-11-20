@@ -89,6 +89,7 @@ var languages = [...]Language{
 	{"MMIXAL", ".mms", "mmixal", "IDM_LANG_MMIXAL", "MMIXAL", "%", ""},
 	{"ErrorList", ".err", "errorlist", "IDM_LANG_ERRORLIST", "ErrorList", "#", ""},
 	{"Spice", ".scp", "spice", "IDM_LANG_SPICE", "Spice", "*", ""},
+	{"KIXtart", ".kix", "kix", "IDM_LANG_KIX", "KIXtart", ";", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }

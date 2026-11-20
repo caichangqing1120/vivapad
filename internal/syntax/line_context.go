@@ -7,6 +7,7 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 )
 
 type syntaxLine[S any] struct {
@@ -54,11 +55,12 @@ type lineHighlighter[S any] struct {
 	value string
 	lines []syntaxLine[S]
 	scan  scanLine[S]
+	color func(chroma.TokenType) (gfx.Color, bool)
 	paint func(string, int, string, []components.CodeEditorRun) []components.CodeEditorRun
 }
 
 func newLineHighlighter[S any](scan scanLine[S]) *lineHighlighter[S] {
-	h := &lineHighlighter[S]{lines: []syntaxLine[S]{{}}, scan: scan}
+	h := &lineHighlighter[S]{lines: []syntaxLine[S]{{}}, scan: scan, color: tokenColor}
 	h.paint = h.highlightLine
 	return h
 }
@@ -98,7 +100,7 @@ func (h *lineHighlighter[S]) highlightLine(_ string, index int, line string, dst
 		h.lines = append(h.lines, syntaxLine[S]{prev.start + end + 1, state})
 	}
 	h.scan(line, h.lines[index].state, func(start, end int, kind chroma.TokenType) {
-		if color, ok := tokenColor(kind); ok {
+		if color, ok := h.color(kind); ok {
 			dst = append(dst, components.CodeEditorRun{Start: start, End: end, Color: color})
 		}
 	})

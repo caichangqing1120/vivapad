@@ -641,6 +641,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.asn1Highlighters, doc)
 	}
+	if strings.EqualFold(snapshot.Language, ".kix") {
+		highlighter := state.kixHighlighters[doc]
+		if highlighter == nil {
+			if state.kixHighlighters == nil {
+				state.kixHighlighters = make(map[*document.Document]*syntax.KixHighlighter)
+			}
+			highlighter = syntax.NewKixHighlighter()
+			state.kixHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.kixHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)
