@@ -306,6 +306,7 @@ func TestExplicitLanguageVariantsKeepExtensionDefaults(t *testing.T) {
 	for _, tc := range []struct{ extension, label, defaultName, nppName, mode string }{
 		{".tex", "TeX", "latex", "tex", "lang:tex"},
 		{".sql", "Microsoft Transact-SQL", "sql", "mssql", ".tsql"},
+		{".json", "JSON5", "json", "json5", ".json5"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "notes"+tc.extension)
@@ -351,6 +352,7 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.mli", "Caml", "caml", ""},
 		{"demo.cpy", "COBOL", "cobol", ""},
 		{"demo.nsh", "NSIS", "nsis", ";"},
+		{"demo.jsonc", "JSON5", "json5", "//"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)

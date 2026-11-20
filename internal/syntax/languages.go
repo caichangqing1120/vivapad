@@ -79,6 +79,7 @@ var languages = [...]Language{
 	{"LISP", ".lisp", "lisp", "IDM_LANG_LISP", "Common Lisp", ";", "("},
 	{"Microsoft Transact-SQL", ".tsql", "mssql", "IDM_LANG_MSSQL", "Transact-SQL", "--", ""},
 	{"TeX", "lang:tex", "tex", "IDM_LANG_TEX", "TeX", "%", ""},
+	{"JSON5", ".json5", "json5", "IDM_LANG_JSON5", "JSON5", "//", "{[("},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
@@ -107,6 +108,8 @@ func LanguageByMode(mode string) (Language, bool) {
 		mode = ".cob"
 	case ".nsh":
 		mode = ".nsi"
+	case ".jsonc":
+		mode = ".json5"
 	}
 	for _, spec := range languages {
 		if spec.Mode == mode {
