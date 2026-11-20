@@ -7,8 +7,11 @@ import (
 	"vivapad/internal/runcommand"
 )
 
-func expandBand(band TextBand, page int, variables PageVariables) TextBand {
+func prepareBand(band TextBand, variables PageVariables) TextBand {
 	expand := func(value string) string {
+		if value == "" {
+			return ""
+		}
 		for _, replacement := range [][2]string{
 			{"$(SHORT_DATE)", variables.ShortDate},
 			{"$(LONG_DATE)", variables.LongDate},
@@ -16,11 +19,22 @@ func expandBand(band TextBand, page int, variables PageVariables) TextBand {
 		} {
 			value = strings.Replace(value, replacement[0], replacement[1], 1)
 		}
-		value = runcommand.ExpandVariables(value, variables.NPP)
-		value = limitPrintBand(value)
-		return strings.Replace(value, "$(CURRENT_PRINTING_PAGE)", strconv.Itoa(page), 1)
+		return limitPrintBand(runcommand.ExpandVariables(value, variables.NPP))
 	}
 	return TextBand{Left: expand(band.Left), Middle: expand(band.Middle), Right: expand(band.Right)}
+}
+
+func numberBand(band TextBand, page int) TextBand {
+	const token = "$(CURRENT_PRINTING_PAGE)"
+	if !strings.Contains(band.Left, token) && !strings.Contains(band.Middle, token) && !strings.Contains(band.Right, token) {
+		return band
+	}
+	number := strconv.Itoa(page)
+	return TextBand{
+		Left:   strings.Replace(band.Left, token, number, 1),
+		Middle: strings.Replace(band.Middle, token, number, 1),
+		Right:  strings.Replace(band.Right, token, number, 1),
+	}
 }
 
 func limitPrintBand(value string) string {

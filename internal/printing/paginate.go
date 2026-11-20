@@ -87,6 +87,7 @@ func Paginate(job Job, device DeviceMetrics, metrics TextMetrics, variables Page
 	}
 	var pages []Page
 	forcePage := false
+	header, footer := prepareBand(job.Settings.Header, variables), prepareBand(job.Settings.Footer, variables)
 	newPage := func() error {
 		if len(pages) >= maxPrintPages {
 			return fmt.Errorf("printing: too many pages")
@@ -94,8 +95,8 @@ func Paginate(job Job, device DeviceMetrics, metrics TextMetrics, variables Page
 		number := len(pages) + 1
 		pages = append(pages, Page{
 			Number: number, Bounds: bounds, TextBounds: textBounds,
-			Header: expandBand(job.Settings.Header, number, variables),
-			Footer: expandBand(job.Settings.Footer, number, variables),
+			Header: numberBand(header, number),
+			Footer: numberBand(footer, number),
 		})
 		return nil
 	}
@@ -119,24 +120,11 @@ func Paginate(job Job, device DeviceMetrics, metrics TextMetrics, variables Page
 		return nil
 	}
 	appendText := func(value string, sourceStart, sourceLine int) error {
-		rows, err := wrapLine(value, sourceStart, sourceLine, width, metrics)
-		if err != nil {
-			return err
-		}
-		for _, row := range rows {
-			if err := appendRow(row); err != nil {
-				return err
-			}
-		}
-		return nil
+		return wrapLine(value, sourceStart, sourceLine, width, metrics, appendRow)
 	}
 	selected := job.Text[start:end]
 	lineStart, lineNumber := start, strings.Count(job.Text[:start], "\n")+1
-	lines := strings.Split(selected, "\n")
-	for index, line := range lines {
-		if index == len(lines)-1 && line == "" && strings.HasSuffix(selected, "\n") {
-			break
-		}
+	for line := range strings.SplitSeq(strings.TrimSuffix(selected, "\n"), "\n") {
 		if job.Settings.FormFeedPageBreak && strings.ContainsRune(line, '\f') {
 			segmentStart := 0
 			for position, character := range line {
@@ -169,61 +157,52 @@ func Paginate(job Job, device DeviceMetrics, metrics TextMetrics, variables Page
 	return pages, nil
 }
 
-type printCluster struct {
-	start, end int
-	text       string
-	canBreak   bool
-}
-
-func wrapLine(line string, sourceStart, lineNumber int, width float64, metrics TextMetrics) ([]Row, error) {
+func wrapLine(line string, sourceStart, lineNumber int, width float64, metrics TextMetrics, appendRow func(Row) error) error {
 	if line == "" {
-		return []Row{{StartByte: sourceStart, EndByte: sourceStart, LineNumber: lineNumber}}, nil
+		return appendRow(Row{StartByte: sourceStart, EndByte: sourceStart, LineNumber: lineNumber})
 	}
-	var clusters []printCluster
-	for graphemes := uniseg.NewGraphemes(line); graphemes.Next(); {
-		start, end := graphemes.Positions()
-		clusters = append(clusters, printCluster{start: start, end: end, text: graphemes.Str(), canBreak: graphemes.LineBreak() != uniseg.LineDontBreak})
-	}
-	var rows []Row
-	for start := 0; start < len(clusters); {
-		advance, columns, lastBreak, end := float64(0), 0, -1, start
-		for end < len(clusters) {
-			printed, nextColumns := expandCluster(clusters[end].text, columns, metrics.TabWidth)
+	rest, state := line, -1
+	for rest != "" {
+		var text strings.Builder
+		advance, columns, startLen := float64(0), 0, len(rest)
+		var breakRest string
+		var breakState, breakLen int
+		for rest != "" {
+			cluster, next, boundaries, nextState := uniseg.StepString(rest, state)
+			printed, nextColumns := expandCluster(cluster, columns, metrics.TabWidth)
 			step := metrics.Advance(printed)
 			if !validAdvance(step) || step == 0 && uniseg.StringWidth(printed) > 0 {
-				return nil, fmt.Errorf("printing: invalid glyph advance")
+				return fmt.Errorf("printing: invalid glyph advance")
 			}
 			if advance+step > width {
-				if end == start {
-					return nil, fmt.Errorf("printing: glyph is wider than the printable text area")
+				if text.Len() == 0 {
+					return fmt.Errorf("printing: glyph is wider than the printable text area")
 				}
-				if lastBreak > start {
-					end = lastBreak
+				if breakLen > 0 {
+					// Resume at the legal break with its Unicode boundary state.
+					rest, state = breakRest, breakState
 				}
 				break
 			}
 			advance += step
 			columns = nextColumns
-			end++
-			if clusters[end-1].canBreak {
-				lastBreak = end
+			rest, state = next, nextState
+			text.WriteString(printed)
+			if boundaries&uniseg.MaskLine != uniseg.LineDontBreak {
+				breakRest, breakState, breakLen = rest, state, text.Len()
 			}
 		}
-		var text strings.Builder
-		columns = 0
-		for index := start; index < end; index++ {
-			printed, nextColumns := expandCluster(clusters[index].text, columns, metrics.TabWidth)
-			text.WriteString(printed)
-			columns = nextColumns
+		output := text.String()
+		if rest == breakRest && breakLen > 0 {
+			output = output[:breakLen]
 		}
-		row := Row{Text: text.String(), StartByte: sourceStart + clusters[start].start, EndByte: sourceStart + clusters[end-1].end}
-		if start == 0 {
-			row.LineNumber = lineNumber
+		end := sourceStart + startLen - len(rest)
+		if err := appendRow(Row{Text: output, StartByte: sourceStart, EndByte: end, LineNumber: lineNumber}); err != nil {
+			return err
 		}
-		rows = append(rows, row)
-		start = end
+		sourceStart, lineNumber = end, 0
 	}
-	return rows, nil
+	return nil
 }
 
 func expandCluster(cluster string, columns, tabWidth int) (string, int) {
