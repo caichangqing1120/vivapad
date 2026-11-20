@@ -1,6 +1,7 @@
 package document
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -44,6 +45,66 @@ func TestTrashPlanRejectsUntitledAndChangedSource(t *testing.T) {
 	}
 	if _, err := doc.PrepareTrash(); !errors.Is(err, ErrTrashSourceChanged) {
 		t.Fatalf("changed source = %v", err)
+	}
+}
+
+func TestTrashPlanDetectsAnEditBeyondTheFirstComparisonChunk(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	const size = 72 << 10
+	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), size), 0600); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := doc.PrepareTrash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = plan.Close() })
+	file, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr := file.WriteAt([]byte("y"), size-1)
+	if err := errors.Join(writeErr, file.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if err := plan.Apply(func(string) error {
+		t.Error("changed file reached the trash backend")
+		return nil
+	}); !errors.Is(err, ErrTrashSourceChanged) {
+		t.Fatalf("late edit was not refused: %v", err)
+	}
+}
+
+func BenchmarkPrepareTrash(b *testing.B) {
+	for _, tc := range []struct {
+		name string
+		size int
+	}{{"1MiB", 1 << 20}, {"16MiB", 16 << 20}} {
+		b.Run(tc.name, func(b *testing.B) {
+			path := filepath.Join(b.TempDir(), "notes.txt")
+			line := append(bytes.Repeat([]byte("x"), 127), '\n')
+			if err := os.WriteFile(path, bytes.Repeat(line, tc.size/len(line)), 0600); err != nil {
+				b.Fatal(err)
+			}
+			doc, err := Open(path)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				plan, err := doc.PrepareTrash()
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := plan.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

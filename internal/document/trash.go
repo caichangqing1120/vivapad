@@ -1,7 +1,6 @@
 package document
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -84,8 +83,8 @@ func (plan *TrashPlan) verify() error {
 	if _, err := plan.file.Seek(0, io.SeekStart); err != nil {
 		return ErrTrashSourceChanged
 	}
-	data, err := io.ReadAll(plan.file)
-	if err != nil || !bytes.Equal(data, plan.doc.savedDisk) {
+	matches, err := fileBytesMatch(plan.file, held.Size(), plan.doc.savedDisk)
+	if err != nil || !matches {
 		return ErrTrashSourceChanged
 	}
 	return nil

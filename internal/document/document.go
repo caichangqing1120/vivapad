@@ -277,7 +277,14 @@ func diskBytesMatch(path string, expected []byte) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !info.Mode().IsRegular() || info.Size() != int64(len(expected)) {
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+	return fileBytesMatch(file, info.Size(), expected)
+}
+
+func fileBytesMatch(file io.Reader, size int64, expected []byte) (bool, error) {
+	if size != int64(len(expected)) {
 		return false, nil
 	}
 	var buffer [32 << 10]byte
@@ -295,7 +302,7 @@ func diskBytesMatch(path string, expected []byte) (bool, error) {
 		expected = expected[len(chunk):]
 	}
 	// Check for growth after Stat as well as changes within the saved length.
-	_, err = io.ReadFull(file, buffer[:1])
+	_, err := io.ReadFull(file, buffer[:1])
 	if err == io.EOF {
 		return true, nil
 	}
