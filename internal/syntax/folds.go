@@ -36,6 +36,8 @@ func FoldRegions(mode, value string) []FoldRegion {
 	switch strings.ToLower(mode) {
 	case ".reb", ".r2", ".r3":
 		return rebolFoldRegions(value)
+	case ".avs", ".avsi":
+		return avsFoldRegions(value)
 	}
 	if mode == ".py" || mode == ".yaml" || mode == ".yml" {
 		return indentFoldRegions(value, mode == ".py")

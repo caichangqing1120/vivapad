@@ -681,6 +681,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.rebolHighlighters, doc)
 	}
+	if language.Mode == ".avs" {
+		highlighter := state.avsHighlighters[doc]
+		if highlighter == nil {
+			if state.avsHighlighters == nil {
+				state.avsHighlighters = make(map[*document.Document]*syntax.AviSynthHighlighter)
+			}
+			highlighter = syntax.NewAviSynthHighlighter()
+			state.avsHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.avsHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)

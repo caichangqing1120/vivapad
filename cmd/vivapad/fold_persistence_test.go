@@ -115,6 +115,13 @@ func TestREBOLFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
 		[]string{"Title:", "inside [ignored]"})
 }
 
+func TestAviSynthFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.AVSI", "avs",
+		"\xef\xbb\xbffunction demo() {\r\n  return BlankClip()\r\n}\r\n[* outer\r\n  [* nested *] still comment\r\n*]\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"return BlankClip()", "still comment"})
+}
+
 func checkLanguageFoldingRoundTrip(t *testing.T, name, language, original string, want []components.CodeEditorFoldRange, bodies []string) {
 	t.Helper()
 	root := t.TempDir()
