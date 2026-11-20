@@ -72,3 +72,28 @@ func TestIntelHEXFoldRegionsFollowExtendedAddresses(t *testing.T) {
 		}
 	}
 }
+
+func TestIntelHEXFoldRegionsRequireCompleteAddressRecords(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		header string
+		fold   bool
+	}{
+		{"missing checksum padded with spaces", ":020000040002  ", false},
+		{"incomplete checksum", ":020000040002F ", false},
+		{"nonhex address", ":02oops040002F8", false},
+		{"well formed checksum mismatch", ":02000004000200", true},
+		{"complete segment address", "\t:020000020100fb", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			text := test.header + "\n:0100000001FE\n:00000001FF\n"
+			var want []FoldRegion
+			if test.fold {
+				want = []FoldRegion{{Header: 0, LastLine: 1, Level: 1}}
+			}
+			if got := FoldRegions(".hex", text); !reflect.DeepEqual(got, want) {
+				t.Fatalf("Intel HEX fold regions = %+v, want %+v", got, want)
+			}
+		})
+	}
+}

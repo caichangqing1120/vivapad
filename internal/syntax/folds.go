@@ -95,11 +95,11 @@ func intelHEXFoldRegions(value string) []FoldRegion {
 			kind, valid := hexByte(line, 7)
 			if !valid || kind != 0 {
 				finish()
-				// The extended address payload is two bytes. Wait for a
-				// complete header before folding data underneath it.
+				// Wait for all fields, including the checksum digits, before
+				// folding. A checksum mismatch is handled by highlighting.
 				count, known := hexByte(line, 1)
 				if valid && (kind == 2 || kind == 4) && known && count == 2 &&
-					len(line) >= 15 && hexDigits(line, 9, 13) {
+					hexDigits(line, 3, 15) {
 					header = lineNumber
 				}
 			}
