@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -40,5 +41,34 @@ func TestFoldRegionsFollowPythonIndentationAndSkipBlankComments(t *testing.T) {
 	}
 	if got := FoldRegions(".html", "<div>\n  body\n</div>"); len(got) != 0 {
 		t.Fatalf("unsupported grammar advertised folds: %+v", got)
+	}
+}
+
+func TestIntelHEXFoldRegionsFollowExtendedAddresses(t *testing.T) {
+	value := strings.Join([]string{
+		"preamble",
+		":0100000001FE",
+		":020000020100FB",
+		":0100000001FE",
+		"",
+		"non-record between data lines",
+		":0100010002FC",
+		":0400000500000000F7",
+		":0100000001FE",
+		":020000040002F8",
+		":02000004",
+		":0100000001FE",
+		":020000040003F7",
+		":0100000001FE",
+		"", // The terminal newline does not add a folded child.
+	}, "\n")
+	want := []FoldRegion{{Header: 2, LastLine: 6, Level: 1}, {Header: 12, LastLine: 13, Level: 1}}
+	if got := FoldRegions(".HEX", value); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Intel HEX fold regions = %+v, want %+v", got, want)
+	}
+	for _, mode := range []string{"", ".srec", ".tek"} {
+		if got := FoldRegions(mode, value); len(got) > 0 {
+			t.Fatalf("mode %q unexpectedly folded Intel HEX: %+v", mode, got)
+		}
 	}
 }

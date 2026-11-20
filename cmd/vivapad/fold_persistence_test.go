@@ -56,6 +56,41 @@ func TestFoldStatePrivateSessionChecksDiskAndDirtyRecoveryRestores(t *testing.T)
 	}
 }
 
+func TestIntelHEXFoldStateRestoresFromSessionWithoutEditing(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "address.HEX")
+	sessionPath := filepath.Join(root, "settings", "session.json")
+	const original = ":020000040002F8\r\n:0100000001FE\r\n:00000001FF\r\n"
+	const text = ":020000040002F8\n:0100000001FE\n:00000001FF\n"
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newStartupModel([]string{path}, sessionPath)
+	state.command("Fold All")
+	doc := state.space.Current()
+	if got := state.foldRanges(doc); len(got) != 1 || got[0].Header != 0 || got[0].LastLine != 1 {
+		t.Fatalf("Intel HEX fold ranges = %+v", got)
+	}
+	exported, err := state.nppSessionState()
+	if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != "ihex" ||
+		len(exported.Main[0].Folds) != 1 || exported.Main[0].Folds[0] != 0 {
+		t.Fatalf("NPP HEX fold export = %+v, %v", exported, err)
+	}
+	newConfig(state).OnCloseRequest(func() {})
+	restarted := newStartupModel(nil, sessionPath)
+	doc = restarted.space.Current()
+	if got := restarted.foldRanges(doc); len(got) != 1 || got[0].Header != 0 || got[0].LastLine != 1 {
+		t.Fatalf("restored HEX fold = %+v, notice=%q", got, restarted.notice)
+	}
+	restarted.command("Normal Text")
+	if got := restarted.foldRanges(doc); len(got) != 0 || doc.Dirty() || doc.Editor.CanUndo() || doc.Editor.String() != text {
+		t.Fatal("explicit plain text did not clear the fold without editing")
+	}
+	if value, err := os.ReadFile(path); err != nil || string(value) != original {
+		t.Fatalf("folding modified CRLF bytes: %q, %v", value, err)
+	}
+}
+
 func TestNPPFoldXMLExportImportAndInvalidPreflight(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "fold.go")

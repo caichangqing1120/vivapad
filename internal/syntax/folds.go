@@ -24,6 +24,9 @@ func FoldRegions(mode, value string) []FoldRegion {
 	if len(value) > 8<<20 {
 		return nil
 	}
+	if strings.EqualFold(mode, ".hex") {
+		return intelHEXFoldRegions(value)
+	}
 	if mode == ".py" || mode == ".yaml" || mode == ".yml" {
 		return indentFoldRegions(value, mode == ".py")
 	}
@@ -74,6 +77,38 @@ func FoldRegions(mode, value string) []FoldRegion {
 		}
 	}
 	return sortedFoldRegions(regions)
+}
+
+func intelHEXFoldRegions(value string) []FoldRegion {
+	var regions []FoldRegion
+	header, last := -1, -1
+	finish := func() {
+		if header >= 0 && last > header {
+			regions = append(regions, FoldRegion{Header: header, LastLine: last, Level: 1})
+		}
+		header = -1
+	}
+	lineNumber := 0
+	for line := range strings.SplitSeq(strings.TrimSuffix(value, "\n"), "\n") {
+		line = strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(line, ":") {
+			kind, valid := hexByte(line, 7)
+			if !valid || kind != 0 {
+				finish()
+				// The extended address payload is two bytes. Wait for a
+				// complete header before folding data underneath it.
+				count, known := hexByte(line, 1)
+				if valid && (kind == 2 || kind == 4) && known && count == 2 &&
+					len(line) >= 15 && hexDigits(line, 9, 13) {
+					header = lineNumber
+				}
+			}
+		}
+		last = lineNumber
+		lineNumber++
+	}
+	finish()
+	return regions
 }
 
 func braceFoldMode(mode string) bool {
