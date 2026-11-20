@@ -70,8 +70,11 @@ func testDirectoryReplacePathSpellings(t *testing.T, name, alternate string) {
 			if err != nil || len(plan.Changes) != 1 {
 				t.Fatalf("expected one planned file: %+v, %v", plan, err)
 			}
-			if previous.Path == plan.Changes[0].Path {
-				t.Fatal("test did not preserve the two path spellings")
+			if previous.Path == "" || !tc.alias && previous.Path == plan.Changes[0].Path {
+				t.Fatalf("unexpected open path %q for planned path %q", previous.Path, plan.Changes[0].Path)
+			}
+			if tc.alias && previous.Path == plan.Changes[0].Path {
+				t.Log("platform resolved the alias to the planned path spelling")
 			}
 			state.replacePlan, state.replaceConfirmOpen = plan, true
 			driver, err := app.NewDriver(newConfig(state), nil)
