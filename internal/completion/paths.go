@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"unicode"
+	"unicode/utf8"
 )
 
 const pathPunctuation = "\"'()[]<>"
@@ -102,20 +103,22 @@ func Paths(value string, caret int, base string) (Result, error) {
 		directory bool
 	}
 	var matches []candidate
+	quote := pathTokenQuote(characters, start)
 	for _, entry := range entries {
-		if entry.Name() == "." || entry.Name() == ".." || !pathPrefix(entry.Name(), suffix) {
+		name := entry.Name()
+		if name == "." || name == ".." || !pathPrefix(name, suffix) || !pathNameFitsToken(name, quote) {
 			continue
 		}
 		mode := entry.Type()
 		if mode&os.ModeSymlink != 0 {
-			info, err := os.Stat(joinLookupPath(parent, entry.Name()))
+			info, err := os.Stat(joinLookupPath(parent, name))
 			if err != nil {
 				continue
 			}
 			mode = info.Mode()
 		}
 		if mode.IsDir() || mode.IsRegular() {
-			matches = append(matches, candidate{name: entry.Name(), directory: mode.IsDir()})
+			matches = append(matches, candidate{name: name, directory: mode.IsDir()})
 		}
 	}
 	slices.SortFunc(matches, func(first, second candidate) int {
@@ -265,20 +268,33 @@ func PathTokenAtCaret(value string, caret int) (string, int, int) {
 }
 
 func pathTokenEnd(characters []rune, start, caret int) int {
-	quote := rune(0)
-	if start > 0 && (characters[start-1] == '"' || characters[start-1] == '\'') {
-		quote = characters[start-1]
-	}
+	quote := pathTokenQuote(characters, start)
 	end := caret
 	for end < len(characters) {
-		character := characters[end]
-		if character == '\r' || character == '\n' || quote != 0 && character == quote ||
-			quote == 0 && barePathBoundary(character) {
+		if pathTokenBoundary(characters[end], quote) {
 			break
 		}
 		end++
 	}
 	return end
+}
+
+func pathTokenQuote(characters []rune, start int) rune {
+	if start > 0 && (characters[start-1] == '"' || characters[start-1] == '\'') {
+		return characters[start-1]
+	}
+	return 0
+}
+
+func pathNameFitsToken(name string, quote rune) bool {
+	return utf8.ValidString(name) && !strings.ContainsFunc(name, func(character rune) bool {
+		return pathTokenBoundary(character, quote)
+	})
+}
+
+func pathTokenBoundary(character, quote rune) bool {
+	return character == '\r' || character == '\n' || quote != 0 && character == quote ||
+		quote == 0 && barePathBoundary(character)
 }
 
 func barePathBoundary(character rune) bool {

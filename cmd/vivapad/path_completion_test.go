@@ -65,19 +65,24 @@ func TestPathCompletionAllocatesForCaretLineAndPreservesUnicodeOffsets(t *testin
 func TestPathCompletionMenuQuotesAndUndo(t *testing.T) {
 	root := t.TempDir()
 	canonical, _ := filepath.EvalSymlinks(root)
-	for _, name := range []string{"alpha.txt", "alphabet.txt"} {
+	names := []string{"alpha.txt", "alphabet.txt"}
+	if runtime.GOOS != "windows" {
+		names = append(names, `alpha"draft.txt`, "alpha\nnext.txt")
+	}
+	for _, name := range names {
 		if err := os.WriteFile(filepath.Join(canonical, name), []byte(name), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	prefix := "open \"" + filepath.Join(canonical, "alp")
+	prefix, suffix := "open \""+filepath.Join(canonical, "alp"), "\" keep"
+	before := prefix + suffix
 	source := filepath.Join(canonical, "source.txt")
-	if err := os.WriteFile(source, []byte(prefix), 0600); err != nil {
+	if err := os.WriteFile(source, []byte(before), 0600); err != nil {
 		t.Fatal(err)
 	}
 	state := newModelWithFiles([]string{source})
 	doc := state.space.Current()
-	doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+	doc.Editor.MoveTo(doc.Editor.RuneIndex(len(prefix)), false)
 	driver, err := app.NewDriver(newConfig(state), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -93,15 +98,15 @@ func TestPathCompletionMenuQuotesAndUndo(t *testing.T) {
 		t.Fatalf("path menu popup = %+v, notice=%q", current, state.notice)
 	}
 	clickID(t, driver, wordCompletionScope.At(0))
-	want := "open \"" + filepath.Join(canonical, "alpha.txt")
+	want := "open \"" + filepath.Join(canonical, "alpha.txt") + suffix
 	if doc.Editor.String() != want || !doc.Dirty() || state.wordCompletion != nil {
 		t.Fatalf("accepted path = %q, popup=%+v", doc.Editor.String(), state.wordCompletion)
 	}
 	state.command("Undo")
-	if doc.Editor.String() != prefix {
+	if doc.Editor.String() != before {
 		t.Fatalf("path completion undo = %q", doc.Editor.String())
 	}
-	if data, err := os.ReadFile(source); err != nil || string(data) != prefix {
+	if data, err := os.ReadFile(source); err != nil || string(data) != before {
 		t.Fatalf("path completion wrote disk: %q, %v", data, err)
 	}
 }

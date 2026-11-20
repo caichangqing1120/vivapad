@@ -63,6 +63,41 @@ func TestPathsPreservesAbsoluteQuotedAndRelativeForms(t *testing.T) {
 	}
 }
 
+func TestPathsOffersOnlyNamesThatFitTheCurrentToken(t *testing.T) {
+	root := t.TempDir()
+	names := []string{"alpha.txt", "alpha space.txt", "alpha[box].txt", "alpha'draft.txt"}
+	if runtime.GOOS != "windows" {
+		names = append(names, `alpha"draft.txt`, "alpha\nnext.txt", "alpha\rnext.txt")
+	}
+	if runtime.GOOS == "linux" {
+		names = append(names, "alpha\xff.txt")
+	}
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(root, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bare := []string{"alpha.txt"}
+	doubleQuoted := []string{"alpha space.txt", "alpha'draft.txt", "alpha.txt", "alpha[box].txt"}
+	singleQuoted := []string{"alpha space.txt", "alpha.txt", "alpha[box].txt"}
+	if runtime.GOOS != "windows" {
+		singleQuoted = []string{"alpha space.txt", `alpha"draft.txt`, "alpha.txt", "alpha[box].txt"}
+	}
+	for _, tc := range []struct {
+		prefix, suffix string
+		want           []string
+	}{
+		{"open alp", " tail", bare},
+		{`open "alp`, `" tail`, doubleQuoted},
+		{"open 'alp", "' tail", singleQuoted},
+	} {
+		result, err := Paths(tc.prefix+tc.suffix, len(tc.prefix), root)
+		if err != nil || result.End != len(tc.prefix) || !reflect.DeepEqual(result.Candidates, tc.want) {
+			t.Errorf("Paths(%q) = %+v, %v; want candidates %q ending at %d", tc.prefix+tc.suffix, result, err, tc.want, len(tc.prefix))
+		}
+	}
+}
+
 func TestPathsExpandTildeWithoutChangingCandidateText(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("HOME environment is platform-specific on Windows")
