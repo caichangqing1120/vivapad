@@ -15,7 +15,6 @@ type FileChange struct {
 	Preview  string
 	Encoding document.Encoding
 	digest   string
-	doc      *document.Document
 }
 
 type ReplacePlan struct {
@@ -24,6 +23,9 @@ type ReplacePlan struct {
 	FilesSearched int
 	FilesSkipped  int
 	maxFileBytes  int64
+	query         string
+	replacement   string
+	search        document.SearchOptions
 	applied       bool
 }
 
@@ -34,14 +36,17 @@ type ApplyResult struct {
 }
 
 func PreviewReplace(ctx context.Context, root, query, replacement string, search document.SearchOptions, options Options) (*ReplacePlan, error) {
-	found, err := Find(ctx, root, query, search, options)
+	found, err := find(ctx, root, query, search, options, false)
 	if err != nil {
 		return nil, err
 	}
 	if found.Truncated {
 		return nil, fmt.Errorf("match limit reached; narrow the search before replacing")
 	}
-	plan := &ReplacePlan{FilesSearched: found.FilesSearched, FilesSkipped: found.FilesSkipped, maxFileBytes: options.fileByteLimit()}
+	plan := &ReplacePlan{
+		FilesSearched: found.FilesSearched, FilesSkipped: found.FilesSkipped, maxFileBytes: options.fileByteLimit(),
+		query: query, replacement: replacement, search: search,
+	}
 	seen := make(map[string]bool)
 	for _, match := range found.Matches {
 		if err := ctx.Err(); err != nil {
@@ -72,7 +77,7 @@ func PreviewReplace(ctx context.Context, root, query, replacement string, search
 		if !changed {
 			continue
 		}
-		plan.Changes = append(plan.Changes, FileChange{Path: match.Path, Count: count, Preview: match.Preview, Encoding: match.Encoding, digest: match.DiskDigest, doc: doc})
+		plan.Changes = append(plan.Changes, FileChange{Path: match.Path, Count: count, Preview: match.Preview, Encoding: match.Encoding, digest: match.DiskDigest})
 		plan.Replacements += count
 	}
 	return plan, nil
@@ -106,7 +111,7 @@ func (plan *ReplacePlan) Apply(ctx context.Context) (ApplyResult, error) {
 		if err := ctx.Err(); err != nil {
 			return result, fmt.Errorf("replace stopped after %d files: %w", result.FilesChanged, err)
 		}
-		if err := change.doc.Save(""); err != nil {
+		if err := plan.writeChange(change); err != nil {
 			return result, fmt.Errorf("replace failed after %d files at %s: %w", result.FilesChanged, change.Path, err)
 		}
 		result.FilesChanged++
@@ -115,4 +120,23 @@ func (plan *ReplacePlan) Apply(ctx context.Context) (ApplyResult, error) {
 	}
 	plan.applied = true
 	return result, nil
+}
+
+func (plan *ReplacePlan) writeChange(change FileChange) error {
+	// Rebuild one draft at a time and reject changes made since batch preflight.
+	doc, err := document.OpenSearchDocument(change.Path, change.Encoding, plan.maxFileBytes)
+	if err != nil {
+		return err
+	}
+	if doc.Path != change.Path || doc.DiskDigest() != change.digest {
+		return fmt.Errorf("file changed after preview")
+	}
+	count, err := doc.ReplaceAllWith(plan.query, plan.replacement, plan.search)
+	if err != nil {
+		return err
+	}
+	if count != change.Count {
+		return fmt.Errorf("replacement count changed after preview")
+	}
+	return doc.Save("")
 }

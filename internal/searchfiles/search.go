@@ -53,6 +53,10 @@ type Result struct {
 var errLimit = errors.New("match limit reached")
 
 func Find(ctx context.Context, root, query string, search document.SearchOptions, options Options) (Result, error) {
+	return find(ctx, root, query, search, options, true)
+}
+
+func find(ctx context.Context, root, query string, search document.SearchOptions, options Options, retainSource bool) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -139,7 +143,7 @@ func Find(ctx context.Context, root, query string, search document.SearchOptions
 		if err != nil {
 			return err
 		}
-		if err := appendMatches(ctx, &result, source, spans, options.MaxMatches); err != nil {
+		if err := appendMatches(ctx, &result, source, spans, options.MaxMatches, retainSource); err != nil {
 			return err
 		}
 		if truncated {
@@ -168,14 +172,14 @@ func FindDocument(doc *document.Document, query string, search document.SearchOp
 		return Result{}, err
 	}
 	result := Result{FilesSearched: 1}
-	if err := appendMatches(ctx, &result, source, spans, maxMatches); err != nil && !errors.Is(err, errLimit) {
+	if err := appendMatches(ctx, &result, source, spans, maxMatches, true); err != nil && !errors.Is(err, errLimit) {
 		return Result{}, err
 	}
 	result.Truncated = result.Truncated || truncated
 	return result, nil
 }
 
-func appendMatches(ctx context.Context, result *Result, source document.SearchSource, spans []text.Span, maxMatches int) error {
+func appendMatches(ctx context.Context, result *Result, source document.SearchSource, spans []text.Span, maxMatches int, retainSource bool) error {
 	value := source.Text
 	line, column, lineStart, scanned, lineEnd, cachedLineStart := 1, 1, 0, 0, 0, -1
 	for _, span := range spans {
@@ -203,10 +207,17 @@ func appendMatches(ctx context.Context, result *Result, source document.SearchSo
 			}
 		}
 		preview := previewLine(value[lineStart:lineEnd], span.Start-lineStart, min(span.End, lineEnd)-lineStart)
-		result.Matches = append(result.Matches, Match{
-			Path: source.Path, DiskDigest: source.DiskDigest, Source: value, Encoding: source.Encoding, Line: line, Column: column,
-			Preview: preview, Text: value[span.Start:span.End], Start: span.Start, End: span.End,
-		})
+		match := Match{
+			Path: source.Path, DiskDigest: source.DiskDigest, Encoding: source.Encoding, Line: line, Column: column,
+			Preview: preview, Start: span.Start, End: span.End,
+		}
+		if retainSource {
+			match.Source, match.Text = value, value[span.Start:span.End]
+		} else {
+			// Short previews can be slices of the complete source string.
+			match.Preview = strings.Clone(preview)
+		}
+		result.Matches = append(result.Matches, match)
 	}
 	return nil
 }

@@ -229,6 +229,7 @@ func TestReplaceRegexCapturesAndTruncation(t *testing.T) {
 type cancelAfterChecks struct {
 	calls int
 	limit int
+	after func(int)
 }
 
 func (contextValue *cancelAfterChecks) Deadline() (time.Time, bool) { return time.Time{}, false }
@@ -236,10 +237,41 @@ func (contextValue *cancelAfterChecks) Done() <-chan struct{}       { return nil
 func (contextValue *cancelAfterChecks) Value(any) any               { return nil }
 func (contextValue *cancelAfterChecks) Err() error {
 	contextValue.calls++
+	if contextValue.after != nil {
+		contextValue.after(contextValue.calls)
+	}
 	if contextValue.calls >= contextValue.limit {
 		return context.Canceled
 	}
 	return nil
+}
+
+func TestReplaceRefusesFileChangedAfterBatchPreflight(t *testing.T) {
+	root := t.TempDir()
+	first, second := filepath.Join(root, "a.txt"), filepath.Join(root, "z.txt")
+	for _, name := range []string{first, second} {
+		writeTestFile(t, name, []byte("cat\r\n"))
+	}
+	plan, err := PreviewReplace(t.Context(), root, "cat", "dog", document.SearchOptions{}, Options{})
+	if err != nil || len(plan.Changes) != 2 {
+		t.Fatalf("preview = %+v, %v", plan, err)
+	}
+	const external = "external cat\r\n"
+	ctx := &cancelAfterChecks{limit: 100, after: func(check int) {
+		// Two preflight checks and one successful write have completed.
+		if check == 4 {
+			writeTestFile(t, second, []byte(external))
+		}
+	}}
+	result, err := plan.Apply(ctx)
+	if err == nil || !strings.Contains(err.Error(), "changed after preview") || result.FilesChanged != 1 || result.Replacements != 1 {
+		t.Fatalf("stale write = %+v, %v", result, err)
+	}
+	for name, want := range map[string]string{first: "dog\r\n", second: external} {
+		if data, err := os.ReadFile(name); err != nil || string(data) != want {
+			t.Errorf("file %q = %q, want %q: %v", name, data, want, err)
+		}
+	}
 }
 
 func TestReplaceReportsPartialBatchOnCancellation(t *testing.T) {
