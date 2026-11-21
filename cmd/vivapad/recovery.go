@@ -83,6 +83,10 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 	}
 	if stored.Split {
 		state.splitEnabled, state.activePane, state.splitRatio = true, stored.ActivePane, stored.Divider
+		if explicitActive != nil && state.paneDocs[0] == explicitActive && state.paneOwner[explicitActive] == 1 {
+			// Startup placed the argument on the left before recovery found its owner.
+			state.paneDocs[0] = nil
+		}
 		if recoveredActive != nil {
 			state.paneDocs[stored.Tabs[stored.Active].Pane] = recoveredActive
 		}
@@ -119,7 +123,12 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 		selected = state.paneDocs[state.activePane]
 	}
 	if explicitActive != nil {
-		state.activePane, state.paneDocs[0] = 0, explicitActive
+		pane := 0
+		if state.splitEnabled {
+			pane = state.paneOwner[explicitActive]
+			state.focusViewRequested, state.focusViewArmed = true, true
+		}
+		state.activePane, state.paneDocs[pane] = pane, explicitActive
 		selected = explicitActive
 	}
 	if index := state.documentIndex(selected); index >= 0 {

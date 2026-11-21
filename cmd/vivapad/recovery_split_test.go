@@ -108,6 +108,66 @@ func TestRecoveryKeepsCaretAfterReversingSelection(t *testing.T) {
 	}
 }
 
+func TestExplicitRightFileKeepsItsRecoveredPaneAndFirstKey(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		left string
+	}{
+		{"left draft", "left draft"},
+		{"empty left pane", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "right.txt")
+			const disk = "saved\r\n"
+			if err := os.WriteFile(path, []byte(disk), 0600); err != nil {
+				t.Fatal(err)
+			}
+			saved, err := document.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			const rightDraft = "saved\nright draft"
+			stored := recovery.State{Split: true, ActivePane: 1, Divider: 0.45}
+			if tc.left != "" {
+				stored.Tabs = append(stored.Tabs, recovery.Tab{Name: "left draft", Content: tc.left})
+			}
+			stored.Active = len(stored.Tabs)
+			stored.Tabs = append(stored.Tabs, recovery.Tab{
+				Name: saved.Name, Path: saved.Path, DiskDigest: saved.DiskDigest(), Content: rightDraft, Pane: 1,
+				SelectionStart: len(rightDraft), SelectionEnd: len(rightDraft), LineEnding: document.CRLF,
+			})
+			sessionPath := filepath.Join(root, "settings", "session.json")
+			if err := recovery.Save(filepath.Join(filepath.Dir(sessionPath), "recovery.json"), stored); err != nil {
+				t.Fatal(err)
+			}
+			state := newStartupModel([]string{path}, sessionPath)
+			left, right := state.paneDocument(0), state.paneDocument(1)
+			if !state.splitEnabled || state.activePane != 1 || state.space.Current() != right || left == right ||
+				state.paneOwner[left] != 0 || state.paneOwner[right] != 1 || left.Editor.String() != tc.left ||
+				right.Path != saved.Path || right.Editor.String() != rightDraft || len(state.space.Documents) != 2 {
+				t.Fatalf("explicit startup moved or cloned a draft: active=%d left=%q right=%q tabs=%d", state.activePane,
+					left.Editor.String(), right.Editor.String(), len(state.space.Documents))
+			}
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { driver.Close(); _ = state.recoveryWriter.Wait() })
+			requireEditorCommandFocus(t, driver, rightEditorID)
+			if err := driver.Type("x"); err != nil || right.Editor.String() != rightDraft+"x" || left.Editor.String() != tc.left {
+				t.Fatalf("first key edited the wrong draft: left=%q right=%q err=%v", left.Editor.String(), right.Editor.String(), err)
+			}
+			if _, err := driver.ShortcutChord(primary(), 'z'); err != nil || right.Editor.String() != rightDraft || left.Editor.String() != tc.left {
+				t.Fatalf("Undo changed the restored drafts: left=%q right=%q err=%v", left.Editor.String(), right.Editor.String(), err)
+			}
+			if bytes, err := os.ReadFile(path); err != nil || string(bytes) != disk {
+				t.Fatalf("recovery or editing changed the disk: %q, %v", bytes, err)
+			}
+		})
+	}
+}
+
 func TestRecoveryKeepsDraftSeparateFromTabOpenedWithDifferentDecoder(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "source.txt")
