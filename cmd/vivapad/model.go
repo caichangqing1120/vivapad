@@ -2750,7 +2750,7 @@ func (state *model) command(command string) {
 		historyNotice = true
 	}
 	checksComposition := command == "Replace All in Open Documents" ||
-		command == "Next Search Result" || command == "Previous Search Result"
+		command == "Next Search Result" || command == "Previous Search Result" || command == functionCompletionCommand
 	if !checksComposition {
 		state.cancelLiveComposition()
 	}
@@ -2790,7 +2790,7 @@ func (state *model) command(command string) {
 	state.eolMenuOpen = false
 	state.charsetMenuOpen = false
 	state.savedMacroMenuOpen = false
-	if command != "Word Completion" && command != "Path Completion" {
+	if command != "Word Completion" && command != "Path Completion" && command != functionCompletionCommand {
 		state.wordCompletion = nil
 		state.wordFocusPending = false
 	}
@@ -2885,6 +2885,8 @@ func (state *model) command(command string) {
 		state.startWordCompletion()
 	case "Path Completion":
 		state.startPathCompletion()
+	case functionCompletionCommand:
+		state.startFunctionCompletion()
 	case "Folder as Workspace":
 		state.folderVisible = !state.folderVisible
 		if !state.folderVisible {

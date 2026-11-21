@@ -1,0 +1,16 @@
+append
+cap
+clear
+close
+complex
+copy
+delete
+imag
+len
+make
+new
+panic
+print
+println
+real
+recover

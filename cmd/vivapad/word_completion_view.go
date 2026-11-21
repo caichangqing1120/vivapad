@@ -8,7 +8,7 @@ import (
 )
 
 var autoCompletionCommands = [...]string{
-	"Function Completion", "Word Completion", "Function Parameters Hint",
+	functionCompletionCommand, "Word Completion", "Function Parameters Hint",
 	"Function Parameters Previous Hint", "Function Parameters Next Hint", "Path Completion",
 }
 
@@ -23,7 +23,7 @@ func (state *model) paintAutoCompletionMenu(canvas *gfx.Canvas, size gfx.Size, p
 	for index, command := range autoCompletionCommands {
 		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
 		id := autoCompletionScope.At(index)
-		disabled := index != 1 && index != 5
+		disabled := index != 0 && index != 1 && index != 5
 		if !disabled && canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}

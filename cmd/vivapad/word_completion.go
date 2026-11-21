@@ -9,6 +9,7 @@ import (
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/completion"
 	"vivapad/internal/document"
+	"vivapad/internal/syntax"
 )
 
 type completionKind uint8
@@ -16,13 +17,18 @@ type completionKind uint8
 const (
 	completionWord completionKind = iota + 1
 	completionPath
+	completionFunction
 )
+
+const functionCompletionCommand = "Function Completion"
 
 type wordCompletionState struct {
 	kind     completionKind
 	doc      *document.Document
 	pane     int
 	base     string
+	language string
+	catalog  *completion.FunctionCatalog
 	source   string
 	start    int
 	end      int
@@ -30,6 +36,70 @@ type wordCompletionState struct {
 	items    []string
 	selected int
 	offset   int
+}
+
+func (state *model) startFunctionCompletion() {
+	doc := state.paneDocument(state.activePane)
+	state.wordCompletion = nil
+	state.wordFocusPending = true
+	if state.isReadOnly(doc) {
+		state.notice = "Read-only document"
+		return
+	}
+	if doc.Editor.CompositionActive() || doc.Editor.Selection().Start != doc.Editor.Selection().End {
+		state.notice = "Place the caret within a function name to complete it"
+		return
+	}
+	language := state.languageFor(doc)
+	spec, _ := syntax.LanguageByMode(language)
+	directory := ""
+	if state.preferencesPath != "" {
+		directory = filepath.Dir(state.preferencesPath)
+	}
+	catalog, err := completion.LoadFunctionCatalog(directory, spec.NPPName)
+	if err != nil {
+		state.notice = "Function completion: " + err.Error()
+		return
+	}
+	if catalog == nil {
+		state.notice = "No API function catalog for this language"
+		return
+	}
+	value := doc.Editor.String()
+	result := functionCompletionsAtCaret(doc.Editor, value, catalog)
+	if len(result.Candidates) == 0 {
+		state.notice = "No function completion"
+		return
+	}
+	if len(result.Candidates) == 1 {
+		state.completeCandidate(doc, result.Start, result.End, result.Candidates[0], completionFunction)
+		return
+	}
+	state.wordCompletion = &wordCompletionState{
+		kind: completionFunction, doc: doc, pane: state.activePane, source: value,
+		language: language, catalog: catalog, start: result.Start, end: result.End,
+		caret: doc.Editor.Caret(), items: result.Candidates,
+	}
+	if result.Truncated {
+		state.notice = "Function completion limited to 2000 suggestions"
+	}
+}
+
+func functionCompletionsAtCaret(editor *text.Editor, value string, catalog *completion.FunctionCatalog) completion.Result {
+	caret := editor.Caret()
+	offset := editor.ByteOffset(caret)
+	start := strings.LastIndexAny(value[:offset], "\r\n") + 1
+	end := len(value)
+	if newline := strings.IndexAny(value[offset:], "\r\n"); newline >= 0 {
+		end = offset + newline
+	}
+	result := catalog.Complete(value[start:end], offset-start)
+	if len(result.Candidates) > 0 {
+		lineStart := caret - utf8.RuneCountInString(value[start:offset])
+		result.Start += lineStart
+		result.End += lineStart
+	}
+	return result
 }
 
 func (state *model) startWordCompletion() {
@@ -130,7 +200,7 @@ func (state *model) validWordCompletion() bool {
 	current := state.wordCompletion
 	if current == nil || state.activePane != current.pane || state.paneDocument(current.pane) != current.doc ||
 		state.space.Current() != current.doc || state.isReadOnly(current.doc) || current.doc.Editor.String() != current.source ||
-		current.doc.Editor.Caret() != current.caret {
+		current.doc.Editor.Caret() != current.caret || current.kind == completionFunction && state.languageFor(current.doc) != current.language {
 		return false
 	}
 	selection := current.doc.Editor.Selection()
@@ -188,6 +258,12 @@ func (state *model) updateWordCompletionAfterInput(doc *document.Document) {
 			state.notice = "Path completion: " + err.Error()
 			return
 		}
+	} else if current.kind == completionFunction {
+		if state.languageFor(doc) != current.language {
+			state.wordCompletion = nil
+			return
+		}
+		result = functionCompletionsAtCaret(doc.Editor, value, current.catalog)
 	} else {
 		language := state.languageFor(doc)
 		result = completion.Words(value, doc.Editor.Caret(), language != "" && language != ".txt")
