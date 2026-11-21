@@ -7,6 +7,7 @@ import (
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 
+	"vivapad/internal/changehistory"
 	"vivapad/internal/document"
 )
 
@@ -30,38 +31,13 @@ func (state *model) changeDecorations(doc *document.Document) *changeViewCache {
 	if ok && cached.value == value && cached.consumer == consumer && cached.atSave == atSave && cached.revision == revision {
 		return cached
 	}
-	masks := make([]uint8, strings.Count(value, "\n")+1)
-	line, start := 0, 0
-	for content := range strings.SplitSeq(value, "\n") {
-		end := start + len(content)
-		next := min(end+1, len(value))
-		masks[line], err = consumer.LineMask(start, end, next)
-		if err != nil {
-			delete(state.changeView, doc)
-			return nil
-		}
-		line++
-		start = next
-	}
-	colors := changeMarginColors()
-	var bars []components.CodeEditorGutterBar
-	for line, mask := range masks {
-		for edition, color := range colors {
-			bit := uint8(1 << edition)
-			if mask&bit != 0 {
-				bars = append(bars, components.CodeEditorGutterBar{
-					Line: line, Fill: color, Stroke: color,
-					JoinBefore: line > 0 && masks[line-1]&bit != 0,
-					JoinAfter:  line+1 < len(masks) && masks[line+1]&bit != 0,
-				})
-			}
-		}
-	}
 	runs, points, err := consumer.Decorations()
 	if err != nil {
 		delete(state.changeView, doc)
 		return nil
 	}
+	colors := changeMarginColors()
+	bars := changeMarginBars(value, runs, points, colors)
 	layers := make([]components.CodeEditorIndicatorLayer, 8)
 	for edition, color := range colors {
 		layers[edition].Color = color
@@ -96,6 +72,64 @@ func (state *model) changeDecorations(doc *document.Document) *changeViewCache {
 	}
 	state.changeView[doc] = cached
 	return cached
+}
+
+func changeMarginBars(value string, runs []changehistory.DecorationRun, points []changehistory.DeletionPoint, colors [4]gfx.Color) []components.CodeEditorGutterBar {
+	var bars []components.CodeEditorGutterBar
+	line, start := 0, 0
+	previousLine, previousBar, previousMask := -2, 0, uint8(0)
+	for len(runs) != 0 || len(points) != 0 {
+		first := len(value)
+		if len(runs) != 0 {
+			first = runs[0].Start
+		}
+		if len(points) != 0 {
+			first = min(first, points[0].Position)
+		}
+		// An edition can span several lines. In that case resume at the
+		// current line start, otherwise skip the untouched bytes in one count.
+		first = max(start, first)
+		line += strings.Count(value[start:first], "\n")
+		end, next := len(value), len(value)
+		if newline := strings.IndexByte(value[first:], '\n'); newline != -1 {
+			end = first + newline
+			next = end + 1
+		}
+		var mask uint8
+		// LineMask assigns inserted LF bytes to this line, as well as deletion
+		// points at its content end. At EOF an empty line can own a point.
+		for len(runs) != 0 && runs[0].Start < next {
+			mask |= 1 << (runs[0].Edition - 1)
+			if runs[0].End > next {
+				break
+			}
+			runs = runs[1:]
+		}
+		for len(points) != 0 && points[0].Position <= end {
+			mask |= points[0].Editions
+			points = points[1:]
+		}
+		if previousLine != line-1 {
+			previousMask = 0
+		}
+		firstBar := len(bars)
+		for edition, color := range colors {
+			bit := uint8(1 << edition)
+			joined := previousMask&bit != 0
+			if mask&bit != 0 {
+				if joined {
+					bars[previousBar].JoinAfter = true
+				}
+				bars = append(bars, components.CodeEditorGutterBar{Line: line, Fill: color, Stroke: color, JoinBefore: joined})
+			}
+			if joined {
+				previousBar++
+			}
+		}
+		previousLine, previousBar, previousMask = line, firstBar, mask
+		line, start = line+1, next
+	}
+	return bars
 }
 
 func (state *model) changeMarginLines(doc *document.Document) []components.CodeEditorGutterBar {

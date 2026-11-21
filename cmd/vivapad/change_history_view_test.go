@@ -10,6 +10,7 @@ import (
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/text"
 
+	"vivapad/internal/changehistory"
 	"vivapad/internal/preferences"
 )
 
@@ -85,6 +86,39 @@ func TestChangeMarginDeletionPoint(t *testing.T) {
 	}
 	if target.Fill != palette.changeModified {
 		t.Fatalf("deletion edition did not contribute to the margin: %+v", *target)
+	}
+}
+
+func TestChangeMarginProjectsSparseRunsAndDeletionPoints(t *testing.T) {
+	// Offsets 4 and 9 are LF bytes, 5 and 10 are line starts, and 25 is EOF.
+	const value = "zero\none\n\ntwo\nquiet\nlast\n"
+	runs := []changehistory.DecorationRun{
+		{Start: 4, End: 6, Edition: 1},
+		{Start: 9, End: 10, Edition: 2},
+		{Start: 11, End: 13, Edition: 3},
+		{Start: 20, End: 25, Edition: 3},
+	}
+	points := []changehistory.DeletionPoint{
+		{Position: 4, Editions: 2},
+		{Position: 5, Editions: 8},
+		{Position: 9, Editions: 1},
+		{Position: 10, Editions: 2},
+		{Position: 25, Editions: 4},
+	}
+	colors := changeMarginColors()
+	bar := func(line, edition int, before, after bool) components.CodeEditorGutterBar {
+		color := colors[edition-1]
+		return components.CodeEditorGutterBar{Line: line, Fill: color, Stroke: color, JoinBefore: before, JoinAfter: after}
+	}
+	want := []components.CodeEditorGutterBar{
+		bar(0, 1, false, true), bar(0, 2, false, false),
+		bar(1, 1, true, true), bar(1, 4, false, false),
+		bar(2, 1, true, false), bar(2, 2, false, true),
+		bar(3, 2, true, false), bar(3, 3, false, false),
+		bar(5, 3, false, true), bar(6, 3, true, false),
+	}
+	if got := changeMarginBars(value, runs, points, colors); !slices.Equal(got, want) {
+		t.Fatalf("change margin = %+v, want %+v", got, want)
 	}
 }
 
