@@ -295,7 +295,7 @@ func (doc *Document) DiskMatchesSaved() (bool, error) {
 }
 
 func diskBytesMatch(path string, expected []byte) (bool, error) {
-	file, err := os.Open(path)
+	file, err := openDocumentFile(path)
 	if err != nil {
 		return false, err
 	}

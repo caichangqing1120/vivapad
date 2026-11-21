@@ -526,6 +526,67 @@ func TestFinderMissingDirectoryResultShowsCauseAndStaysRetryable(t *testing.T) {
 	}
 }
 
+func TestFinderChecksDiskEvenWhenDirectoryResultTabIsOpen(t *testing.T) {
+	for _, tc := range []struct{ name, changed, notice string }{
+		{"missing", "", missingSearchResultPrefix},
+		{"changed text", "prefix dog\r\n", staleSearchResultNotice},
+		{"changed physical line ending", "prefix cat\n", staleSearchResultNotice},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "source.txt")
+			const original = "prefix cat\r\n"
+			if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+				t.Fatal(err)
+			}
+			state, driver := startDriver(t)
+			if err := state.space.Open(path); err != nil {
+				t.Fatal(err)
+			}
+			target := state.space.Current()
+			target.Editor.MoveTo(2, false)
+			draft := state.space.NewDocument()
+			draft.Editor.Insert("unsaved draft")
+			draft.Editor.SetSelection(text.Range{Start: 6, End: 1})
+			state.showInActivePane(draft)
+			before, caret := draft.Editor.Selection(), draft.Editor.Caret()
+			recents := slices.Clone(state.recentEntries)
+			state.query.Insert("cat")
+			collectFinderSnapshot(t, state, "directory", root)
+			if len(state.fileResults.Matches) != 1 {
+				t.Fatal("fixture did not collect the open file's disk match")
+			}
+			var err error
+			if tc.changed == "" {
+				err = os.Remove(path)
+			} else {
+				err = os.WriteFile(path, []byte(tc.changed), 0600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := driver.Key(gfx.KeyF4, 0); err != nil {
+				t.Fatal(err)
+			}
+			if state.resultSelected != -1 || state.space.Current() != draft || len(state.space.Documents) != 2 ||
+				draft.Editor.Selection() != before || draft.Editor.Caret() != caret || !draft.Dirty() || !draft.Editor.CanUndo() ||
+				target.Editor.Caret() != 2 || target.Editor.String() != "prefix cat\n" || !slices.Equal(state.recentEntries, recents) ||
+				!strings.HasPrefix(state.notice, tc.notice) {
+				t.Fatalf("stale disk result changed the workspace: index=%d active=%q notice=%q", state.resultSelected, state.space.Current().Name, state.notice)
+			}
+			if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := driver.Key(gfx.KeyF4, 0); err != nil {
+				t.Fatal(err)
+			}
+			if state.resultSelected != 0 || state.space.Current() != target || target.Editor.Selection() != (text.Range{Start: 7, End: 10}) || state.notice != "" {
+				t.Fatalf("restored bytes did not make the result retryable: index=%d active=%q notice=%q", state.resultSelected, state.space.Current().Name, state.notice)
+			}
+		})
+	}
+}
+
 func TestFinderSourceSnapshotDirectoryKeepsEncodingMismatchRefusal(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "source.txt")

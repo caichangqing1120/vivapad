@@ -364,8 +364,15 @@ func (state *model) openFileResult(index int) bool {
 			return false
 		}
 		// Directory results already carry the canonical path from collection.
-		if resolved, err := filepath.EvalSymlinks(absolute); err == nil && resolved != absolute {
-			state.notice = staleSearchResultNotice
+		if err := document.CheckRecordedPath(absolute); err != nil {
+			switch {
+			case errors.Is(err, fs.ErrNotExist):
+				state.notice = missingSearchResultPrefix + filepath.Base(absolute)
+			case errors.Is(err, document.ErrDiskPathRedirected):
+				state.notice = staleSearchResultNotice
+			default:
+				state.notice = err.Error()
+			}
 			return false
 		}
 		doc = state.directoryResultTab(absolute)
@@ -396,6 +403,25 @@ func (state *model) openFileResult(index int) bool {
 				state.notice = resultDecodingNotice
 			}
 			return false
+		}
+		if match.DiskDigest != "" && doc.DiskDigest() != match.DiskDigest {
+			state.notice = staleSearchResultNotice
+			return false
+		}
+		if alreadyOpen {
+			unchanged, err := doc.DiskMatchesSaved()
+			if errors.Is(err, fs.ErrNotExist) {
+				state.notice = missingSearchResultPrefix + filepath.Base(absolute)
+				return false
+			}
+			if err != nil {
+				state.notice = err.Error()
+				return false
+			}
+			if !unchanged {
+				state.notice = staleSearchResultNotice
+				return false
+			}
 		}
 	}
 	if doc.Editor.CompositionActive() {
