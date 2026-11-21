@@ -59,6 +59,26 @@ func TestFoldStatePrivateSessionChecksDiskAndDirtyRecoveryRestores(t *testing.T)
 	}
 }
 
+func TestRecoveryReportsUnavailableFoldAlongsideRestoredDraft(t *testing.T) {
+	root := t.TempDir()
+	const draft = "package main\n\nvar draft = 1\n"
+	backup := recovery.State{Active: 0, Tabs: []recovery.Tab{{
+		Name: "draft.go", Content: draft, FoldedHeaders: []int{2},
+	}}}
+	if err := recovery.Save(filepath.Join(root, "recovery.json"), backup); err != nil {
+		t.Fatal(err)
+	}
+	state := newStartupModel(nil, filepath.Join(root, "session.json"))
+	doc := state.space.Current()
+	if doc.Editor.String() != draft || !doc.Dirty() || len(state.foldRanges(doc)) != 0 {
+		t.Fatalf("recovery did not preserve the unfolded draft: %q, dirty=%t", doc.Editor.String(), doc.Dirty())
+	}
+	if !strings.HasPrefix(state.notice, "Recovery fold unavailable: fold header line 2 is unavailable") ||
+		!strings.Contains(state.notice, "Recovered 1 unsaved document(s)") {
+		t.Fatalf("recovery notice = %q, want the fold warning and restored draft count", state.notice)
+	}
+}
+
 func TestIntelHEXFoldStateRestoresFromSessionWithoutEditing(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "address.HEX")
