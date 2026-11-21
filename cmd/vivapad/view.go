@@ -614,6 +614,9 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 		ScrollbarID:     barID, HorizontalScrollbarID: horizontalID,
 		Language: state.languageFor(doc), Highlight: state.syntax.Highlight,
 	}
+	if snapshot.Language == ".nfo" {
+		snapshot.MonoFace, snapshot.Highlight = gfx.MonoClassic, nil
+	}
 	if strings.EqualFold(snapshot.Language, ".json5") || strings.EqualFold(snapshot.Language, ".jsonc") {
 		highlighter := state.json5Highlighters[doc]
 		if highlighter == nil {

@@ -2282,7 +2282,7 @@ func (state *model) configureCode(doc *document.Document) {
 
 func codeOptions(language string) (text.CodeOptions, bool) {
 	options := text.CodeOptions{TabWidth: 4, AutoIndent: true, AutoClose: true}
-	if spec, ok := syntax.LanguageByMode(language); ok && spec.Mode != "" {
+	if spec, ok := syntax.LanguageByMode(language); ok && spec.Lexer != "" {
 		options.IndentAfter, options.LineComment = spec.IndentAfter, spec.LineComment
 		return options, true
 	}

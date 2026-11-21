@@ -105,6 +105,7 @@ var languages = [...]Language{
 	{"BaanC", ".bc", "baanc", "IDM_LANG_BAANC", "BaanC", "|", ""},
 	{"ASP", ".asp", "asp", "IDM_LANG_ASP", "ASP", "'", ""},
 	{"JSP", ".jsp", "jsp", "IDM_LANG_JSP", "JSP", "//", ""},
+	{"MS-DOS Style", ".nfo", "nfo", "IDM_LANG_ASCII", "", "", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
