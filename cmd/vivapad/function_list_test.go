@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/session"
 )
@@ -49,10 +49,10 @@ func TestFunctionListFilterAndNavigationKeepCleanSourceUntouched(t *testing.T) {
 	if !seenMain || seenMethod {
 		t.Fatalf("filtered functions: main=%v method=%v", seenMain, seenMethod)
 	}
-	if err := driver.Key(ui.KeyDown, 0); err != nil {
+	if err := driver.Key(gfx.KeyDown, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.Caret() != doc.Editor.RuneIndex(strings.Index(value, "main()")) || doc.Dirty() || doc.Editor.CanUndo() {
@@ -81,7 +81,7 @@ func TestFunctionListSharesDockWithWorkspaceAndMapAtCompactSize(t *testing.T) {
 	if !state.functionListVisible || state.activeLeftDock != "functions" {
 		t.Fatal("Function List did not take the left dock tab")
 	}
-	var leftEditor, rightEditor, mapBounds ui.Rect
+	var leftEditor, rightEditor, mapBounds gfx.Rect
 	for _, hit := range driver.Snapshot().Hits {
 		switch hit.ID {
 		case editorID:
@@ -123,7 +123,7 @@ func TestFunctionListRejectsStaleKeyboardResultAfterEdit(t *testing.T) {
 	clickID(t, driver, functionFilterID)
 	doc.Editor.ReplaceRange(text.Range{Start: 0, End: doc.Editor.RuneCount()}, "package main\n")
 	doc.Editor.MoveTo(0, false)
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.Caret() != 0 || doc.Editor.String() != "package main\n" || state.functionListVisible != true {
@@ -169,7 +169,7 @@ func TestFunctionListWheelReachesLongListAndUnsupportedModeClearsResults(t *test
 	}
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == functionPanelID {
-			if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 40, DeltaY: 120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 40, DeltaY: 120}); err != nil {
 				t.Fatal(err)
 			}
 			break

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestLocaleRectangleMenuSortsKeysAndKeepsOwningViewHistory(t *testing.T) {
@@ -74,7 +74,7 @@ func TestLocaleRectangleMenuSortsKeysAndKeepsOwningViewHistory(t *testing.T) {
 		if _, err := driver.ShortcutChord(primary(), 'z'); err != nil || doc.Editor.String() != before || snapshotRectangle(state.rectangles[0]) != previous || state.rectangles[1].active || state.activePane != 1 || doc.Editor.CanUndo() {
 			t.Fatalf("clone Locale Undo lost owner: %q %v", doc.Editor.String(), err)
 		}
-		if _, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'z'); err != nil || doc.Editor.String() != want || snapshotRectangle(state.rectangles[0]) != after || state.rectangles[1].active {
+		if _, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'z'); err != nil || doc.Editor.String() != want || snapshotRectangle(state.rectangles[0]) != after || state.rectangles[1].active {
 			t.Fatalf("clone Locale Redo lost owner: %q %v", doc.Editor.String(), err)
 		}
 	}

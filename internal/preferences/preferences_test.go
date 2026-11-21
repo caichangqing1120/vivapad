@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -25,11 +26,11 @@ func TestPrivateSettingsRoundTrip(t *testing.T) {
 		t.Fatalf("loaded = %+v, %v; want %+v", got, err, want)
 	}
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || !privateMode(info.Mode()) {
 		t.Fatalf("settings mode = %+v, %v", info, err)
 	}
 	info, err = os.Stat(filepath.Dir(path))
-	if err != nil || info.Mode().Perm() != 0700 {
+	if err != nil || !privateDirMode(info.Mode()) {
 		t.Fatalf("settings directory mode = %+v, %v", info, err)
 	}
 	encoded, err := os.ReadFile(path)
@@ -46,7 +47,7 @@ func TestMissingAndInvalidSettings(t *testing.T) {
 	}
 	for name, content := range map[string]string{
 		"invalid JSON":   "{",
-		"future version": `{"version":6}`,
+		"future version": `{"version":8}`,
 		"bad width":      `{"version":1,"font_size":13,"tab_width":0,"line_numbers":true,"auto_indent":true,"auto_close":true,"indent_mode":"language"}`,
 		"unknown field":  `{"version":1,"font_size":13,"tab_width":4,"line_numbers":true,"auto_indent":true,"auto_close":true,"indent_mode":"language","surprise":1}`,
 	} {
@@ -221,4 +222,24 @@ func TestPrivateSettingsRejectInvalidPrintConfiguration(t *testing.T) {
 			t.Fatalf("invalid print settings saved: %+v", stored.Print)
 		}
 	}
+}
+
+// privateMode reports whether mode carries the private-file metadata this
+// platform supports: POSIX 0600 on macOS and Linux, or a writable regular file
+// on Windows, where Go reports synthetic permission bits and VivaPad keeps the
+// privacy of its stores in the profile directory ACL (a separate gate).
+func privateMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsRegular() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0600
+}
+
+// privateDirMode reports whether mode carries a private directory's metadata:
+// POSIX 0700 on macOS and Linux, or a writable directory on Windows.
+func privateDirMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsDir() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0700
 }

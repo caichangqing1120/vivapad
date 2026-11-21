@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/tools/appbundle"
 	"github.com/vivaui/viva/tools/iconcompile"
-	"github.com/vivaui/viva/ui"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func generateIcons(appPath string) error {
 	if err != nil {
 		return err
 	}
-	icons := make(map[string]ui.Icon, len(files)+2)
+	icons := make(map[string]gfx.Icon, len(files)+2)
 	for _, path := range files {
 		source, err := os.ReadFile(path)
 		if err != nil {

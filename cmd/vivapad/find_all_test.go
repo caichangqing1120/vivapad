@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 )
@@ -48,7 +49,7 @@ func TestFindAllCurrentRejectsStaleResultAndInvalidPattern(t *testing.T) {
 	}
 	state.query.Insert("one")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(7))
+	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	if len(state.fileResults.Matches) != 2 {
 		t.Fatalf("initial results = %+v", state.fileResults)
 	}
@@ -69,6 +70,43 @@ func TestFindAllCurrentRejectsStaleResultAndInvalidPattern(t *testing.T) {
 	}
 }
 
+func TestSearchResultRefusesPreeditThatResemblesItsSnapshot(t *testing.T) {
+	state, _ := startDriver(t)
+	doc := state.space.Current()
+	doc.Editor.Insert("cat cat")
+	state.query.Insert("cat")
+	state.findAllCurrent()
+	if !state.openFileResult(0) {
+		t.Fatal("precondition: could not navigate the original result")
+	}
+	doc.Editor.ReplaceRange(text.Range{Start: 0, End: 3}, "dog")
+	doc.Editor.SetSelection(text.Range{Start: 0, End: 3})
+	doc.Editor.SetMarkedText("cat", text.Range{Start: 2, End: 2})
+	if doc.Editor.String() != "cat cat" || doc.Editor.CommittedString() != "dog cat" {
+		t.Fatal("precondition: preedit does not resemble the old source")
+	}
+	selection, caret := doc.Editor.Selection(), doc.Editor.Caret()
+	if state.openFileResult(1) || state.resultSelected != 0 || state.space.Current() != doc ||
+		!doc.Editor.CompositionActive() || doc.Editor.Selection() != selection || doc.Editor.Caret() != caret ||
+		doc.Editor.CommittedString() != "dog cat" || state.notice != staleSearchResultNotice {
+		t.Fatalf("stale result changed the composing source: selected=%d, text=%q, committed=%q, notice=%q",
+			state.resultSelected, doc.Editor.String(), doc.Editor.CommittedString(), state.notice)
+	}
+	if !doc.Editor.CancelComposition() || !doc.Editor.Undo() || doc.Editor.String() != "cat cat" {
+		t.Fatal("refused navigation changed the cancel or Undo path")
+	}
+	doc.Editor.MoveTo(0, false)
+	doc.Editor.SetMarkedText("x", text.Range{})
+	if state.openFileResult(1) || state.notice != composingResultNotice || state.resultSelected != 0 ||
+		!doc.Editor.CompositionActive() || doc.Editor.CommittedString() != "cat cat" {
+		t.Fatalf("unchanged source did not keep its composition: %q", state.notice)
+	}
+	if !doc.Editor.CancelComposition() || !state.openFileResult(1) || state.resultSelected != 1 ||
+		doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) || state.notice != "" {
+		t.Fatalf("restored source could not reuse the old result: %q", state.notice)
+	}
+}
+
 func TestFindAllCurrentCapsResultsAndReleasesClosedDocument(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()
@@ -83,6 +121,45 @@ func TestFindAllCurrentCapsResultsAndReleasesClosedDocument(t *testing.T) {
 	if state.resultsOpen || state.resultDocument != nil {
 		t.Fatal("closed document left active search results")
 	}
+	if state.fileResults.Matches != nil || state.resultQuery != "" {
+		t.Fatal("closing the source retained its search snapshot")
+	}
+}
+
+func TestDismissFinderReleasesSearchSnapshot(t *testing.T) {
+	for _, closeWith := range []string{"close button", "Escape"} {
+		t.Run(closeWith, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			doc.Editor.Insert("cat cat")
+			state.query.Insert("cat")
+			state.findAllOpenDocuments()
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, resultScope.At(0))
+			before := doc.Editor.Selection()
+			if state.resultSelected != 0 || len(state.fileResults.Matches) != 2 || len(state.resultDocuments) != 2 {
+				t.Fatal("fixture did not select a source-backed result")
+			}
+			if closeWith == "close button" {
+				clickID(t, driver, resultsCloseID)
+			} else if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+				t.Fatal(err)
+			}
+			if state.resultsOpen || state.resultSelected != -1 || state.fileResults.Matches != nil ||
+				state.resultDocuments != nil || state.resultQuery != "" || state.resultOpenDocuments {
+				t.Fatal("dismissed Finder retained the source snapshot or navigation state")
+			}
+			if err := driver.Key(gfx.KeyF4, 0); err != nil {
+				t.Fatal(err)
+			}
+			if doc.Editor.Selection() != before || doc.Editor.String() != "cat cat" || state.space.Current() != doc {
+				t.Fatal("dismissing Finder or navigating afterward changed the editor")
+			}
+		})
+	}
 }
 
 func TestFindAllResultHeadingKeepsTheQueryThatProducedIt(t *testing.T) {
@@ -93,7 +170,7 @@ func TestFindAllResultHeadingKeepsTheQueryThatProducedIt(t *testing.T) {
 	}
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(7))
+	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	state.query.SetSelection(text.Range{Start: 0, End: state.query.RuneCount()})
 	state.query.Insert("dog")
 	state.invalidator.Invalidate()
@@ -134,7 +211,7 @@ func TestCurrentResultDoesNotMoveTabToOtherView(t *testing.T) {
 	defer driver.Close()
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(7))
+	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	clickID(t, driver, rightEditorID)
 	clickID(t, driver, resultScope.At(0))
 	if state.activePane != 0 || state.paneDocs[0] != first || state.paneDocs[1] != second || state.paneOwner[first] != 0 || state.paneOwner[second] != 1 {

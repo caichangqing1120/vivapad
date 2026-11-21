@@ -33,6 +33,18 @@ func CanonicalRoot(path string) (string, error) {
 	return filepath.Clean(resolved), nil
 }
 
+// CheckCanonicalPath verifies a path that was already resolved when recorded.
+func CheckCanonicalPath(path string) error {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	if resolved != filepath.Clean(path) {
+		return fmt.Errorf("path now points elsewhere: %s", path)
+	}
+	return nil
+}
+
 func Contains(root, path string) bool {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {

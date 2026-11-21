@@ -1,9 +1,11 @@
 package document
 
 import (
-	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -20,6 +22,8 @@ type RenamePlan struct {
 
 	doc          *Document
 	source       string
+	sourceInfo   os.FileInfo
+	targetInfo   os.FileInfo
 	sourceDigest string
 	targetDigest string
 }
@@ -32,32 +36,59 @@ func (doc *Document) PrepareRename(path string) (*RenamePlan, error) {
 	if err != nil {
 		return nil, err
 	}
-	source, err := os.ReadFile(doc.Path)
+	sourceInfo, sourceDigest, err := snapshotRenameFile(doc.Path)
 	if err != nil {
 		return nil, err
 	}
-	if !bytes.Equal(source, doc.savedDisk) {
+	if sourceInfo.Size() != int64(len(doc.savedDisk)) || sourceDigest != doc.savedDigest {
 		return nil, ErrRenameSourceChanged
 	}
-	plan := &RenamePlan{Target: target, doc: doc, source: doc.Path, sourceDigest: digest(source)}
+	plan := &RenamePlan{Target: target, doc: doc, source: doc.Path, sourceInfo: sourceInfo, sourceDigest: sourceDigest}
 	if target == doc.Path {
 		return plan, nil
 	}
-	data, err := os.ReadFile(target)
+	targetInfo, targetDigest, err := snapshotRenameFile(target)
 	if err == nil {
-		plan.TargetExists, plan.targetDigest = true, digest(data)
+		plan.TargetExists, plan.targetInfo, plan.targetDigest = true, targetInfo, targetDigest
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 	return plan, nil
 }
 
+func snapshotRenameFile(path string) (os.FileInfo, string, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, "", err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, "", fmt.Errorf("%s is not a regular file", path)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, "", err
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, "", err
+	}
+	if !os.SameFile(info, opened) {
+		return nil, "", fmt.Errorf("%s changed while opening", path)
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return nil, "", err
+	}
+	return opened, hex.EncodeToString(hash.Sum(nil)), nil
+}
+
 func (plan *RenamePlan) Apply(replace bool) error {
 	if plan == nil || plan.doc == nil || plan.doc.Path != plan.source {
 		return ErrRenameSourceChanged
 	}
-	source, err := os.ReadFile(plan.source)
-	if err != nil || digest(source) != plan.sourceDigest {
+	sourceInfo, sourceDigest, err := snapshotRenameFile(plan.source)
+	if err != nil || !os.SameFile(plan.sourceInfo, sourceInfo) || sourceDigest != plan.sourceDigest {
 		return ErrRenameSourceChanged
 	}
 	if plan.Target == plan.source {
@@ -66,9 +97,9 @@ func (plan *RenamePlan) Apply(replace bool) error {
 	if plan.TargetExists && !replace {
 		return ErrRenameConfirmationRequired
 	}
-	data, err := os.ReadFile(plan.Target)
+	targetInfo, targetDigest, err := snapshotRenameFile(plan.Target)
 	switch {
-	case plan.TargetExists && (err != nil || digest(data) != plan.targetDigest):
+	case plan.TargetExists && (err != nil || !os.SameFile(plan.targetInfo, targetInfo) || targetDigest != plan.targetDigest):
 		return ErrRenameTargetChanged
 	case !plan.TargetExists && err == nil:
 		return ErrRenameTargetChanged

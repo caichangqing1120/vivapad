@@ -2,12 +2,13 @@ package main
 
 import (
 	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/macro"
 )
@@ -39,21 +40,21 @@ func TestBookmarkF2NavigationAndToggleThroughDriver(t *testing.T) {
 	doc.Editor.Insert("one\ntwo\nthree\nfour")
 	clickID(t, driver, editorID)
 	doc.GoToLine(2)
-	if err := driver.Key(ui.KeyF2, ui.ModifierControl); err != nil {
+	if err := driver.Key(gfx.KeyF2, gfx.ModifierControl); err != nil {
 		t.Fatal(err)
 	}
 	doc.GoToLine(4)
-	if err := driver.Key(ui.KeyF2, ui.ModifierControl); err != nil {
+	if err := driver.Key(gfx.KeyF2, gfx.ModifierControl); err != nil {
 		t.Fatal(err)
 	}
 	doc.GoToLine(1)
-	if err := driver.Key(ui.KeyF2, 0); err != nil {
+	if err := driver.Key(gfx.KeyF2, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := bookmarkLine(doc); got != 1 {
 		t.Fatalf("next bookmark moved to line %d, want 1", got)
 	}
-	if err := driver.Key(ui.KeyF2, ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyF2, gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	if got := bookmarkLine(doc); got != 3 {
@@ -74,7 +75,7 @@ func TestBookmarkPaintsInEditorGutter(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	marker := ui.RGB(43, 104, 187)
+	marker := gfx.RGB(43, 104, 187)
 	for _, primitive := range driver.Snapshot().Primitives {
 		if primitive.Color == marker && primitive.Bounds.Width >= 6 && primitive.Bounds.Width <= 12 && primitive.Bounds.Height == primitive.Bounds.Width {
 			return
@@ -89,13 +90,13 @@ func TestBookmarkMenuTogglesAndClearsCurrentDocument(t *testing.T) {
 	doc.Editor.Insert("one\ntwo")
 	doc.GoToLine(2)
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(12))
+	clickID(t, driver, searchCommandID(t, "Bookmark"))
 	clickID(t, driver, bookmarkScope.At(0))
 	if got := state.bookmarkLines(doc); !reflect.DeepEqual(got, []int{1}) {
 		t.Fatalf("menu toggle bookmarks = %v", got)
 	}
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(12))
+	clickID(t, driver, searchCommandID(t, "Bookmark"))
 	clickID(t, driver, bookmarkScope.At(3))
 	if got := state.bookmarkLines(doc); len(got) != 0 {
 		t.Fatalf("menu clear bookmarks = %v", got)
@@ -192,7 +193,7 @@ func TestBookmarkFullMenuFitsCompactWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(12))
+	clickID(t, driver, searchCommandID(t, "Bookmark"))
 	hits := driver.Snapshot().Hits
 	visible := 0
 	for _, hit := range hits {
@@ -223,7 +224,7 @@ func TestBookmarkClipboardCommandsThroughMenu(t *testing.T) {
 	state.command("Toggle Bookmark")
 	choose := func(index int) {
 		clickID(t, driver, menuScope.At(2))
-		clickID(t, driver, menuItemScope.At(12))
+		clickID(t, driver, searchCommandID(t, "Bookmark"))
 		clickID(t, driver, bookmarkScope.At(index))
 	}
 	choose(5)
@@ -296,7 +297,7 @@ func TestCodeEditorDeleteShortcutKeepsMergedLineMarker(t *testing.T) {
 	state.command("Toggle Bookmark")
 	clickID(t, driver, editorID)
 	doc.GoToLine(1)
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'k'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'k'); err != nil || !handled {
 		t.Fatalf("editor delete shortcut handled=%v, err=%v", handled, err)
 	}
 	if doc.Editor.String() != "same" || !reflect.DeepEqual(state.bookmarkLines(doc), []int{0}) {
@@ -314,7 +315,7 @@ func TestNativeSelectionDeletionTracksIdenticalBookmarkedLines(t *testing.T) {
 			state.command("Toggle Bookmark")
 			clickID(t, driver, editorID)
 			doc.Editor.SetSelection(text.Range{Start: 0, End: 5})
-			if err := driver.Key(ui.KeyBackspace, 0); err != nil {
+			if err := driver.Key(gfx.KeyBackspace, 0); err != nil {
 				t.Fatal(err)
 			}
 			if doc.Editor.String() != "same" {
@@ -386,24 +387,44 @@ func TestCodeEditorMoveAndDuplicateShortcutsTrackRepeatedLines(t *testing.T) {
 	state.command("Toggle Bookmark")
 	clickID(t, driver, editorID)
 	doc.GoToLine(1)
-	if err := driver.Key(ui.KeyDown, ui.ModifierAlt); err != nil {
+	if err := driver.Key(gfx.KeyDown, gfx.ModifierAlt); err != nil {
 		t.Fatal(err)
 	}
 	if got := state.bookmarkLines(doc); !reflect.DeepEqual(got, []int{0}) {
 		t.Fatalf("move down changed marker identity: %q, %v", doc.Editor.String(), got)
 	}
-	if err := driver.Key(ui.KeyUp, ui.ModifierAlt); err != nil {
+	if err := driver.Key(gfx.KeyUp, gfx.ModifierAlt); err != nil {
 		t.Fatal(err)
 	}
 	if got := state.bookmarkLines(doc); !reflect.DeepEqual(got, []int{1}) {
 		t.Fatalf("move up changed marker identity: %q, %v", doc.Editor.String(), got)
 	}
-	if err := driver.Key(ui.KeyDown, ui.ModifierAlt|ui.ModifierShift); err != nil {
+	if err := duplicateDownShortcut(t, driver); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.String() != "same\nsame\nsame\nend" || !reflect.DeepEqual(state.bookmarkLines(doc), []int{2}) {
 		t.Fatalf("duplicate down copied marker unexpectedly: %q, %v", doc.Editor.String(), state.bookmarkLines(doc))
 	}
+}
+
+// duplicateDownShortcut presses the keyboard gesture that duplicates the current
+// line down. macOS keeps Option+Shift+Down for the editor shortcut until column
+// mode is armed; Windows and Linux start a rectangle selection directly with
+// Alt+Shift arrows (docs/specs/001-vivapad/spec.md, Begin/End Select in Column
+// Mode), so they duplicate through the Ctrl+D shortcut instead.
+func duplicateDownShortcut(t *testing.T, driver *app.Driver) error {
+	t.Helper()
+	if runtime.GOOS == "darwin" {
+		return driver.Key(gfx.KeyDown, gfx.ModifierAlt|gfx.ModifierShift)
+	}
+	handled, err := driver.ShortcutChord(primary(), 'd')
+	if err != nil {
+		return err
+	}
+	if !handled {
+		t.Fatal("duplicate-line shortcut was not handled")
+	}
+	return nil
 }
 
 func TestSelectedLineMoveAndDuplicatePreserveMarkerOwnership(t *testing.T) {

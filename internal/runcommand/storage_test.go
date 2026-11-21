@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -18,7 +19,7 @@ func TestNamedCommandsPrivateRoundTripAndValidation(t *testing.T) {
 		t.Fatalf("named Run commands = %+v, %v", got, err)
 	}
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || !privateMode(info.Mode()) {
 		t.Fatalf("named Run file mode = %+v, %v", info, err)
 	}
 	for _, invalid := range [][]Named{
@@ -39,4 +40,15 @@ func TestNamedCommandsPrivateRoundTripAndValidation(t *testing.T) {
 	if _, err := Load(path); err == nil {
 		t.Fatal("accepted future named-Run version")
 	}
+}
+
+// privateMode reports whether mode carries the private-file metadata this
+// platform supports: POSIX 0600 on macOS and Linux, or a writable regular file
+// on Windows, where Go reports synthetic permission bits and VivaPad keeps the
+// privacy of its stores in the profile directory ACL (a separate gate).
+func privateMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsRegular() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0600
 }

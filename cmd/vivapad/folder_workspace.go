@@ -19,7 +19,7 @@ type folderRow struct {
 }
 
 func (state *model) folderPanelWidth(width float32) float32 {
-	if !state.folderVisible && !state.functionListVisible && !state.documentListVisible {
+	if state.leftDockCount() == 0 {
 		return 0
 	}
 	return max(0, min(250, max(140, width*0.27), width-180))
@@ -56,6 +56,7 @@ func (state *model) addFolderRoot(path string) error {
 }
 
 func (state *model) chooseFolderRoot() {
+	defer state.requestNativeChooserFocus()
 	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "Open Folder as Workspace"})
 	if errors.Is(err, app.ErrCanceled) {
 		return
@@ -86,7 +87,11 @@ func (state *model) restoreFolderWorkspace(stored session.State) {
 	notice := state.notice
 	var missing string
 	for _, root := range stored.FolderRoots {
-		if err := state.addFolderRoot(root); err != nil {
+		err := foldertree.CheckCanonicalPath(root)
+		if err == nil {
+			err = state.addFolderRoot(root)
+		}
+		if err != nil {
 			missing = "Folder unavailable: " + err.Error()
 		}
 	}
@@ -104,8 +109,15 @@ func (state *model) folderRows() []folderRow {
 		if !state.folderExpanded[path] {
 			return
 		}
-		state.ensureFolderWatch(path)
 		children, ok := state.folderCache[path]
+		if !ok || state.folderWatching[path] == nil && !state.folderWatchUnavailable {
+			if err := foldertree.CheckCanonicalPath(path); err != nil {
+				state.stopFolderBranch(path)
+				state.notice = "Folder unavailable: " + err.Error()
+				return
+			}
+		}
+		state.ensureFolderWatch(path)
 		if !ok {
 			var err error
 			children, err = foldertree.Children(path)
@@ -138,7 +150,11 @@ func (state *model) activateFolderRow(row folderRow) {
 		}
 		return
 	}
-	if err := state.space.Open(row.path); err != nil {
+	err := foldertree.CheckCanonicalPath(row.path)
+	if err == nil {
+		err = state.space.Open(row.path)
+	}
+	if err != nil {
 		state.notice = "Cannot open " + row.name + ": " + err.Error()
 		return
 	}

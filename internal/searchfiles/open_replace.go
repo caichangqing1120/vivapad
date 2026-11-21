@@ -3,6 +3,8 @@ package searchfiles
 import (
 	"fmt"
 	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
@@ -19,6 +21,7 @@ type OpenChange struct {
 	ending      document.LineEnding
 	eolSequence string
 	source      *document.Document
+	editor      *text.Editor
 	targets     []document.ReplacementEdit
 }
 
@@ -46,30 +49,74 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 			return nil, fmt.Errorf("distinct open documents share one editor")
 		}
 		seen[doc], editors[doc.Editor] = true, doc
-		before := doc.Editor.String()
-		candidate := document.New(doc.Name)
-		candidate.Editor = text.NewEditor(before)
-		candidate.Editor.SetSavePoint()
-		candidate.SetEncoding(doc.Encoding())
-		candidate.SetLineEnding(doc.LineEnding())
-		count, edits, err := candidate.ReplaceAllWithEdits(query, replacement, options)
+		composing := doc.Editor.CompositionActive()
+		before := doc.Editor.CommittedString()
+		edits, err := document.ReplacementEditsInText(before, query, replacement, options)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", doc.Name, err)
 		}
-		if count == 0 {
+		if replacementLeavesTextUnchanged(before, edits) {
 			continue
 		}
+		ending := doc.LineEnding()
+		var sequence string
+		// A replacement preview is a transient wrapper, not a document: it must
+		// not bind a history producer to a blank editor it then replaces.
+		candidate := document.NewDraft(doc.Name, text.NewEditor(before))
+		candidate.Editor.SetSavePoint()
+		candidate.SetEncoding(doc.Encoding())
+		if !composing {
+			sequence = doc.EOLSequence()
+			if err := candidate.RestoreLineEndings(ending, sequence); err != nil {
+				return nil, fmt.Errorf("%s cannot preview replacement: %w", doc.Name, err)
+			}
+		}
+		// During composition the live LF labels may describe the provisional
+		// text. A draft with uniform LF only determines whether the committed
+		// text would change; it cannot authorize edits to a composing document.
+		batch, err := candidate.PrepareTargetEdits(edits)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", doc.Name, err)
+		}
+		if err := batch.Apply(); err != nil {
+			return nil, fmt.Errorf("%s: %w", doc.Name, err)
+		}
+		if candidate.Editor.String() == before {
+			continue
+		}
+		if composing {
+			return nil, fmt.Errorf("cannot replace during composition (%s)", doc.Name)
+		}
 		if err := candidate.ValidateEncoding(); err != nil {
-			return nil, fmt.Errorf("%s cannot be saved after replacement: %w", doc.Name, err)
+			return nil, fmt.Errorf("%w (%s cannot be saved after replacement)", err, doc.Name)
 		}
 		plan.Changes = append(plan.Changes, OpenChange{
-			Doc: doc, Name: doc.Name, Count: count, Edits: append([]document.ReplacementEdit(nil), edits...),
-			before: before, encoding: doc.Encoding(), ending: doc.LineEnding(), eolSequence: doc.EOLSequence(),
-			source: doc, targets: edits,
+			Doc: doc, Name: doc.Name, Count: len(edits), Edits: append([]document.ReplacementEdit(nil), edits...),
+			before: before, encoding: doc.Encoding(), ending: ending, eolSequence: sequence,
+			source: doc, editor: doc.Editor, targets: edits,
 		})
-		plan.Replacements += count
+		plan.Replacements += len(edits)
 	}
 	return plan, nil
+}
+
+// Compare the replacement stream to the original without building a draft.
+// A regex can grow one target and shrink another without changing the result.
+func replacementLeavesTextUnchanged(value string, edits []document.ReplacementEdit) bool {
+	remaining, sourceEnd := value, 0
+	for _, edit := range edits {
+		var equal bool
+		remaining, equal = strings.CutPrefix(remaining, value[sourceEnd:edit.Start])
+		if !equal {
+			return false
+		}
+		remaining, equal = strings.CutPrefix(remaining, edit.Text)
+		if !equal || !utf8.ValidString(edit.Text) {
+			return false
+		}
+		sourceEnd = edit.End
+	}
+	return remaining == value[sourceEnd:]
 }
 
 func (plan *OpenReplacePlan) Apply(open []*document.Document) error {
@@ -97,7 +144,7 @@ func (plan *OpenReplacePlan) Apply(open []*document.Document) error {
 			return fmt.Errorf("replacement plan metadata changed; no documents were changed")
 		}
 		seen[change.Doc] = true
-		if !current[change.Doc] || change.Doc.Editor.String() != change.before ||
+		if !current[change.Doc] || change.Doc.Editor != change.editor || change.Doc.Editor.String() != change.before ||
 			change.Doc.Encoding() != change.encoding || change.Doc.LineEnding() != change.ending || change.Doc.EOLSequence() != change.eolSequence {
 			return fmt.Errorf("%s changed after replacement preview; no documents were changed", change.Name)
 		}

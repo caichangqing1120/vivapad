@@ -229,7 +229,7 @@ func TestNPPPositionConversionAccountsForCRLFAndUnicode(t *testing.T) {
 	if got := nppBytePosition(doc, 2); got != 5 {
 		t.Fatalf("NPP byte position after 猫 CRLF = %d, want 5", got)
 	}
-	if got := runeFromNPPPosition(doc, 5); got != 2 {
+	if got := nppSelectionAt(doc, 5, 5).Start; got != 2 {
 		t.Fatalf("rune position after 猫 CRLF = %d, want 2", got)
 	}
 }

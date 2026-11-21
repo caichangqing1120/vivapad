@@ -189,3 +189,41 @@ func TestPaginateLongLogicalLineAdvancesByGraphemes(t *testing.T) {
 		t.Fatal("long line lost its final UTF-8 bytes")
 	}
 }
+
+func TestPaginateStopsMeasuringLongLineAtPageLimit(t *testing.T) {
+	device := testDevice()
+	device.PaperWidth = 45  // One character per row.
+	device.PaperHeight = 50 // One row per page.
+	metrics := testTextMetrics()
+	measured := 0
+	metrics.Advance = func(string) float64 {
+		measured++
+		return 10
+	}
+	job := Job{Text: strings.Repeat("a", 4*maxPrintPages)}
+	pages, err := Paginate(job, device, metrics, PageVariables{})
+	if err == nil || !strings.Contains(err.Error(), "too many pages") || len(pages) != 0 {
+		t.Fatalf("oversized print job returned %d pages, err=%v", len(pages), err)
+	}
+	if measured > 2*(maxPrintPages+1) {
+		t.Fatalf("measured %d glyphs for a job limited to %d one-glyph pages", measured, maxPrintPages)
+	}
+}
+
+func TestPaginateRecalculatesTabAfterWrappingAtWordBreak(t *testing.T) {
+	device := testDevice()
+	device.PaperWidth = 90
+	pages, err := Paginate(Job{Text: "aa bc\tz\n\n"}, device, testTextMetrics(), PageVariables{})
+	if err != nil || len(pages) != 1 || len(pages[0].Rows) != 3 {
+		t.Fatalf("wrong page or row count: %+v, %v", pages, err)
+	}
+	for i, want := range []Row{
+		{Text: "aa ", StartByte: 0, EndByte: 3, LineNumber: 1},
+		{Text: "bc  z", StartByte: 3, EndByte: 7},
+		{StartByte: 8, EndByte: 8, LineNumber: 2},
+	} {
+		if got := pages[0].Rows[i]; got != want {
+			t.Errorf("row %d = %+v, want %+v", i, got, want)
+		}
+	}
+}

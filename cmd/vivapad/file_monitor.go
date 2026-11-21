@@ -28,7 +28,7 @@ type fileMonitor struct {
 }
 
 func newFileMonitor(path string, wake func(), interval time.Duration) (*fileMonitor, error) {
-	initial, err := os.Stat(path)
+	initial, err := os.Lstat(path)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (monitor *fileMonitor) run(previous os.FileInfo, interval time.Duration) {
 			}
 			monitor.wake()
 		case <-ticker.C:
-			info, err := os.Stat(monitor.path)
+			info, err := os.Lstat(monitor.path)
 			if errors.Is(err, os.ErrNotExist) {
 				missingTicks++
 				if missingTicks >= 2 && !monitor.missing.Swap(true) {

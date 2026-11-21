@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -24,7 +24,7 @@ func TestFullScreenViewMenuRestoresFrameAndEditingState(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := driver.Frame()
-	monitor := ui.Rect{X: -1200, Width: 1200, Height: 720}
+	monitor := gfx.Rect{X: -1200, Width: 1200, Height: 720}
 	if err := driver.SetFullscreenMonitor(monitor); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestFullScreenSystemTransitionAndRejectedRequest(t *testing.T) {
 	if !state.fullscreen {
 		t.Fatal("system fullscreen transition did not update the model")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.fullscreen || driver.Fullscreen() {
@@ -87,6 +87,38 @@ func TestFullScreenSystemTransitionAndRejectedRequest(t *testing.T) {
 	}
 }
 
+func TestFullScreenCommandsReturnFocusToTheEditor(t *testing.T) {
+	for _, exit := range []string{"Escape", "restore button"} {
+		t.Run(exit, func(t *testing.T) {
+			state, driver := startDriver(t)
+			state.requestFullscreen = driver.SetFullscreen
+			clickID(t, driver, editorID)
+			if err := driver.Type("draft"); err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			doc.Editor.MoveTo(2, false)
+			clickID(t, driver, menuScope.At(3))
+			clickID(t, driver, menuItemScope.At(27))
+			requireEditorCommandFocus(t, driver, editorID)
+			if exit == "Escape" {
+				if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				clickID(t, driver, fullscreenRestoreID)
+			}
+			requireEditorCommandFocus(t, driver, editorID)
+			if state.fullscreen {
+				t.Fatal("fullscreen remained active")
+			}
+			if err := driver.Type("!"); err != nil || doc.Editor.String() != "dr!aft" {
+				t.Fatalf("first key after fullscreen = %q, %v", doc.Editor.String(), err)
+			}
+		})
+	}
+}
+
 func TestFullScreenCompactSplitDocksKeepRestoreReachable(t *testing.T) {
 	state, driver := startDriver(t)
 	state.requestFullscreen = driver.SetFullscreen
@@ -99,7 +131,7 @@ func TestFullScreenCompactSplitDocksKeepRestoreReachable(t *testing.T) {
 	state.paneDocs = [2]*document.Document{left, right}
 	state.paneOwner[left], state.paneOwner[right] = 0, 1
 	state.folderVisible, state.documentMapVisible = true, true
-	if err := driver.SetFullscreenMonitor(ui.Rect{Width: 640, Height: 400}); err != nil {
+	if err := driver.SetFullscreenMonitor(gfx.Rect{Width: 640, Height: 400}); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.SetFullscreen(true); err != nil {

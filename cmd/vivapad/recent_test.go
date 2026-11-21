@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 	"vivapad/internal/recent"
 	"vivapad/internal/searchfiles"
@@ -58,6 +58,79 @@ func TestRecentMenuRecordsSaveAndReopensLegacyFile(t *testing.T) {
 	loaded, err := recent.Load(filepath.Join(filepath.Dir(sessionPath), "recent.json"))
 	if err != nil || len(loaded) != 2 || loaded[0].Encoding != document.GB18030 {
 		t.Fatalf("persisted recent history = %+v, %v", loaded, err)
+	}
+}
+
+func TestRecentMenuUsesSavedDecoderAndReturnsFocusToActivePane(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		pending, stored document.Encoding
+		wantOpen        bool
+	}{
+		{"saved decoder", document.GB18030, document.GB18030, true},
+		{"pending conversion", document.UTF8, document.GB18030, true},
+		{"only pending conversion matches", document.Windows1252, document.Windows1252, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "saved legacy.txt")
+			disk := []byte{0xd6, 0xd0, '\r', '\n'}
+			if err := os.WriteFile(path, disk, 0600); err != nil {
+				t.Fatal(err)
+			}
+			state := newModel()
+			if err := state.space.OpenWithEncoding(path, document.GB18030); err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			doc.SetEncoding(tc.pending)
+			doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+			left, right := state.space.NewDocument(), state.space.NewDocument()
+			left.Editor.Insert("left draft")
+			right.Editor.Insert("right draft")
+			state.paneOwner[left], state.paneOwner[doc], state.paneOwner[right] = 0, 1, 1
+			state.paneDocs = [2]*document.Document{left, right}
+			state.splitEnabled, state.activePane = true, 1
+			state.recentEntries = []recent.Entry{{Path: doc.Path, Encoding: tc.stored}}
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer driver.Close()
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, rightEditorID)
+			clickID(t, driver, menuScope.At(0))
+			clickID(t, driver, menuItemScope.At(10))
+			clickID(t, driver, recentScope.At(0))
+			want := right
+			if tc.wantOpen {
+				want = doc
+			}
+			if state.space.Current() != want || state.paneDocument(1) != want || state.paneDocument(0) != left {
+				t.Fatalf("unexpected current tab: %q, notice=%q", state.space.Current().Name, state.notice)
+			}
+			if doc.Encoding() != tc.pending || doc.SavedEncoding() != document.GB18030 || doc.Editor.String() != "\u4e2d\n" || doc.Editor.CanUndo() {
+				t.Fatal("history changed the existing buffer, its encodings, or Undo state")
+			}
+			if !tc.wantOpen && !strings.Contains(state.notice, "Cannot open recent") {
+				t.Fatalf("missing decoder mismatch notice: %q", state.notice)
+			}
+			if got := driver.Snapshot().Focused; got != rightEditorID {
+				t.Errorf("focus after recent open = %v, want the right editor", got)
+			}
+			if tc.wantOpen {
+				if err := driver.Type("x"); err != nil {
+					t.Fatal(err)
+				}
+				if doc.Editor.String() != "\u4e2d\nx" || right.Editor.String() != "right draft" || left.Editor.String() != "left draft" {
+					t.Fatal("first character after selection did not reach the reopened document")
+				}
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != string(disk) {
+				t.Fatalf("recent open changed the saved file: %x, %v", data, err)
+			}
+		})
 	}
 }
 
@@ -128,7 +201,7 @@ func TestRecentSubmenuClosesWithEscapeWithoutChangingDocument(t *testing.T) {
 	if !state.recentOpen {
 		t.Fatal("recent submenu did not open")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.recentOpen || state.space.Current() != original {
@@ -136,8 +209,57 @@ func TestRecentSubmenuClosesWithEscapeWithoutChangingDocument(t *testing.T) {
 	}
 }
 
+func TestRecentSubmenuKeyboardNavigationRestoresFile(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "closed.txt")
+	if err := os.WriteFile(path, []byte("closed text"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state, driver := startDriver(t)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	state.recentEntries = recent.Add(nil, recent.Entry{Path: filepath.Join(root, "recent.txt")})
+	state.closedHistory = recent.Add(nil, recent.Entry{Path: path})
+	original := state.space.Current()
+	parent := menuItemScope.At(10)
+	press := func(key gfx.Key, want gfx.ID) {
+		t.Helper()
+		if err := driver.Key(key, 0); err != nil {
+			t.Fatal(err)
+		}
+		if got := driver.Snapshot().Focused; got != want {
+			t.Fatalf("after key %v focus = %v, want %v", key, got, want)
+		}
+	}
+	clickID(t, driver, menuScope.At(0))
+	clickID(t, driver, parent)
+	press(gfx.KeyDown, recentScope.At(0))
+	press(gfx.KeyUp, recentClearID)
+	press(gfx.KeyEscape, parent)
+	if state.recentOpen || state.space.Current() != original || len(state.closedHistory) != 1 {
+		t.Fatal("Escape did not return to the parent without changing state")
+	}
+	press(gfx.KeyRight, recentScope.At(0))
+	press(gfx.KeyEnd, recentClearID)
+	press(gfx.KeyUp, recentRestoreID)
+	press(gfx.KeyEnter, editorID)
+	if state.recentOpen || state.space.Current().Path != path || len(state.closedHistory) != 0 {
+		t.Fatal("Enter did not restore the selected closed file")
+	}
+	if err := driver.Type("x"); err != nil || state.space.Current().Editor.String() != "xclosed text" {
+		t.Fatalf("first key did not reach the restored editor: %v", err)
+	}
+}
+
 func TestFileDropAndFindResultUpdateRecentHistory(t *testing.T) {
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	dropped, found := filepath.Join(root, "dropped.txt"), filepath.Join(root, "found.txt")
 	if err := os.WriteFile(dropped, []byte("drop"), 0600); err != nil {
 		t.Fatal(err)
@@ -146,11 +268,11 @@ func TestFileDropAndFindResultUpdateRecentHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, driver := startDriver(t)
-	accepted, err := driver.Drop(ui.FileDropEvent{Phase: ui.FileDropDrop, X: 100, Y: 110, Paths: []string{dropped}})
+	accepted, err := driver.Drop(gfx.FileDropEvent{Phase: gfx.FileDropDrop, X: 100, Y: 110, Paths: []string{dropped}})
 	if err != nil || !accepted || len(state.recentEntries) != 1 || filepath.Base(state.recentEntries[0].Path) != "dropped.txt" {
 		t.Fatalf("drop recent = %+v accepted=%v err=%v", state.recentEntries, accepted, err)
 	}
-	state.fileResults.Matches = []searchfiles.Match{{Path: found, Start: 0, End: 4, Text: "find"}}
+	state.fileResults.Matches = []searchfiles.Match{{Path: found, Source: "find", Start: 0, End: 4, Text: "find"}}
 	state.openFileResult(0)
 	if len(state.recentEntries) != 2 || filepath.Base(state.recentEntries[0].Path) != "found.txt" || state.space.Current().Editor.String() != "find" {
 		t.Fatalf("find result recent = %+v current=%+v", state.recentEntries, state.space.Current())

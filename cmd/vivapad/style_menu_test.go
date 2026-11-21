@@ -31,7 +31,7 @@ func TestCompactStyleMenusPaintCopyAndNavigateIndependentIndicators(t *testing.T
 			t.Fatalf("style submenu layout: %+v", problems)
 		}
 	}
-	openStyleMenu(23)
+	openStyleMenu(searchCommandIndex(t, "Style All Occurrences of Token"))
 	clickID(t, driver, styleMenuScope.At(0))
 	if len(state.styleSpans(doc, 0)) != 2 {
 		t.Fatalf("style-all menu = %+v", state.styleSpans(doc, 0))
@@ -50,18 +50,18 @@ func TestCompactStyleMenusPaintCopyAndNavigateIndependentIndicators(t *testing.T
 	if err := driver.Pump(); err != nil || driver.Snapshot().Focused != editorID {
 		t.Fatalf("style menu did not return focus to editor: %v focus=%+v", err, driver.Snapshot().Focused)
 	}
-	openStyleMenu(26)
+	openStyleMenu(searchCommandIndex(t, "Copy Styled Text"))
 	clickID(t, driver, styleMenuScope.At(0))
 	if driver.Clipboard() != "cat\r\nCAT\r\n" {
 		t.Fatalf("style copy menu = %q", driver.Clipboard())
 	}
 	doc.Editor.MoveTo(0, false)
-	openStyleMenu(22)
+	openStyleMenu(searchCommandIndex(t, "Jump Down"))
 	clickID(t, driver, markJumpScope.At(0))
 	if doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) {
 		t.Fatalf("jump-down style menu = %v", doc.Editor.Selection())
 	}
-	openStyleMenu(25)
+	openStyleMenu(searchCommandIndex(t, "Clear Style"))
 	clickID(t, driver, styleMenuScope.At(5))
 	if len(state.styleSpans(doc, 0)) != 0 || doc.Editor.CanUndo() || doc.Editor.String() != "cat CAT dog" {
 		t.Fatal("Clear all Styles edited the source or left indicators")

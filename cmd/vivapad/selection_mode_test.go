@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -43,7 +43,7 @@ func TestBeginEndSelectShortcutAndCompactMenu(t *testing.T) {
 	doc.Editor.Insert("abcdef")
 	clickID(t, driver, editorID)
 	doc.Editor.MoveTo(1, false)
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierShift, 'b'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'b'); err != nil || !handled {
 		t.Fatalf("start shortcut handled=%v err=%v", handled, err)
 	}
 	clickID(t, driver, menuScope.At(1))
@@ -98,7 +98,7 @@ func TestBeginEndSelectAnchorClampsWhenNativeEditRemovesIt(t *testing.T) {
 	doc.Editor.MoveTo(3, false)
 	state.command("Begin/End Select")
 	doc.Editor.SetSelection(text.Range{Start: 1, End: 5})
-	if err := driver.Key(ui.KeyDelete, 0); err != nil {
+	if err := driver.Key(gfx.KeyDelete, 0); err != nil {
 		t.Fatal(err)
 	}
 	doc.Editor.MoveTo(2, false)

@@ -6,20 +6,28 @@ import (
 	"runtime"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/printing"
 )
 
+func init() {
+	// Go runs init on the startup thread; Cocoa needs main to stay on it.
+	if runtime.GOOS == "darwin" {
+		runtime.LockOSThread()
+	}
+}
+
 func main() {
-	// Cocoa must start on the process main thread before setup can migrate the goroutine.
-	runtime.LockOSThread()
-	var canvas ui.Canvas
+	if runtime.GOOS != "darwin" {
+		runtime.LockOSThread()
+	}
+	var canvas gfx.Canvas
 	sessionPath, err := defaultSessionPath()
 	if err != nil {
 		log.Printf("session storage unavailable: %v", err)
 	}
 	state := newStartupModel(os.Args[1:], sessionPath)
-	config := newConfig(state)
+	config := newNativeConfig(state)
 	if err := app.RunApplication(func(application *app.Application) error {
 		window, err := application.OpenWindow(config, &canvas)
 		if err != nil {
@@ -28,6 +36,7 @@ func main() {
 		state.closeWindow = func() { config.OnCloseRequest(window.Close) }
 		state.requestFullscreen = window.SetFullscreen
 		state.requestAlwaysOnTop = window.SetAlwaysOnTop
+		state.postBrowserResult = application.Post
 		state.saveSessionPicker = app.SaveFileWithCheckbox
 		state.printJob = func(job printing.Job) (int, error) {
 			doc := state.paneDocument(state.activePane)
@@ -38,8 +47,14 @@ func main() {
 			}
 			return printing.Execute(job, float64(state.paneFontSize(state.activePane)), state.tabWidth, variables, state.syntax.Highlight)
 		}
+		application.OnOpenFile(state.queueSystemDocument)
 		return nil
 	}); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func newNativeConfig(state *model) app.Config {
+	state.requestLinuxComposition = runtime.GOOS == "linux"
+	return newConfig(state)
 }

@@ -5,15 +5,24 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 	"vivapad/internal/macro"
 )
 
 func (state *model) macroTextInput(doc *document.Document) *app.TextInput {
 	return &app.TextInput{State: app.TextStateOf(doc.Editor), OnEvent: func(event app.TextEvent) (app.TextState, error) {
+		if event.CompositionPhase != text.CompositionNone {
+			next, _ := state.applyMacroComposition(doc, event)
+			return next, nil
+		}
 		if state.isReadOnly(doc) {
+			state.cancelDocumentComposition(doc)
 			state.notice = "Read-only document"
 			return app.TextStateOf(doc.Editor), nil
+		}
+		if state.provisional.doc == doc {
+			state.cancelDocumentComposition(doc)
 		}
 		if current := state.wordCompletion; current != nil && current.doc == doc && state.validWordCompletion() &&
 			event.Kind == app.TextCommandEvent && (event.Command == app.TextInsertNewline || event.Command == app.TextInsertLineBreak) {
@@ -243,6 +252,11 @@ func (state *model) playMacroSteps(steps []macro.Step, repeats int, untilEnd boo
 		state.notice = "Played macro to end of file"
 	} else {
 		state.notice = fmt.Sprintf("Played macro %d time(s)", repeats)
+	}
+	// Playback edits the real document source; consume its history once here so
+	// the lifecycle path is not left silently unread.
+	if _, historyErr := doc.ChangeHistory(); historyErr != nil {
+		state.notice += "; " + historyErr.Error()
 	}
 	return true
 }

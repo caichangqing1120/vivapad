@@ -1,9 +1,11 @@
 package recovery
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -12,8 +14,11 @@ import (
 
 func TestSaveLoadPrivateDirtyBuffers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "VivaPad", "recovery.json")
+	// A saved-path tab keeps a platform-absolute path: "/tmp/example.go" is not
+	// absolute on Windows, where Save rejects it.
+	saved := filepath.Join(t.TempDir(), "example.go")
 	want := State{Active: 0, Tabs: []Tab{{
-		Path: "/tmp/example.go", Name: "example.go", Content: "猫\ntext",
+		Path: saved, Name: "example.go", Content: "猫\ntext",
 		Encoding: document.UTF8, LineEnding: document.LF,
 		DiskDigest: strings.Repeat("a", 64), SelectionStart: 1, SelectionEnd: 1, ReadOnly: true, Pinned: true,
 	}}}
@@ -25,11 +30,11 @@ func TestSaveLoadPrivateDirtyBuffers(t *testing.T) {
 		t.Fatalf("loaded=%+v err=%v, want %+v", got, err, want)
 	}
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || !privateMode(info.Mode()) {
 		t.Fatalf("backup file permissions = %+v, %v", info, err)
 	}
 	directory, err := os.Stat(filepath.Dir(path))
-	if err != nil || directory.Mode().Perm()&0077 != 0 {
+	if err != nil || !privateDirMode(directory.Mode()) {
 		t.Fatalf("backup directory permissions = %+v, %v", directory, err)
 	}
 	if err := Clear(path); err != nil {
@@ -112,6 +117,78 @@ func TestRecoveryRejectsCorruptAndOversizedData(t *testing.T) {
 	}
 }
 
+func TestRecoveryReadLimitRequiresActualEOF(t *testing.T) {
+	const valid = `{"version":9,"active":-1,"tabs":[]}`
+	const atLimit = valid + " \r\n\t"
+	limit := int64(len(atLimit))
+	for _, tc := range []struct {
+		name, input string
+		wantError   string
+	}{
+		{"below limit", valid, ""},
+		{"exact limit", atLimit, ""},
+		{"whitespace beyond limit", atLimit + " ", "exceeds"},
+		{"data beyond limit", atLimit + "!" + strings.Repeat("x", 128), "exceeds"},
+		{"trailing data inside limit", valid + "{}", "trailing data"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := strings.NewReader(tc.input)
+			state, err := decodeRecovery(source, limit)
+			if tc.wantError == "" {
+				if err != nil || state.Active != -1 || len(state.Tabs) != 0 {
+					t.Fatalf("valid backup did not load: %+v, %v", state, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("read %d bytes of a %d-byte stream at limit %d: %v", len(tc.input)-source.Len(), len(tc.input), limit, err)
+			}
+			if consumed := int64(len(tc.input) - source.Len()); consumed > limit+1 {
+				t.Fatalf("read %d bytes past a %d-byte limit", consumed, limit)
+			}
+		})
+	}
+}
+
+func TestEscapedOversizeRecoveryKeepsPreviousBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "recovery.json")
+	if err := Save(path, State{Active: 0, Tabs: []Tab{{Name: "draft", Content: "keep me"}}}); err != nil {
+		t.Fatal(err)
+	}
+	state := State{Active: 0, Tabs: []Tab{{Name: "draft", Content: strings.Repeat("\x01", 6<<20)}}}
+	if err := Save(path, state); err == nil || !strings.Contains(err.Error(), "exceeds 32 MiB") {
+		t.Fatalf("oversized encoded backup = %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil || len(loaded.Tabs) != 1 || loaded.Tabs[0].Content != "keep me" {
+		t.Fatalf("refused backup changed the last valid draft: %+v, %v", loaded, err)
+	}
+}
+
+func TestEncodedContentsFitAtJSONSizeBoundary(t *testing.T) {
+	tabs := []Tab{{Content: "\x00\x01\b\f\n\r\t"}, {Content: "<>&\"\\\u2028\u2029\u732b\U0001f4dd"}, {}}
+	size := 0
+	for _, tab := range tabs {
+		encoded, err := json.Marshal(tab.Content)
+		if err != nil {
+			t.Fatal(err)
+		}
+		size += len(encoded)
+	}
+	if !encodedContentsFit(tabs, size) || encodedContentsFit(tabs, size-1) {
+		t.Fatalf("content size check disagrees with encoding/json at %d bytes", size)
+	}
+}
+
+func BenchmarkRejectEscapedOversizeRecovery(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "recovery.json")
+	state := State{Active: 0, Tabs: []Tab{{Name: "draft", Content: strings.Repeat("\x01", 6<<20)}}}
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := Save(path, state); err == nil || !strings.Contains(err.Error(), "exceeds 32 MiB") {
+			b.Fatalf("oversized encoded backup = %v", err)
+		}
+	}
+}
+
 func TestV3RecoveryDefaultsToEditableBuffer(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "recovery.json")
 	value := `{"version":3,"active":0,"tabs":[{"name":"new 1","content":"draft"}]}`
@@ -141,12 +218,8 @@ func TestWriterCoalescesLatestAndClearWaits(t *testing.T) {
 	writer := NewWriter(path, nil)
 	first := State{Active: 0, Tabs: []Tab{{Name: "new 1", Content: "first"}}}
 	latest := State{Active: 0, Tabs: []Tab{{Name: "new 1", Content: "latest"}}}
-	if err := writer.Submit(first); err != nil {
-		t.Fatal(err)
-	}
-	if err := writer.Submit(latest); err != nil {
-		t.Fatal(err)
-	}
+	writer.Submit(first)
+	writer.Submit(latest)
 	if err := writer.Wait(); err != nil {
 		t.Fatal(err)
 	}
@@ -245,4 +318,24 @@ func TestRecoveryFoldHeadersRoundTripAndRejectUnsafeLines(t *testing.T) {
 	if err := Save(path, want); err == nil {
 		t.Fatal("out-of-range recovery fold accepted")
 	}
+}
+
+// privateMode reports whether mode carries the private-file metadata this
+// platform supports: POSIX 0600 on macOS and Linux, or a writable regular file
+// on Windows, where Go reports synthetic permission bits and VivaPad keeps the
+// privacy of its stores in the profile directory ACL (a separate gate).
+func privateMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsRegular() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0600
+}
+
+// privateDirMode reports whether mode carries a private directory's metadata:
+// POSIX 0700 on macOS and Linux, or a writable directory on Windows.
+func privateDirMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsDir() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0700
 }

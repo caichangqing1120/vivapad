@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 )
 
@@ -51,7 +52,7 @@ func TestLanguageCatalogHasOriginalIdentityAndRealLexers(t *testing.T) {
 			t.Fatalf("%q has no Chroma lexer %q", spec.Label, spec.Lexer)
 		}
 	}
-	for _, missing := range []string{"BaanC", "Gui4Cli", "User-Defined"} {
+	for _, missing := range []string{"BaanC", "User-Defined"} {
 		if _, ok := LanguageByLabel(missing); ok {
 			t.Fatalf("unsupported lexer %q shown as functional", missing)
 		}
@@ -74,6 +75,106 @@ func TestExpandedLanguageModesHighlightWithSelectedLexer(t *testing.T) {
 	}
 }
 
+func TestResourceFileHighlightsResourceSyntax(t *testing.T) {
+	var highlighter Highlighter
+	for _, tc := range []struct {
+		line, token string
+		kind        chroma.TokenType
+	}{
+		{`IDD_MAIN DIALOGEX 0, 0, 120, 60`, "DIALOGEX", chroma.Keyword},
+		{`IDR_MAIN RCDATA "theme.dat"`, "RCDATA", chroma.Keyword},
+		{`    CAPTION "DIALOGEX"`, "DIALOGEX", chroma.LiteralString},
+		{`// DIALOGEX`, "DIALOGEX", chroma.Comment},
+		{`/* STRINGTABLE */`, "STRINGTABLE", chroma.Comment},
+		{`  #include "resource.h"`, "#", chroma.Comment},
+		{`LANGUAGE 0x09, 1`, "0x09", chroma.LiteralNumber},
+	} {
+		start := strings.Index(tc.line, tc.token)
+		want, _ := tokenColor(tc.kind)
+		var covered int
+		for _, run := range highlighter.Highlight(".rc", tc.line, nil) {
+			if run.Color == want {
+				covered += max(0, min(start+len(tc.token), run.End)-max(start, run.Start))
+			}
+		}
+		if covered != len(tc.token) {
+			t.Errorf("%q in %q: highlighted %d/%d bytes as %v", tc.token, tc.line, covered, len(tc.token), tc.kind)
+		}
+	}
+	const ordinary = "dialogex DIALOGEX_ID IDD_MAIN class"
+	if runs := highlighter.Highlight(".rc", ordinary, nil); len(runs) != 0 {
+		t.Errorf("Resource file highlighted ordinary identifiers in %q: %+v", ordinary, runs)
+	}
+	for _, name := range []string{"C", "C++"} {
+		next, err := lexers.Get(name).Tokenise(nil, "DIALOGEX")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := next(); got.Value != "DIALOGEX" || got.Type != chroma.Name {
+			t.Errorf("%s resource identifier = %+v, want ordinary name", name, got)
+		}
+	}
+}
+
+func TestAdditionalOriginalLanguagesHighlight(t *testing.T) {
+	var highlighter Highlighter
+	for _, tc := range []struct{ name, id, line string }{
+		{"ada", "IDM_LANG_ADA", "procedure Demo is"},
+		{"autoit", "IDM_LANG_AU3", "Local $value = 42"},
+		{"batch", "IDM_LANG_BATCH", "REM an example"},
+		{"caml", "IDM_LANG_CAML", "let value = 42"},
+		{"cobol", "IDM_LANG_COBOL", "       IDENTIFICATION DIVISION."},
+		{"d", "IDM_LANG_D", "int value = 42;"},
+		{"fortran77", "IDM_LANG_FORTRAN_77", "      INTEGER I"},
+		{"forth", "IDM_LANG_FORTH", "\\ an example"},
+		{"nsis", "IDM_LANG_NSIS", "Section \"Demo\""},
+		{"props", "IDM_LANG_PROPS", "# an example"},
+		{"registry", "IDM_LANG_REGISTRY", "[HKEY_CURRENT_USER\\Software\\Example]"},
+		{"sas", "IDM_LANG_SAS", "/* an example */"},
+		{"smalltalk", "IDM_LANG_SMALLTALK", "\"an example\""},
+		{"actionscript", "IDM_LANG_FLASH", "var value:Number = 42;"},
+		{"asm", "IDM_LANG_ASM", "mov eax, 42"},
+		{"blitzbasic", "IDM_LANG_BLITZBASIC", "Local value = 42"},
+		{"lisp", "IDM_LANG_LISP", "(defun greet () \"hi\")"},
+		{"mssql", "IDM_LANG_MSSQL", "DECLARE @value INT = 42;"},
+		{"tex", "IDM_LANG_TEX", "% a TeX comment"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lang, ok := LanguageByNPP(tc.name)
+			if !ok || lang.SourceID != tc.id {
+				t.Fatalf("session language %s = %+v", tc.name, lang)
+			}
+			if runs := highlighter.Highlight(lang.Mode, tc.line, nil); len(runs) == 0 {
+				t.Fatalf("%s did not highlight %q", lang.Lexer, tc.line)
+			}
+		})
+	}
+}
+
+func TestTeXHighlightColorsCommentsAtLineEnd(t *testing.T) {
+	var highlighter Highlighter
+	const line = `\% text % café`
+	commentStart := strings.LastIndex(line, "%")
+	commentColor, _ := tokenColor(chroma.Comment)
+	for _, mode := range []string{".tex", "lang:tex"} {
+		found := false
+		for _, run := range highlighter.Highlight(mode, line, nil) {
+			if run.End > len(line) {
+				t.Fatalf("%s: highlight extends past the actual line: %+v", mode, run)
+			}
+			if run.Color == commentColor {
+				if run.Start != commentStart || run.End != len(line) {
+					t.Fatalf("%s: unexpected comment range %+v", mode, run)
+				}
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: comment was not highlighted", mode)
+		}
+	}
+}
+
 func TestYAMLExtensionAliasUsesRegisteredLexer(t *testing.T) {
 	if spec, ok := LanguageByMode(".yml"); !ok || spec.Label != "YAML" {
 		t.Fatalf("YAML file extension = %+v, %v", spec, ok)
@@ -81,5 +182,30 @@ func TestYAMLExtensionAliasUsesRegisteredLexer(t *testing.T) {
 	var highlighter Highlighter
 	if len(highlighter.Highlight(".yml", "enabled: true", nil)) == 0 {
 		t.Fatal("YAML alias has no highlighted tokens")
+	}
+}
+
+func TestCatalogExtensionAliasesResolveToTheirPrimaryModes(t *testing.T) {
+	for _, tc := range []struct{ extension, primary, line string }{
+		{".ADB", ".ada", "procedure Demo is"},
+		{".ads", ".ada", "package Demo is"},
+		{".cmd", ".bat", "REM an example"},
+		{".mli", ".ml", "val answer : int"},
+		{".cpy", ".cob", "       IDENTIFICATION DIVISION."},
+		{".nsh", ".nsi", "Section \"Demo\""},
+	} {
+		t.Run(tc.extension, func(t *testing.T) {
+			primary, ok := LanguageByMode(tc.primary)
+			alias, matched := LanguageByMode(tc.extension)
+			if !ok || !matched || alias != primary {
+				t.Fatalf("%s = %+v (%v); want %+v", tc.extension, alias, matched, primary)
+			}
+			var highlighter Highlighter
+			want := highlighter.Highlight(tc.primary, tc.line, nil)
+			got := highlighter.Highlight(tc.extension, tc.line, nil)
+			if len(want) == 0 || !slices.Equal(got, want) {
+				t.Fatalf("%s rendered different highlight runs: %v; want %v", tc.extension, got, want)
+			}
+		})
 	}
 }

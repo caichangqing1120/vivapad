@@ -6,12 +6,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 type ColorRun struct {
 	StartByte, EndByte int
-	Color              ui.Color
+	Color              gfx.Color
 }
 
 func Colorize(job Job, pages []Page, highlight func(string, string, []components.CodeEditorRun) []components.CodeEditorRun) ([]Page, error) {

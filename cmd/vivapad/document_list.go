@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -22,6 +22,9 @@ func (state *model) leftDockCount() int {
 		count++
 	}
 	if state.documentListVisible {
+		count++
+	}
+	if state.characterVisible {
 		count++
 	}
 	return count
@@ -52,13 +55,13 @@ func (state *model) openDocumentRows() []documentListRow {
 	return rows
 }
 
-func (state *model) paintDocumentList(canvas *ui.Canvas, bounds ui.Rect) {
-	canvas.Fill(bounds, ui.RGB(250, 250, 250))
-	canvas.Fill(ui.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
-	canvas.Fill(ui.Rect{Y: bounds.Y + 33, Width: bounds.Width, Height: 1}, palette.border)
-	smallLabel(canvas, "Document List", ui.Rect{X: 9, Y: bounds.Y + 3, Width: bounds.Width - 39, Height: 27}, palette.text, 11)
-	closeBounds := ui.Rect{X: bounds.Width - 26, Y: bounds.Y + 7, Width: 18, Height: 18}
-	canvas.DrawIcon(closeIcon, closeBounds.Inset(ui.All(3)), palette.muted)
+func (state *model) paintDocumentList(canvas *gfx.Canvas, bounds gfx.Rect) {
+	canvas.Fill(bounds, gfx.RGB(250, 250, 250))
+	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
+	canvas.Fill(gfx.Rect{Y: bounds.Y + 33, Width: bounds.Width, Height: 1}, palette.border)
+	smallLabel(canvas, "Document List", gfx.Rect{X: 9, Y: bounds.Y + 3, Width: bounds.Width - 39, Height: 27}, palette.text, 11)
+	closeBounds := gfx.Rect{X: bounds.Width - 26, Y: bounds.Y + 7, Width: 18, Height: 18}
+	canvas.DrawIcon(closeIcon, closeBounds.Inset(gfx.All(3)), palette.muted)
 	if hitButton(canvas, documentListCloseID, closeBounds, "Close Document List") {
 		state.documentListVisible = false
 		state.activeLeftDock = state.activeDock()
@@ -91,8 +94,8 @@ func (state *model) paintDocumentList(canvas *ui.Canvas, bounds ui.Rect) {
 	state.documentListOffset = min(max(0, state.documentListOffset), max(0, len(rows)-visible))
 	if scrolling {
 		for _, control := range []struct {
-			id    ui.ID
-			icon  ui.Icon
+			id    gfx.ID
+			icon  gfx.Icon
 			label string
 			y     float32
 			step  int
@@ -100,23 +103,23 @@ func (state *model) paintDocumentList(canvas *ui.Canvas, bounds ui.Rect) {
 			{documentListPreviousID, upIcon, "Previous documents", bounds.Y + 34, -1},
 			{documentListNextID, downIcon, "Next documents", bounds.Y + bounds.Height - 22, 1},
 		} {
-			button := ui.Rect{X: 1, Y: control.y, Width: bounds.Width - 2, Height: 22}
-			canvas.DrawIcon(control.icon, ui.Rect{X: button.X + button.Width/2 - 8, Y: button.Y + 3, Width: 16, Height: 16}, palette.muted)
+			button := gfx.Rect{X: 1, Y: control.y, Width: bounds.Width - 2, Height: 22}
+			canvas.DrawIcon(control.icon, gfx.Rect{X: button.X + button.Width/2 - 8, Y: button.Y + 3, Width: 16, Height: 16}, palette.muted)
 			if hitButton(canvas, control.id, button, control.label) {
 				state.documentListOffset = min(max(0, state.documentListOffset+control.step), max(0, len(rows)-visible))
 			}
 		}
 	}
-	rowArea := ui.Rect{X: 1, Y: bounds.Y + 34 + controlHeight, Width: bounds.Width - 2, Height: max(0, available-2*controlHeight)}
-	canvas.HitWithOptions(documentListPanelID, rowArea, "Open documents", ui.HitOptions{Role: ui.RoleGroup})
+	rowArea := gfx.Rect{X: 1, Y: bounds.Y + 34 + controlHeight, Width: bounds.Width - 2, Height: max(0, available-2*controlHeight)}
+	canvas.HitWithOptions(documentListPanelID, rowArea, "Open documents", gfx.HitOptions{Role: gfx.RoleGroup})
 	canvas.Clip(rowArea)
 	var activating, closing *documentListRow
 	for index := state.documentListOffset; index < len(rows) && index-state.documentListOffset < visible; index++ {
 		row := rows[index]
-		item := ui.Rect{X: 3, Y: rowArea.Y + float32(index-state.documentListOffset)*23, Width: rowArea.Width - 5, Height: min(23, rowArea.Y+rowArea.Height-(rowArea.Y+float32(index-state.documentListOffset)*23))}
+		item := gfx.Rect{X: 3, Y: rowArea.Y + float32(index-state.documentListOffset)*23, Width: rowArea.Width - 5, Height: min(23, rowArea.Y+rowArea.Height-(rowArea.Y+float32(index-state.documentListOffset)*23))}
 		if row.heading != "" {
 			canvas.Fill(item, palette.tabs)
-			smallLabel(canvas, row.heading, ui.Rect{X: item.X + 7, Y: item.Y, Width: item.Width - 14, Height: item.Height}, palette.muted, 10)
+			smallLabel(canvas, row.heading, gfx.Rect{X: item.X + 7, Y: item.Y, Width: item.Width - 14, Height: item.Height}, palette.muted, 10)
 			continue
 		}
 		rowID := documentListRowScope.At(index)
@@ -127,23 +130,23 @@ func (state *model) paintDocumentList(canvas *ui.Canvas, bounds ui.Rect) {
 		}
 		if selected {
 			_, accent := state.tabColorPaint(row.doc, true)
-			canvas.Fill(ui.Rect{X: item.X, Y: item.Y, Width: 2, Height: item.Height}, accent)
+			canvas.Fill(gfx.Rect{X: item.X, Y: item.Y, Width: 2, Height: item.Height}, accent)
 		} else if color := state.tabColors[row.doc]; color >= 1 && color <= 5 {
-			canvas.Fill(ui.Rect{X: item.X, Y: item.Y, Width: 2, Height: item.Height}, tabColorPastels[color-1])
+			canvas.Fill(gfx.Rect{X: item.X, Y: item.Y, Width: 2, Height: item.Height}, tabColorPastels[color-1])
 		}
 		name := row.doc.Name
 		if row.doc.Dirty() {
 			name = "* " + name
 		}
 		if state.isPinned(row.doc) {
-			canvas.DrawIcon(pinIcon, ui.Rect{X: item.X + 6, Y: item.Y + 5, Width: 13, Height: 13}, palette.blue)
+			canvas.DrawIcon(pinIcon, gfx.Rect{X: item.X + 6, Y: item.Y + 5, Width: 13, Height: 13}, palette.blue)
 		}
 		nameX := item.X + 8
 		if state.isPinned(row.doc) {
 			nameX += 16
 		}
-		name = canvas.FitLine(name, 11, ui.WeightRegular, max(12, item.X+item.Width-nameX-27))
-		smallLabel(canvas, name, ui.Rect{X: nameX, Y: item.Y, Width: max(12, item.X+item.Width-nameX-27), Height: item.Height}, palette.text, 11)
+		name = canvas.FitLine(name, 11, gfx.WeightRegular, max(12, item.X+item.Width-nameX-27))
+		smallLabel(canvas, name, gfx.Rect{X: nameX, Y: item.Y, Width: max(12, item.X+item.Width-nameX-27), Height: item.Height}, palette.text, 11)
 		hint := []string{row.doc.Path}
 		if row.doc.Dirty() {
 			hint = append(hint, "Modified")
@@ -158,12 +161,12 @@ func (state *model) paintDocumentList(canvas *ui.Canvas, bounds ui.Rect) {
 		if state.splitEnabled && row.pane == 1 && state.paneDocs[0] == row.doc {
 			label += " from sub view"
 		}
-		canvas.HitWithOptions(rowID, item, label, ui.HitOptions{Role: ui.RoleButton, Selected: selected, Hint: strings.Join(hint, ", ")})
+		canvas.HitWithOptions(rowID, item, label, gfx.HitOptions{Role: gfx.RoleButton, Selected: selected, Hint: strings.Join(hint, ", ")})
 		if canvas.Clicked(rowID) {
 			activating = &row
 		}
-		closeBounds := ui.Rect{X: item.X + item.Width - 23, Y: item.Y + 3, Width: 19, Height: 18}
-		canvas.DrawIcon(closeIcon, closeBounds.Inset(ui.All(3)), palette.muted)
+		closeBounds := gfx.Rect{X: item.X + item.Width - 23, Y: item.Y + 3, Width: 19, Height: 18}
+		canvas.DrawIcon(closeIcon, closeBounds.Inset(gfx.All(3)), palette.muted)
 		closeLabel := "Close " + row.doc.Name
 		if state.splitEnabled && row.pane == 1 && state.paneDocs[0] == row.doc {
 			closeLabel += " from sub view"

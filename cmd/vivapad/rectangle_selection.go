@@ -6,8 +6,8 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -46,12 +46,12 @@ func (state *model) beginEndColumnSelect() {
 	state.notice = "Column selection completed"
 }
 
-func (state *model) extendRectangleKey(pane int, event ui.KeyEvent) bool {
-	if event.Modifiers != ui.ModifierAlt|ui.ModifierShift {
+func (state *model) extendRectangleKey(pane int, event gfx.KeyEvent) bool {
+	if event.Modifiers != gfx.ModifierAlt|gfx.ModifierShift {
 		return false
 	}
 	switch event.Key {
-	case ui.KeyLeft, ui.KeyRight, ui.KeyUp, ui.KeyDown:
+	case gfx.KeyLeft, gfx.KeyRight, gfx.KeyUp, gfx.KeyDown:
 	default:
 		return false
 	}
@@ -65,13 +65,13 @@ func (state *model) extendRectangleKey(pane int, event ui.KeyEvent) bool {
 		state.selectAnchors[pane] = selectAnchor{}
 	}
 	switch event.Key {
-	case ui.KeyLeft:
+	case gfx.KeyLeft:
 		if selection.caretVirtual > 0 {
 			selection.caretVirtual--
 		} else {
 			doc.Editor.MoveLeft(false)
 		}
-	case ui.KeyRight:
+	case gfx.KeyRight:
 		value := doc.Editor.String()
 		at := doc.Editor.ByteOffset(doc.Editor.Caret())
 		if selection.caretVirtual > 0 || at == len(value) || value[at] == '\n' {
@@ -79,9 +79,9 @@ func (state *model) extendRectangleKey(pane int, event ui.KeyEvent) bool {
 		} else {
 			doc.Editor.MoveRight(false)
 		}
-	case ui.KeyUp, ui.KeyDown:
+	case gfx.KeyUp, gfx.KeyDown:
 		movement := components.TextareaMoveUp
-		if event.Key == ui.KeyDown {
+		if event.Key == gfx.KeyDown {
 			movement = components.TextareaMoveDown
 		}
 		value := doc.Editor.String()
@@ -163,11 +163,86 @@ func (state *model) rectangleTextInput(pane int) *app.TextInput {
 		}
 		copyText = selection.copyText
 	}
-	return &app.TextInput{State: app.TextStateOf(doc.Editor), CopyOverride: true, CopyText: copyText, CopyRectangular: true, OnEvent: func(event app.TextEvent) (app.TextState, error) {
+	return &app.TextInput{State: app.TextStateOf(doc.Editor), CopyOverride: true, CopyText: func() string { return copyText }, CopyRectangular: true, OnEvent: func(event app.TextEvent) (app.TextState, error) {
 		selection := &state.rectangles[pane]
 		if state.isReadOnly(doc) {
+			state.cancelDocumentComposition(doc)
 			state.notice = "Read-only document"
 			return app.TextStateOf(doc.Editor), nil
+		}
+		if event.CompositionPhase != text.CompositionNone {
+			switch event.CompositionPhase {
+			case text.CompositionUpdate:
+				if !selection.active || selection.doc != doc || !selection.composing && selection.value != doc.Editor.String() {
+					*selection = rectangleSelection{}
+					return state.macroTextInput(doc).OnEvent(event)
+				}
+				next, handled := state.applyDocumentCompositionEvent(doc, event)
+				if handled {
+					selection.composing = next.Composing
+				}
+				return next, nil
+			case text.CompositionResult, text.CompositionCommit, text.CompositionCancel, text.CompositionEmptyCommit:
+				if !selection.composing {
+					if event.CompositionPhase != text.CompositionResult || !doc.Editor.TentativeCompositionEnabled() {
+						return state.macroTextInput(doc).OnEvent(event)
+					}
+					if !selection.active || selection.doc != doc || selection.value != doc.Editor.String() {
+						*selection = rectangleSelection{}
+						return state.macroTextInput(doc).OnEvent(event)
+					}
+					if compositionTerminalRejected(event) {
+						return app.TextStateOf(doc.Editor), nil
+					}
+					event = app.TextEvent{Kind: app.TextInsert, Text: event.Text}
+					break
+				}
+				if compositionTerminalRejected(event) {
+					// The editor refuses this terminal without mutating, so keep the
+					// live preedit, rectangle frame, undo history and macro
+					// recording exactly as they are instead of cancelling first.
+					return app.TextStateOf(doc.Editor), nil
+				}
+				committed := ""
+				switch event.CompositionPhase {
+				case text.CompositionResult:
+					committed = event.Text
+				case text.CompositionCommit:
+					composition, ok := doc.Editor.Composition()
+					if ok {
+						runes := []rune(doc.Editor.String())
+						if composition.Start >= 0 && composition.Start <= composition.End && composition.End <= len(runes) {
+							committed = string(runes[composition.Start:composition.End])
+						}
+					}
+				}
+				canceled := state.cancelDocumentComposition(doc)
+				if !canceled {
+					doc.Editor.Unmark()
+					undone := false
+					state.editWithBookmarkAnchor(doc, func() { undone = doc.Editor.Undo() })
+					if !undone || doc.Editor.String() != selection.value {
+						*selection = rectangleSelection{}
+						state.notice = "Column input could not restore preedit"
+						return app.TextStateOf(doc.Editor), nil
+					}
+				}
+				selection.composing = false
+				if doc.Editor.String() != selection.value {
+					*selection = rectangleSelection{}
+					state.notice = "Column input could not restore preedit"
+					return app.TextStateOf(doc.Editor), nil
+				}
+				if committed == "" {
+					return app.TextStateOf(doc.Editor), nil
+				}
+				event = app.TextEvent{Kind: app.TextInsert, Text: committed}
+			default:
+				return state.macroTextInput(doc).OnEvent(event)
+			}
+		}
+		if state.provisional.doc == doc {
+			state.cancelDocumentComposition(doc)
 		}
 		if event.Kind == app.TextSetMarked && selection.active && selection.doc == doc && (selection.composing || selection.value == doc.Editor.String()) {
 			state.editWithBookmarkAnchor(doc, func() { event.Apply(doc.Editor) })
@@ -213,14 +288,14 @@ func (state *model) rectangleTextInput(pane int) *app.TextInput {
 			return app.TextStateOf(doc.Editor), nil
 		}
 		if event.Kind == app.TextCommandEvent {
-			key := ui.KeyUnknown
+			key := gfx.KeyUnknown
 			switch event.Command {
 			case app.TextMoveWordLeftAndModifySelection:
-				key = ui.KeyLeft
+				key = gfx.KeyLeft
 			case app.TextMoveWordRightAndModifySelection:
-				key = ui.KeyRight
+				key = gfx.KeyRight
 			}
-			if key != ui.KeyUnknown && state.extendRectangleKey(pane, ui.KeyEvent{Key: key, Modifiers: ui.ModifierAlt | ui.ModifierShift}) {
+			if key != gfx.KeyUnknown && state.extendRectangleKey(pane, gfx.KeyEvent{Key: key, Modifiers: gfx.ModifierAlt | gfx.ModifierShift}) {
 				return app.TextStateOf(doc.Editor), nil
 			}
 		}

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -15,16 +15,16 @@ func TestF7FocusesResultsAndEnterOpensSelectedMatch(t *testing.T) {
 	doc.Editor.Insert("cat cat")
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(7))
+	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	clickID(t, driver, editorID)
 	before := doc.Editor.Selection()
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
 	if driver.Snapshot().Focused != resultsPaneID || doc.Editor.Selection() != before {
 		t.Fatalf("F7 did not focus results: focus=%v selection=%+v", driver.Snapshot().Focused, doc.Editor.Selection())
 	}
-	for _, key := range []ui.Key{ui.KeyDown, ui.KeyDown} {
+	for _, key := range []gfx.Key{gfx.KeyDown, gfx.KeyDown} {
 		if err := driver.Key(key, 0); err != nil {
 			t.Fatal(err)
 		}
@@ -32,16 +32,16 @@ func TestF7FocusesResultsAndEnterOpensSelectedMatch(t *testing.T) {
 	if state.resultSelected != 1 || doc.Editor.Selection() != before {
 		t.Fatalf("result arrows changed editor: index=%d selection=%+v", state.resultSelected, doc.Editor.Selection())
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) || driver.Snapshot().Focused != editorID {
 		t.Fatalf("Enter did not open selected match: selection=%+v focus=%v", doc.Editor.Selection(), driver.Snapshot().Focused)
 	}
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
 	if driver.Snapshot().Focused != editorID || doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) {
@@ -57,31 +57,31 @@ func TestResultPaneKeyboardHomeEndPageAndF7FromClickedRow(t *testing.T) {
 	state.space.Current().Editor.Insert(strings.Repeat("cat ", 20))
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(7))
+	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	clickID(t, driver, editorID)
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyEnd, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnd, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.resultSelected != 19 || state.resultOffset == 0 {
 		t.Fatalf("End did not reveal final result: index=%d offset=%d", state.resultSelected, state.resultOffset)
 	}
-	if err := driver.Key(ui.KeyHome, 0); err != nil {
+	if err := driver.Key(gfx.KeyHome, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.resultSelected != 0 || state.resultOffset != 0 {
 		t.Fatalf("Home did not reveal first result: index=%d offset=%d", state.resultSelected, state.resultOffset)
 	}
-	if err := driver.Key(ui.KeyPageDown, 0); err != nil {
+	if err := driver.Key(gfx.KeyPageDown, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.resultSelected < 2 {
 		t.Fatalf("Page Down moved only to %d", state.resultSelected)
 	}
 	clickID(t, driver, resultScope.At(state.resultSelected))
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
 	if driver.Snapshot().Focused != editorID {
@@ -93,7 +93,7 @@ func TestF7WithoutResultsDoesNotStealFocus(t *testing.T) {
 	state, driver := startDriver(t)
 	clickID(t, driver, editorID)
 	before := driver.Snapshot().Focused
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
 	if driver.Snapshot().Focused != before || state.notice != "No search results" {
@@ -114,7 +114,7 @@ func TestFocusedResultPaneHasVisibleIndicatorBeforeRowSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, editorID)
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
 	expectedY := 400 - statusHeight - resultPaneHeight(400) + 1
@@ -139,11 +139,11 @@ func TestSearchResultsWindowMenuFitsCompactViewportAndFocusesPane(t *testing.T) 
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(2))
-	bounds := revealSearchMenuItem(t, driver, 17)
+	bounds := revealSearchMenuItem(t, driver, searchCommandIndex(t, "Search Results Window"))
 	if bounds.Y+bounds.Height > 400-statusHeight {
 		t.Fatalf("Search Results Window menu row clipped: %+v", bounds)
 	}
-	clickID(t, driver, menuItemScope.At(17))
+	clickID(t, driver, searchCommandID(t, "Search Results Window"))
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
@@ -170,10 +170,10 @@ func TestF7ReturnsToActiveSplitEditor(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, rightEditorID)
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
 	if driver.Snapshot().Focused != rightEditorID || state.space.Current() != right || state.activePane != 1 {
@@ -192,16 +192,16 @@ func TestStaleResultEnterKeepsResultPaneFocus(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, editorID)
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyDown, 0); err != nil {
+	if err := driver.Key(gfx.KeyDown, 0); err != nil {
 		t.Fatal(err)
 	}
 	doc.Editor.SetSelection(text.Range{Start: 0, End: 3})
 	doc.Editor.Insert("dog")
 	selection := doc.Editor.Selection()
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if driver.Snapshot().Focused != resultsPaneID || doc.Editor.Selection() != selection || !strings.Contains(state.notice, "changed") {
@@ -219,14 +219,14 @@ func TestSearchResultsWindowMenuTogglesBackToEditor(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, editorID)
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
 	if driver.Snapshot().Focused != resultsPaneID {
 		t.Fatal("F7 did not establish result focus")
 	}
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(17))
+	clickID(t, driver, searchCommandID(t, "Search Results Window"))
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestNewSearchAfterClosingFocusedResultsCanFocusPaneAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, editorID)
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
 	clickID(t, driver, resultsCloseID)
@@ -255,7 +255,7 @@ func TestNewSearchAfterClosingFocusedResultsCanFocusPaneAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(17))
+	clickID(t, driver, searchCommandID(t, "Search Results Window"))
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestF7RevealsResultsHiddenByFindBarBeforeFocusing(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, queryID)
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.searchOpen || driver.Snapshot().Focused != resultsPaneID {
@@ -293,13 +293,13 @@ func TestResultsMenuFromFindFieldDoesNotUseOldResultFocus(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, editorID)
-	if err := driver.Key(ui.KeyF7, 0); err != nil {
+	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
 	clickID(t, driver, searchID)
 	clickID(t, driver, queryID)
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(17))
+	clickID(t, driver, searchCommandID(t, "Search Results Window"))
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}

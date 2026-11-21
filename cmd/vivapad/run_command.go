@@ -136,7 +136,12 @@ func (state *model) applyRunDialog() {
 }
 
 func (state *model) browseRunExecutable() {
+	input := state.runInput
 	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "Program to Run"})
+	if input == nil || !state.runDialogOpen || state.runSaveMode || state.runInput != input {
+		return
+	}
+	state.runDialogFocus = true
 	if errors.Is(err, app.ErrCanceled) {
 		return
 	}
@@ -147,6 +152,6 @@ func (state *model) browseRunExecutable() {
 	if len(paths) == 0 {
 		return
 	}
-	state.runInput.Insert(strconv.Quote(paths[0]))
+	input.Insert(strconv.Quote(paths[0]))
 	state.runDialogError = ""
 }

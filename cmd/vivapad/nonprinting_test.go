@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestSymbolFlagsRenderRepresentationsAndPreserveSourceOffsets(t *testing.T) {
@@ -22,8 +22,8 @@ func TestSymbolFlagsRenderRepresentationsAndPreserveSourceOffsets(t *testing.T) 
 	doc.Editor.Insert(original)
 	doc.Editor.ClearHistory()
 	count := func() (int, string) {
-		var canvas ui.Canvas
-		state.paint(&canvas, ui.Size{Width: 640, Height: 400})
+		var canvas gfx.Canvas
+		state.paint(&canvas, gfx.Size{Width: 640, Height: 400})
 		var displayed strings.Builder
 		for _, label := range canvas.Texts() {
 			if label.RunCount > 0 {
@@ -131,10 +131,10 @@ func TestCaptureNonPrintingMenuWhenRequested(t *testing.T) {
 		if err := session.Screenshot(filepath.Join(output, "nonprinting-menu-"+size.name+".png")); err != nil {
 			t.Fatal(err)
 		}
-		if err := session.Driver().Key(ui.KeyEscape, 0); err != nil {
+		if err := session.Driver().Key(gfx.KeyEscape, 0); err != nil {
 			t.Fatal(err)
 		}
-		if err := session.Driver().Key(ui.KeyEscape, 0); err != nil {
+		if err := session.Driver().Key(gfx.KeyEscape, 0); err != nil {
 			t.Fatal(err)
 		}
 	}

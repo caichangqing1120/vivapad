@@ -5,12 +5,12 @@ import (
 	"strings"
 
 	"github.com/rivo/uniseg"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 type Segment struct {
 	Text  string
-	Color ui.Color
+	Color gfx.Color
 }
 
 func printBodyBackground(settings Settings) bool {
@@ -30,10 +30,10 @@ func Segments(job Job, row Row, styles []ColorRun, tabWidth int) ([]Segment, err
 		}
 		last = style.EndByte
 	}
-	defaultColor := ui.RGB(0, 0, 0)
+	defaultColor := gfx.RGB(0, 0, 0)
 	var segments []Segment
 	var current strings.Builder
-	var currentColor ui.Color
+	var currentColor gfx.Color
 	hasCurrent := false
 	flush := func() {
 		if hasCurrent {
@@ -71,10 +71,10 @@ func Segments(job Job, row Row, styles []ColorRun, tabWidth int) ([]Segment, err
 	for index := range segments {
 		switch job.Settings.ColorMode {
 		case ColorBlackOnWhite:
-			segments[index].Color = ui.RGB(0, 0, 0)
+			segments[index].Color = gfx.RGB(0, 0, 0)
 		case ColorInvertLight:
 			color := segments[index].Color
-			segments[index].Color = ui.Color{Red: 1 - color.Red, Green: 1 - color.Green, Blue: 1 - color.Blue, Alpha: color.Alpha}
+			segments[index].Color = gfx.Color{Red: 1 - color.Red, Green: 1 - color.Green, Blue: 1 - color.Blue, Alpha: color.Alpha}
 		}
 	}
 	return segments, nil

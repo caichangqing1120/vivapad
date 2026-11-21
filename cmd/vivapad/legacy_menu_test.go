@@ -7,15 +7,15 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
 func clickMenuLabel(t *testing.T, driver *app.Driver, label string) {
 	t.Helper()
 	for _, hit := range driver.Snapshot().Hits {
-		if hit.Label == label && hit.Role == ui.RoleMenuItem {
+		if hit.Label == label && hit.Role == gfx.RoleMenuItem {
 			clickID(t, driver, hit.ID)
 			return
 		}
@@ -35,7 +35,7 @@ func clickCharacterSet(t *testing.T, driver *app.Driver, label string) {
 	t.Helper()
 	for range len(document.LegacyEncodings()) {
 		for _, hit := range driver.Snapshot().Hits {
-			if hit.Label == label && hit.Role == ui.RoleMenuItem {
+			if hit.Label == label && hit.Role == gfx.RoleMenuItem {
 				clickID(t, driver, hit.ID)
 				return
 			}
@@ -69,13 +69,13 @@ func TestCharacterSetsMenuReachesEverySupportedCodePageAtCompactSize(t *testing.
 	clickMenuLabel(t, driver, "Character sets")
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.Label == "GB18030" && hit.ID.Scope() == charsetScope {
-			if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
 				t.Fatal(err)
 			}
 			if state.charsetOffset == 0 {
 				t.Fatal("character sets did not respond to wheel input")
 			}
-			if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: -120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: -120}); err != nil {
 				t.Fatal(err)
 			}
 			break
@@ -214,6 +214,59 @@ func TestOpenAsEncodingCancelAndInvalidBytesPreserveDirtyTab(t *testing.T) {
 	clickCharacterSet(t, driver, "Shift-JIS")
 	if len(state.space.Documents) != 1 || state.space.Current() != dirty || dirty.Editor.String() != "keep" || !strings.Contains(state.notice, "invalid") {
 		t.Fatalf("invalid encoded file changed dirty tab: docs=%d notice=%q", len(state.space.Documents), state.notice)
+	}
+}
+
+func TestOpenAsEncodingChecksSpellingAliasesOfOpenTabs(t *testing.T) {
+	root := t.TempDir()
+	source, alias := filepath.Join(root, "Draft.txt"), filepath.Join(root, "draft.txt")
+	const saved = "\x93\xfa\x96\x7b\r\n"
+	if err := os.WriteFile(source, []byte(saved), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(alias); os.IsNotExist(err) {
+		if err := os.Link(source, alias); err != nil {
+			t.Fatal(err)
+		}
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	state, driver := startDriver(t)
+	if err := state.space.OpenWithEncoding(source, document.ShiftJIS); err != nil {
+		t.Fatal(err)
+	}
+	draft := state.space.Current()
+	state.showInActivePane(draft)
+	draft.Editor.Insert("draft ")
+	before := draft.Editor.String()
+	other := state.space.NewDocument()
+	state.showInActivePane(other)
+	other.Editor.Insert("keep active")
+
+	if err := driver.QueueOpenFiles([]string{alias}, nil); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(0))
+	clickMenuLabel(t, driver, "Open as Windows-1252...")
+	if len(state.space.Documents) != 2 || state.space.Current() != other || !strings.Contains(state.notice, "already open as") {
+		t.Fatalf("conflicting alias open: %d tabs, active=%q, notice=%q", len(state.space.Documents), state.space.Current().Name, state.notice)
+	}
+	if len(state.recentEntries) != 0 || other.Editor.String() != "keep active" || draft.Editor.String() != before {
+		t.Fatal("conflicting alias open changed workspace contents or recents")
+	}
+
+	if err := driver.QueueOpenFiles([]string{alias}, nil); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(0))
+	clickMenuLabel(t, driver, "Open as Encoding...")
+	clickCharacterSet(t, driver, "Shift-JIS")
+	if len(state.space.Documents) != 2 || state.space.Current() != draft || !draft.Dirty() || draft.Editor.String() != before ||
+		len(state.recentEntries) != 1 || state.recentEntries[0].Path != draft.Path {
+		t.Fatalf("matching alias did not reuse the existing draft: %d tabs, notice=%q", len(state.space.Documents), state.notice)
+	}
+	if data, err := os.ReadFile(source); err != nil || string(data) != saved {
+		t.Fatalf("original bytes changed: %x, %v", data, err)
 	}
 }
 

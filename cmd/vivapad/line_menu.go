@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -15,6 +15,7 @@ var lineCommands = [...]string{
 	"Sort As Decimals (Comma) Ascending", "Sort As Decimals (Comma) Descending",
 	"Sort As Decimals (Dot) Ascending", "Sort As Decimals (Dot) Descending",
 	"Sort By Length Ascending", "Sort By Length Descending",
+	"Move Up Current Line", "Move Down Current Line",
 	"Sort In Locale Order Ascending", "Sort In Locale Order Descending", "Randomize Line Order",
 }
 
@@ -40,7 +41,7 @@ func numericSortForCommand(command string) (document.SortMode, bool, bool) {
 	return 0, false, false
 }
 
-func (state *model) paintLineMenu(canvas *ui.Canvas, size ui.Size, parentRight float32) {
+func (state *model) paintLineMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
 	width := min(float32(310), size.Width-parentRight-4)
 	available := size.Height - menuHeight - statusHeight - 8
 	rowHeight := float32(24)
@@ -60,20 +61,20 @@ func (state *model) paintLineMenu(canvas *ui.Canvas, size ui.Size, parentRight f
 	x := parentRight
 	y := min(menuHeight+4+10*27, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	panel := ui.Rect{X: x, Y: y, Width: width, Height: height}
+	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
 	canvas.Border(panel, 1, palette.border, palette.white)
-	canvas.HitWithOptions(linePanelID, panel, "Line Operations", ui.HitOptions{Role: ui.RoleMenu})
+	canvas.HitWithOptions(linePanelID, panel, "Line Operations", gfx.HitOptions{Role: gfx.RoleMenu})
 	if scrolling {
-		previous := ui.Rect{X: x + 4, Y: y + 4, Width: width - 8, Height: 22}
-		next := ui.Rect{X: x + 4, Y: y + height - 26, Width: width - 8, Height: 22}
+		previous := gfx.Rect{X: x + 4, Y: y + 4, Width: width - 8, Height: 22}
+		next := gfx.Rect{X: x + 4, Y: y + height - 26, Width: width - 8, Height: 22}
 		if canvas.Hovered() == linePrevID {
 			canvas.Fill(previous, palette.hover)
 		}
 		if canvas.Hovered() == lineNextID {
 			canvas.Fill(next, palette.hover)
 		}
-		canvas.DrawIcon(upIcon, ui.Rect{X: previous.X + previous.Width/2 - 8, Y: previous.Y + 3, Width: 16, Height: 16}, palette.muted)
-		canvas.DrawIcon(downIcon, ui.Rect{X: next.X + next.Width/2 - 8, Y: next.Y + 3, Width: 16, Height: 16}, palette.muted)
+		canvas.DrawIcon(upIcon, gfx.Rect{X: previous.X + previous.Width/2 - 8, Y: previous.Y + 3, Width: 16, Height: 16}, palette.muted)
+		canvas.DrawIcon(downIcon, gfx.Rect{X: next.X + next.Width/2 - 8, Y: next.Y + 3, Width: 16, Height: 16}, palette.muted)
 		if hitButton(canvas, linePrevID, previous, "Previous line operations") {
 			state.lineMenuOffset = max(0, state.lineMenuOffset-1)
 		}
@@ -85,14 +86,14 @@ func (state *model) paintLineMenu(canvas *ui.Canvas, size ui.Size, parentRight f
 	for row := range visible {
 		index := state.lineMenuOffset + row
 		command := lineCommands[index]
-		item := ui.Rect{X: x + 4, Y: y + 4 + controls/2 + float32(row)*rowHeight, Width: width - 8, Height: rowHeight}
+		item := gfx.Rect{X: x + 4, Y: y + 4 + controls/2 + float32(row)*rowHeight, Width: width - 8, Height: rowHeight}
 		id := lineScope.At(index)
 		if canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
-		label := canvas.FitLine(command, 11, ui.WeightRegular, item.Width-18)
-		smallLabel(canvas, label, ui.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, palette.text, 11)
-		canvas.HitWithOptions(id, item, command, ui.HitOptions{Role: ui.RoleMenuItem, Hint: command})
+		label := canvas.FitLine(command, 11, gfx.WeightRegular, item.Width-18)
+		smallLabel(canvas, label, gfx.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: item.Height}, palette.text, 11)
+		canvas.HitWithOptions(id, item, command, gfx.HitOptions{Role: gfx.RoleMenuItem, Hint: command})
 		if canvas.Clicked(id) {
 			selected = index
 		}

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/datetime"
 	"vivapad/internal/document"
 )
@@ -106,7 +106,7 @@ func TestDateTimeSettingsPersistAndCancelInvalidInput(t *testing.T) {
 	clickID(t, driver, dateTimeReverseID)
 	checked := false
 	for _, hit := range driver.Snapshot().Hits {
-		if hit.ID == dateTimeReverseID && hit.Role == ui.RoleCheckbox && hit.Checked {
+		if hit.ID == dateTimeReverseID && hit.Role == gfx.RoleCheckbox && hit.Checked {
 			checked = true
 		}
 	}
@@ -126,7 +126,7 @@ func TestDateTimeSettingsPersistAndCancelInvalidInput(t *testing.T) {
 		t.Fatalf("customized format after settings = %q", state.space.Current().Editor.String())
 	}
 	state.command("Date Time Format...")
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.dateTimeDialogOpen || state.dateTimeFormat != "dd/MM/yyyy HH:mm" || !state.dateTimeReverse {

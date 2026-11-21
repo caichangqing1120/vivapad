@@ -3,13 +3,16 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/text"
+	"golang.org/x/text/unicode/norm"
 	"vivapad/internal/document"
 	"vivapad/internal/session"
 	"vivapad/internal/syntax"
@@ -34,18 +37,34 @@ func nppBytePosition(doc *document.Document, index int) int64 {
 	return int64(physicalOffset)
 }
 
-func runeFromNPPPosition(doc *document.Document, position int64) int {
-	value := doc.Editor.String()
+func nppSelectionAt(doc *document.Document, start, end int64) text.Range {
+	lo, hi := min(start, end), max(start, end)
+	format := doc.SavedEncoding()
+	legacy := format.IsLegacy()
+	// Remember widths only for this scan. The bound keeps unusual documents
+	// with many distinct characters from growing another document-sized index.
+	var widths map[rune]int
+	if legacy {
+		widths = make(map[rune]int)
+	}
+	var selection text.Range
 	var offset int64
 	line := 0
-	for byteIndex, character := range value {
+	for _, character := range doc.Editor.String() {
 		width := utf8.RuneLen(character)
-		if doc.SavedEncoding().IsLegacy() {
-			encoded, err := doc.SavedEncoding().EncodedLength(string(character))
-			if err != nil {
-				return doc.Editor.RuneIndex(byteIndex)
+		if legacy {
+			var ok bool
+			width, ok = widths[character]
+			if !ok {
+				var err error
+				width, err = format.EncodedLength(string(character))
+				if err != nil {
+					break
+				}
+				if len(widths) < 1024 {
+					widths[character] = width
+				}
 			}
-			width = encoded
 		}
 		if character == '\n' {
 			if doc.LineEndingAt(line) == "\r\n" {
@@ -53,12 +72,19 @@ func runeFromNPPPosition(doc *document.Document, position int64) int {
 			}
 			line++
 		}
-		if offset+int64(width) > position {
-			return doc.Editor.RuneIndex(byteIndex)
-		}
 		offset += int64(width)
+		if offset > hi {
+			break
+		}
+		selection.End++
+		if offset <= lo {
+			selection.Start++
+		}
 	}
-	return doc.Editor.RuneCount()
+	if start > end {
+		selection.Start, selection.End = selection.End, selection.Start
+	}
+	return selection
 }
 
 func nppCodepage(doc *document.Document) int {
@@ -161,12 +187,12 @@ func (state *model) nppSessionStateWithFolders(includeWorkspace bool) (session.N
 }
 
 func (state *model) saveNPPSession(includeWorkspace bool) {
-	stored, err := state.nppSessionStateWithFolders(includeWorkspace)
-	if err != nil {
+	if _, err := state.nppSessionStateWithFolders(includeWorkspace); err != nil {
 		state.saveSessionError = err.Error()
 		return
 	}
 	state.saveSessionOptionsOpen = false
+	defer state.requestNativeChooserFocus()
 	path, err := app.SaveFile(app.SaveFileOptions{Title: "Save Session", SuggestedName: "session.xml", DefaultExtension: "xml"})
 	if err != nil {
 		if !errors.Is(err, app.ErrCanceled) {
@@ -174,10 +200,10 @@ func (state *model) saveNPPSession(includeWorkspace bool) {
 		}
 		return
 	}
-	state.writeNPPSession(path, stored)
+	state.saveNPPSessionSelection(app.SaveFileSelection{Path: path, Checked: includeWorkspace})
 }
 
-func (state *model) saveNPPSessionNative(selection app.SaveFileSelection) {
+func (state *model) saveNPPSessionSelection(selection app.SaveFileSelection) {
 	stored, err := state.nppSessionStateWithFolders(selection.Checked)
 	if err != nil {
 		state.notice = err.Error()
@@ -196,8 +222,9 @@ func (state *model) writeNPPSession(path string, stored session.NPPState) {
 		state.notice = "Session destination is an internal VivaPad data file"
 		return
 	}
+	target, _ := os.Stat(absolute)
 	for _, doc := range state.space.Documents {
-		if doc.Path != "" && doc.Path == absolute {
+		if doc.Path != "" && destinationMatchesFile(absolute, target, doc.Path) {
 			state.notice = "Session destination is already open in a tab"
 			return
 		}
@@ -216,7 +243,58 @@ type preparedNPPFile struct {
 	language string
 }
 
+type nppSessionPaths map[string][]string
+
+func nppSessionPathKey(path string) string {
+	// Use one key for every spelling in a Unicode simple-fold cycle.
+	return strings.Map(func(r rune) rune {
+		if r <= unicode.MaxASCII {
+			return unicode.ToUpper(r)
+		}
+		key := r
+		for next := unicode.SimpleFold(r); next != r; next = unicode.SimpleFold(next) {
+			key = min(key, next)
+		}
+		return key
+	}, norm.NFC.String(path))
+}
+
+func (paths nppSessionPaths) resolve(path string) (string, error) {
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	key := nppSessionPathKey(canonical)
+	var matched string
+	var info os.FileInfo
+	for _, name := range paths[key] {
+		if name != canonical {
+			if info == nil {
+				info, err = os.Stat(canonical)
+				if err != nil {
+					return "", err
+				}
+			}
+			// A matching key only suggests an alias. The filesystem may keep
+			// spellings distinct, and a redirected tab cannot claim a new file.
+			if other, err := os.Stat(name); err != nil || !os.SameFile(info, other) || document.CheckRecordedPath(name) != nil {
+				continue
+			}
+		}
+		if matched != "" && name != matched {
+			return "", fmt.Errorf("file is already open in multiple tabs: %s", canonical)
+		}
+		matched = name
+	}
+	if matched != "" {
+		return matched, nil
+	}
+	paths[key] = append(paths[key], canonical)
+	return canonical, nil
+}
+
 func (state *model) loadNPPSession() {
+	defer state.requestNativeChooserFocus()
 	paths, err := app.OpenFiles(app.OpenFileOptions{Title: "Load Session"})
 	if err != nil {
 		if !errors.Is(err, app.ErrCanceled) {
@@ -234,27 +312,40 @@ func (state *model) loadNPPSession() {
 	}
 	var prepared []preparedNPPFile
 	var paneFiles [2][]*document.Document
-	seen := make(map[string]*document.Document)
+	preparedByPath := make(map[string]int)
+	openByPath := make(map[string]*document.Document, len(state.space.Documents))
+	resolvedPaths := make(nppSessionPaths)
+	for _, doc := range state.space.Documents {
+		if doc.Path != "" {
+			if _, ok := openByPath[doc.Path]; !ok {
+				openByPath[doc.Path] = doc
+			}
+			key := nppSessionPathKey(doc.Path)
+			resolvedPaths[key] = append(resolvedPaths[key], doc.Path)
+		}
+	}
 	for pane, entries := range [][]session.NPPFile{stored.Main, stored.Sub} {
+		seenInView := make(map[string]bool, len(entries))
 		for _, file := range entries {
 			language, err := nppExtension(file.Language)
 			if err != nil {
 				state.notice = "Session not loaded: " + err.Error()
 				return
 			}
-			canonical, err := filepath.EvalSymlinks(file.Path)
+			canonical, err := resolvedPaths.resolve(file.Path)
 			if err != nil {
-				state.notice = "Session file unavailable: " + file.Path + ": " + err.Error()
+				state.notice = "Session not loaded: " + err.Error()
 				return
 			}
-			doc := seen[canonical]
-			if doc == nil {
-				for _, existing := range state.space.Documents {
-					if existing.Path == canonical {
-						doc = existing
-						break
-					}
-				}
+			if seenInView[canonical] {
+				state.notice = "Session has a duplicate file in one view: " + canonical
+				return
+			}
+			seenInView[canonical] = true
+			prior, shared := preparedByPath[canonical]
+			doc := openByPath[canonical]
+			if shared {
+				doc = prepared[prior].doc
 			}
 			format, explicit := document.EncodingFromCodePage(file.Encoding)
 			if doc == nil {
@@ -268,7 +359,9 @@ func (state *model) loadNPPSession() {
 					return
 				}
 			}
-			if explicit && doc.Encoding() != format || !explicit && doc.Encoding().IsLegacy() {
+			// Session byte positions refer to the saved encoding, not a pending conversion.
+			savedEncoding := doc.SavedEncoding()
+			if explicit && savedEncoding != format || !explicit && savedEncoding.IsLegacy() {
 				state.notice = "Session file is already open with another encoding: " + canonical
 				return
 			}
@@ -278,30 +371,35 @@ func (state *model) loadNPPSession() {
 					return
 				}
 			}
-			foldMode := language
-			if file.Language == "" {
-				foldMode = state.languageFor(doc)
-			}
-			regions := syntax.FoldRegions(foldMode, doc.Editor.String())
-			validFolds := make(map[int]bool, len(regions))
-			for _, region := range regions {
-				validFolds[region.Header] = true
-			}
-			for _, line := range file.Folds {
-				if !validFolds[line] {
-					state.notice = fmt.Sprintf("Session fold line %d is unavailable in %s", line, canonical)
-					return
+			if len(file.Folds) != 0 {
+				foldMode := language
+				if file.Language == "" {
+					foldMode = state.languageFor(doc)
 				}
-			}
-			if existing := seen[canonical]; existing != nil {
-				for _, item := range prepared {
-					if item.doc == existing && (!slices.Equal(item.file.Marks, file.Marks) || !slices.Equal(item.file.Folds, file.Folds) || item.file.ReadOnly != file.ReadOnly || item.file.Pinned != file.Pinned || item.file.Color != file.Color || item.language != language) {
-						state.notice = "Session has conflicting document state for " + canonical
+				regions := syntax.FoldRegions(foldMode, doc.Editor.String())
+				validFolds := make(map[int]bool, len(regions))
+				for _, region := range regions {
+					validFolds[region.Header] = true
+				}
+				for _, line := range file.Folds {
+					if !validFolds[line] {
+						state.notice = fmt.Sprintf("Session fold line %d is unavailable in %s", line, canonical)
 						return
 					}
 				}
 			}
-			seen[canonical] = doc
+			if shared {
+				item := prepared[prior]
+				// Omitted language leaves the existing mode; explicit Normal Text clears it.
+				sameLanguage := item.language == language && (item.file.Language == "") == (file.Language == "")
+				if !slices.Equal(item.file.Marks, file.Marks) || !slices.Equal(item.file.Folds, file.Folds) ||
+					item.file.ReadOnly != file.ReadOnly || item.file.Pinned != file.Pinned || item.file.Color != file.Color || !sameLanguage {
+					state.notice = "Session has conflicting document state for " + canonical
+					return
+				}
+			} else {
+				preparedByPath[canonical] = len(prepared)
+			}
 			prepared = append(prepared, preparedNPPFile{file: file, doc: doc, pane: pane, language: language})
 			paneFiles[pane] = append(paneFiles[pane], doc)
 		}
@@ -318,6 +416,10 @@ func (state *model) loadNPPSession() {
 	oldBlank := state.space.Current()
 	if len(state.space.Documents) != 1 || oldBlank.Path != "" || oldBlank.Dirty() {
 		oldBlank = nil
+	}
+	activeViewFiles := make(map[*document.Document]bool, len(paneFiles[stored.ActiveView]))
+	for _, doc := range paneFiles[stored.ActiveView] {
+		activeViewFiles[doc] = true
 	}
 	for _, item := range prepared {
 		if state.documentIndex(item.doc) < 0 {
@@ -343,10 +445,10 @@ func (state *model) loadNPPSession() {
 			state.notice = "Session fold unavailable: " + err.Error()
 			return
 		}
-		item.doc.Editor.SetSelection(text.Range{
-			Start: runeFromNPPPosition(item.doc, item.file.StartPos),
-			End:   runeFromNPPPosition(item.doc, item.file.EndPos),
-		})
+		// A shared document has one editor selection. Restore it from the active view.
+		if item.pane == stored.ActiveView || !activeViewFiles[item.doc] {
+			item.doc.Editor.SetSelection(nppSelectionAt(item.doc, item.file.StartPos, item.file.EndPos))
+		}
 		state.rememberRecent(item.doc)
 	}
 	if oldBlank != nil && state.documentIndex(oldBlank) < 0 {
@@ -380,5 +482,5 @@ func (state *model) loadNPPSession() {
 		state.notice = "Session folders partially loaded: " + err.Error()
 		return
 	}
-	state.notice = fmt.Sprintf("Loaded %d session file(s), %d folder(s)", len(seen), len(folders))
+	state.notice = fmt.Sprintf("Loaded %d session file(s), %d folder(s)", len(preparedByPath), len(folders))
 }

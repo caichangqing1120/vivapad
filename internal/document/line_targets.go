@@ -52,6 +52,13 @@ func (doc *Document) replaceSourceLineBlock(block lineBlock, value string, after
 }
 
 func (doc *Document) replaceSortedLineBlock(block lineBlock, lines []string) bool {
+	changed, err := doc.replaceSortedLineBlockOutcome(block, lines)
+	return err == nil && changed
+}
+
+// replaceSortedLineBlockOutcome is replaceSortedLineBlock with the refusal
+// cause, so callers can tell "nothing to change" from "the edit was refused".
+func (doc *Document) replaceSortedLineBlockOutcome(block lineBlock, lines []string) (bool, error) {
 	value := block.joined(lines)
 	var after *text.Range
 	selection := doc.Editor.Selection()
@@ -64,12 +71,25 @@ func (doc *Document) replaceSortedLineBlock(block lineBlock, lines []string) boo
 		after = &text.Range{Start: start, End: end}
 	}
 	if value == block.before {
-		if after != nil && doc.validateLineSelection(*after) == nil {
+		if after != nil {
+			if err := doc.validateLineSelection(*after); err != nil {
+				return false, err
+			}
 			doc.Editor.SetSelection(*after)
 		}
-		return false
+		return false, nil
 	}
-	return doc.replaceSourceLineBlock(block, value, after)
+	batch, err := doc.PrepareTargetEdits([]ReplacementEdit{{Start: block.start, End: block.end, Text: value}})
+	if err != nil {
+		return false, err
+	}
+	if after != nil {
+		batch.after = *after
+	}
+	if err := batch.Apply(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (doc *Document) validateLineSelection(after text.Range) error {

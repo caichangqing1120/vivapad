@@ -89,7 +89,7 @@ func TestRegisteredNPPSessionUsesOriginalCodePageBytes(t *testing.T) {
 	if got := nppBytePosition(doc, 3); got != 6 {
 		t.Fatalf("Shift-JIS CRLF byte position = %d, want 6", got)
 	}
-	if got := runeFromNPPPosition(doc, 6); got != 3 {
+	if got := nppSelectionAt(doc, 6, 6).Start; got != 3 {
 		t.Fatalf("Shift-JIS CRLF rune position = %d, want 3", got)
 	}
 	driver, err := app.NewDriver(newConfig(state), nil)

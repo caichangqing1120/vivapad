@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 	"vivapad/internal/recent"
 )
@@ -118,11 +118,80 @@ func TestBatchCloseOrderAndRecentSubmenuRestoreShortcut(t *testing.T) {
 	if filepath.Base(state.space.Current().Path) != "second.txt" || len(state.closedHistory) != 1 {
 		t.Fatalf("submenu restore = %+v history=%+v", state.space.Current(), state.closedHistory)
 	}
-	if handled, err := driver.ShortcutChord(primary()|ui.ModifierShift, 't'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 't'); err != nil || !handled {
 		t.Fatalf("restore shortcut handled=%v, %v", handled, err)
 	}
 	if filepath.Base(state.space.Current().Path) != "first.txt" || len(state.closedHistory) != 0 {
 		t.Fatalf("shortcut restore = %+v history=%+v", state.space.Current(), state.closedHistory)
+	}
+}
+
+func TestRecentClosedMenuReturnsFocusToActivePane(t *testing.T) {
+	for _, name := range []string{"restored", "missing"} {
+		t.Run(name, func(t *testing.T) {
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "closed.txt")
+			disk := []byte{0xd6, 0xd0, '\r', '\n'}
+			if name == "restored" {
+				if err := os.WriteFile(path, disk, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			state := newModel()
+			left, right := state.space.Current(), state.space.NewDocument()
+			left.Editor.Insert("left draft")
+			right.Editor.Insert("right draft")
+			state.paneOwner[left], state.paneOwner[right] = 0, 1
+			state.paneDocs = [2]*document.Document{left, right}
+			state.splitEnabled, state.activePane = true, 1
+			state.closedHistory = []recent.Entry{{Path: path, Encoding: document.GB18030}}
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer driver.Close()
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, rightEditorID)
+			clickID(t, driver, menuScope.At(0))
+			clickID(t, driver, menuItemScope.At(10))
+			clickID(t, driver, recentRestoreID)
+
+			doc := state.space.Current()
+			if state.paneDocument(0) != left || state.paneDocument(1) != doc {
+				t.Fatal("restore did not keep pane ownership")
+			}
+			if name == "restored" {
+				if doc.Path != path || doc.Editor.String() != "\u4e2d\n" || doc.SavedEncoding() != document.GB18030 || len(state.closedHistory) != 0 {
+					t.Fatalf("wrong restored tab %q or history %+v", doc.Path, state.closedHistory)
+				}
+			} else if doc != right || len(state.closedHistory) != 1 || !strings.Contains(state.notice, "Cannot restore") {
+				t.Fatal("a missing restore changed the active tab or consumed history")
+			}
+			if got := driver.Snapshot().Focused; got != rightEditorID {
+				t.Errorf("focus after restore = %v, want right editor", got)
+			}
+			before := doc.Editor.String()
+			caret := doc.Editor.ByteOffset(doc.Editor.Caret())
+			if err := driver.Type("x"); err != nil {
+				t.Fatal(err)
+			}
+			if doc.Editor.String() != before[:caret]+"x"+before[caret:] || left.Editor.String() != "left draft" {
+				t.Fatal("first key after restore did not edit only the active pane")
+			}
+			if name == "restored" {
+				if right.Editor.String() != "right draft" {
+					t.Fatal("restore changed the previous draft")
+				}
+				if data, err := os.ReadFile(path); err != nil || string(data) != string(disk) {
+					t.Fatalf("first key changed saved bytes: %x, %v", data, err)
+				}
+			}
+		})
 	}
 }
 

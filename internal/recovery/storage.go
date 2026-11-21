@@ -57,6 +57,9 @@ func Save(path string, state State) error {
 	if err := validate(state); err != nil {
 		return err
 	}
+	if !encodedContentsFit(state.Tabs, maxBytes) {
+		return fmt.Errorf("recovery backup exceeds 32 MiB")
+	}
 	data, err := json.Marshal(diskState{Version: version, State: state})
 	if err != nil {
 		return err
@@ -97,8 +100,43 @@ func Save(path string, state State) error {
 	return os.Rename(file.Name(), path)
 }
 
+// Check the JSON string sizes before encoding; Marshal still checks the full
+// backup, including metadata. validate has already checked UTF-8 and raw sizes.
+func encodedContentsFit(tabs []Tab, limit int) bool {
+	size := 0
+	for _, tab := range tabs {
+		size += len(tab.Content) + 2
+	}
+	if size <= limit/6 {
+		return true
+	}
+	if size > limit {
+		return false
+	}
+	for _, tab := range tabs {
+		for _, r := range tab.Content {
+			switch r {
+			case '"', '\\', '\b', '\f', '\n', '\r', '\t':
+				size++
+			case '<', '>', '&':
+				size += 5
+			case '\u2028', '\u2029':
+				size += 3
+			default:
+				if r < ' ' {
+					size += 5
+				}
+			}
+			if size > limit {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func Load(path string) (State, error) {
-	file, err := os.Open(path)
+	file, err := openRecoveryFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return State{Active: -1}, nil
 	}
@@ -110,18 +148,33 @@ func Load(path string) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
+	if !info.Mode().IsRegular() {
+		return State{}, fmt.Errorf("recovery backup is not a regular file")
+	}
 	if info.Size() > maxBytes {
 		return State{}, fmt.Errorf("recovery backup exceeds 32 MiB")
 	}
-	decoder := json.NewDecoder(io.LimitReader(file, maxBytes))
+	return decodeRecovery(file, maxBytes)
+}
+
+func decodeRecovery(source io.Reader, limit int64) (State, error) {
+	// Read one extra byte so the limit cannot masquerade as the file's EOF.
+	limited := &io.LimitedReader{R: source, N: limit + 1}
+	decoder := json.NewDecoder(limited)
 	decoder.DisallowUnknownFields()
 	var stored diskState
-	if err := decoder.Decode(&stored); err != nil {
-		return State{}, err
+	err := decoder.Decode(&stored)
+	if err == nil {
+		var extra json.RawMessage
+		if trailing := decoder.Decode(&extra); !errors.Is(trailing, io.EOF) {
+			err = fmt.Errorf("recovery backup has trailing data")
+		}
 	}
-	var extra json.RawMessage
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return State{}, fmt.Errorf("recovery backup has trailing data")
+	if limited.N == 0 {
+		return State{}, fmt.Errorf("recovery backup exceeds 32 MiB")
+	}
+	if err != nil {
+		return State{}, err
 	}
 	if stored.Version < 1 || stored.Version > version {
 		return State{}, fmt.Errorf("unsupported recovery version %d", stored.Version)

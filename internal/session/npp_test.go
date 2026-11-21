@@ -37,7 +37,7 @@ func TestNPPSessionXMLRoundTripWithViewsAndEscapedPaths(t *testing.T) {
 		t.Fatalf("loaded NPP session = %+v, %v, want %+v", got, err, want)
 	}
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || !privateMode(info.Mode()) {
 		t.Fatalf("NPP session file mode = %+v, %v", info, err)
 	}
 }

@@ -2,6 +2,7 @@ package searchfiles
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,67 @@ func TestReplacePreviewDoesNotWriteAndApplyPreservesFormat(t *testing.T) {
 	}
 	if changed, _ := os.ReadFile(second); string(changed) != "dog" {
 		t.Fatalf("second file = %q", changed)
+	}
+}
+
+func TestDirectoryPreviewOmitsByteIdenticalReplacement(t *testing.T) {
+	for _, test := range []struct {
+		name, query, replacement string
+		regex                    bool
+	}{
+		{"literal", "cat", "cat", false},
+		{"regex capture", "(cat)", "$1", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "identity.txt")
+			const original = "\xef\xbb\xbfcat\r\ncat\ncat\r"
+			writeTestFile(t, path, []byte(original))
+			plan, err := PreviewReplace(context.Background(), root, test.query, test.replacement,
+				document.SearchOptions{MatchCase: true, Regex: test.regex}, Options{Pattern: "*.txt"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.Changes) != 0 || plan.Replacements != 0 || plan.FilesSearched != 1 {
+				t.Fatalf("byte-identical preview reported %d files and %d replacements: %+v", len(plan.Changes), plan.Replacements, plan)
+			}
+		})
+	}
+}
+
+func TestDirectoryReplaceKeepsUnchangedFileIdentityInMixedBatch(t *testing.T) {
+	root := t.TempDir()
+	unchanged, changed := filepath.Join(root, "a.txt"), filepath.Join(root, "z.txt")
+	const source = "\xef\xbb\xbfcat\r\ncat\nlast\r"
+	writeTestFile(t, unchanged, []byte(source))
+	writeTestFile(t, changed, []byte("cat CAT\r\nlast"))
+	before, err := os.Stat(unchanged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PreviewReplace(context.Background(), root, "cat", "cat", document.SearchOptions{}, Options{Pattern: "*.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Changes) != 1 || filepath.Base(plan.Changes[0].Path) != "z.txt" || plan.Replacements != 2 {
+		t.Fatalf("mixed batch preview = %+v", plan)
+	}
+	result, err := plan.Apply(context.Background())
+	if err != nil || result.FilesChanged != 1 || result.Replacements != 2 {
+		t.Fatalf("apply = %+v, %v", result, err)
+	}
+	after, err := os.Stat(unchanged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("applying the mixed batch touched the unchanged file")
+	}
+	if disk, err := os.ReadFile(unchanged); err != nil || string(disk) != source {
+		t.Fatalf("unchanged disk bytes = %x, %v", disk, err)
+	}
+	if disk, err := os.ReadFile(changed); err != nil || string(disk) != "cat cat\r\nlast" {
+		t.Fatalf("changed disk bytes = %q, %v", disk, err)
 	}
 }
 
@@ -77,6 +139,75 @@ func TestReplacePreflightRejectsChangedFileBeforeAnyWrite(t *testing.T) {
 	}
 }
 
+func TestReplacePreflightRejectsNewReadOnlyFileBeforeAnyWrite(t *testing.T) {
+	root := t.TempDir()
+	first, last := filepath.Join(root, "a.txt"), filepath.Join(root, "z.txt")
+	const original = "\xef\xbb\xbfcat\r\n"
+	for _, name := range []string{first, last} {
+		writeTestFile(t, name, []byte(original))
+	}
+	plan, err := PreviewReplace(t.Context(), root, "cat", "dog", document.SearchOptions{}, Options{})
+	if err != nil || len(plan.Changes) != 2 {
+		t.Fatalf("preview = %+v, %v", plan, err)
+	}
+	if err := os.Chmod(last, 0444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(last, 0600) })
+	result, err := plan.Apply(t.Context())
+	if !errors.Is(err, os.ErrPermission) || !strings.Contains(err.Error(), "no files written") ||
+		result.FilesChanged != 0 || result.Replacements != 0 || len(result.Paths) != 0 {
+		t.Errorf("read-only preflight = %+v, %v", result, err)
+	}
+	for _, name := range []string{first, last} {
+		if data, err := os.ReadFile(name); err != nil || string(data) != original {
+			t.Errorf("read-only refusal changed %s: %q, %v", name, data, err)
+		}
+	}
+	if t.Failed() {
+		return
+	}
+	if err := os.Chmod(last, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := plan.Apply(t.Context()); err != nil || result.FilesChanged != 2 || result.Replacements != 2 {
+		t.Fatalf("restoring write permission should allow retry: %+v, %v", result, err)
+	}
+	for _, name := range []string{first, last} {
+		if data, err := os.ReadFile(name); err != nil || string(data) != "\xef\xbb\xbfdog\r\n" {
+			t.Errorf("retry changed the format of %s: %q, %v", name, data, err)
+		}
+	}
+}
+
+func TestReplacePreflightRetainsSearchFileLimit(t *testing.T) {
+	root := t.TempDir()
+	first, second := filepath.Join(root, "a.txt"), filepath.Join(root, "z.txt")
+	const original = "cat\r\n"
+	for _, path := range []string{first, second} {
+		writeTestFile(t, path, []byte(original))
+	}
+	plan, err := PreviewReplace(t.Context(), root, "cat", "dog", document.SearchOptions{}, Options{MaxFileBytes: int64(len(original))})
+	if err != nil || plan.Replacements != 2 {
+		t.Fatalf("files exactly at the byte limit must be included: %+v, %v", plan, err)
+	}
+	const expanded = original + "x"
+	writeTestFile(t, second, []byte(expanded))
+	result, err := plan.Apply(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "file exceeds search size limit") || result.FilesChanged != 0 || result.Replacements != 0 {
+		t.Fatalf("preflight did not enforce the scan's byte limit: %+v, %v", result, err)
+	}
+	for path, want := range map[string]string{first: original, second: expanded} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != want {
+			t.Fatalf("refused preflight changed %q: %q, %v", path, got, err)
+		}
+	}
+	writeTestFile(t, second, []byte(original))
+	if result, err := plan.Apply(t.Context()); err != nil || result.FilesChanged != 2 {
+		t.Fatalf("restoring the original file should allow a retry: %+v, %v", result, err)
+	}
+}
+
 func TestReplaceRegexCapturesAndTruncation(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "data.txt"), []byte("item-12 item-34"))
@@ -98,6 +229,7 @@ func TestReplaceRegexCapturesAndTruncation(t *testing.T) {
 type cancelAfterChecks struct {
 	calls int
 	limit int
+	after func(int)
 }
 
 func (contextValue *cancelAfterChecks) Deadline() (time.Time, bool) { return time.Time{}, false }
@@ -105,10 +237,41 @@ func (contextValue *cancelAfterChecks) Done() <-chan struct{}       { return nil
 func (contextValue *cancelAfterChecks) Value(any) any               { return nil }
 func (contextValue *cancelAfterChecks) Err() error {
 	contextValue.calls++
+	if contextValue.after != nil {
+		contextValue.after(contextValue.calls)
+	}
 	if contextValue.calls >= contextValue.limit {
 		return context.Canceled
 	}
 	return nil
+}
+
+func TestReplaceRefusesFileChangedAfterBatchPreflight(t *testing.T) {
+	root := t.TempDir()
+	first, second := filepath.Join(root, "a.txt"), filepath.Join(root, "z.txt")
+	for _, name := range []string{first, second} {
+		writeTestFile(t, name, []byte("cat\r\n"))
+	}
+	plan, err := PreviewReplace(t.Context(), root, "cat", "dog", document.SearchOptions{}, Options{})
+	if err != nil || len(plan.Changes) != 2 {
+		t.Fatalf("preview = %+v, %v", plan, err)
+	}
+	const external = "external cat\r\n"
+	ctx := &cancelAfterChecks{limit: 100, after: func(check int) {
+		// Two preflight checks and one successful write have completed.
+		if check == 4 {
+			writeTestFile(t, second, []byte(external))
+		}
+	}}
+	result, err := plan.Apply(ctx)
+	if err == nil || !strings.Contains(err.Error(), "changed after preview") || result.FilesChanged != 1 || result.Replacements != 1 {
+		t.Fatalf("stale write = %+v, %v", result, err)
+	}
+	for name, want := range map[string]string{first: "dog\r\n", second: external} {
+		if data, err := os.ReadFile(name); err != nil || string(data) != want {
+			t.Errorf("file %q = %q, want %q: %v", name, data, want, err)
+		}
+	}
 }
 
 func TestReplaceReportsPartialBatchOnCancellation(t *testing.T) {

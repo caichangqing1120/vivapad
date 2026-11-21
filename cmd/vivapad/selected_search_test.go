@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -96,11 +96,11 @@ func TestSelectedSearchMenuAndF3ShortcutsAtCompactViewport(t *testing.T) {
 	}
 	clickID(t, driver, menuScope.At(2))
 	for _, hit := range driver.Snapshot().Hits {
-		if hit.ID == menuItemScope.At(18) && hit.Bounds.Y+hit.Bounds.Height > 400-statusHeight {
+		if hit.ID == searchCommandID(t, "Selected Text Search") && hit.Bounds.Y+hit.Bounds.Height > 400-statusHeight {
 			t.Fatalf("selected-search menu overlaps status: %+v", hit.Bounds)
 		}
 	}
-	clickID(t, driver, menuItemScope.At(18))
+	clickID(t, driver, searchCommandID(t, "Selected Text Search"))
 	for index := range selectedSearchCommands {
 		found := false
 		for _, hit := range driver.Snapshot().Hits {
@@ -120,13 +120,13 @@ func TestSelectedSearchMenuAndF3ShortcutsAtCompactViewport(t *testing.T) {
 		t.Fatalf("menu selected-find = %q %+v", state.query.String(), state.space.Current().Editor.Selection())
 	}
 	state.space.Current().Editor.SetSelection(text.Range{Start: 0, End: 3})
-	if err := driver.Key(ui.KeyF3, primary()|ui.ModifierAlt); err != nil {
+	if err := driver.Key(gfx.KeyF3, primary()|gfx.ModifierAlt); err != nil {
 		t.Fatal(err)
 	}
 	if state.space.Current().Editor.Selection() != (text.Range{Start: 8, End: 11}) || state.query.String() != "cat" {
 		t.Fatal("volatile F3 shortcut did not search selection without changing query")
 	}
-	if err := driver.Key(ui.KeyF3, primary()|ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyF3, primary()|gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	if state.space.Current().Editor.Selection() != (text.Range{Start: 0, End: 3}) || state.query.String() != "cat" {
@@ -162,8 +162,8 @@ func TestSelectedSearchEscapeKeepsExistingResults(t *testing.T) {
 		t.Fatal("test results pane did not open")
 	}
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(18))
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	clickID(t, driver, searchCommandID(t, "Selected Text Search"))
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.selectedSearchMenuOpen || !state.resultsOpen || state.menuOpen != 2 {

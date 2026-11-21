@@ -10,8 +10,8 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestFoldCommandsHideNestedRowsWithoutChangingCleanDocument(t *testing.T) {
@@ -144,7 +144,7 @@ func TestViewFoldMenusReachAllLevelsAtCompactSize(t *testing.T) {
 			t.Fatalf("fold level %d not reachable", index+1)
 		}
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.foldMenuOpen || state.space.Current().Dirty() {

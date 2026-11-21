@@ -1,9 +1,11 @@
 package session
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -21,11 +23,11 @@ func TestSaveLoadVersionedPrivateSession(t *testing.T) {
 		t.Fatalf("loaded=%+v err=%v, want %+v", got, err, want)
 	}
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || !privateMode(info.Mode()) {
 		t.Fatalf("session permissions = %+v, err=%v", info, err)
 	}
 	directory, err := os.Stat(filepath.Dir(path))
-	if err != nil || directory.Mode().Perm()&0077 != 0 {
+	if err != nil || !privateDirMode(directory.Mode()) {
 		t.Fatalf("session directory permissions = %+v, err=%v", directory, err)
 	}
 }
@@ -56,7 +58,10 @@ func TestMissingAndDamagedSessions(t *testing.T) {
 
 func TestV3SessionDefaultsToEditableDocuments(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.json")
-	value := `{"version":3,"paths":["/saved.txt"],"active":"/saved.txt","view":{"split":false}}`
+	// A fixture path must be absolute on the build platform, and its JSON
+	// escaping must survive Windows separators.
+	saved := filepath.Join(t.TempDir(), "saved.txt")
+	value := `{"version":3,"paths":["` + jsonString(t, saved) + `"],"active":"` + jsonString(t, saved) + `","view":{"split":false}}`
 	if err := os.WriteFile(path, []byte(value), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +73,8 @@ func TestV3SessionDefaultsToEditableDocuments(t *testing.T) {
 
 func TestV4SessionDefaultsToUnpinnedDocuments(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.json")
-	value := `{"version":4,"paths":["/saved.txt"],"active":"/saved.txt","view":{"split":false}}`
+	saved := filepath.Join(t.TempDir(), "saved.txt")
+	value := `{"version":4,"paths":["` + jsonString(t, saved) + `"],"active":"` + jsonString(t, saved) + `","view":{"split":false}}`
 	if err := os.WriteFile(path, []byte(value), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +105,7 @@ func TestExistingSessionDirectoryIsMadePrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(directory)
-	if err != nil || info.Mode().Perm() != 0700 {
+	if err != nil || !privateDirMode(info.Mode()) {
 		t.Fatalf("directory permissions = %+v, %v", info, err)
 	}
 }
@@ -157,7 +163,7 @@ func TestLegacyV1SessionStillLoads(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "session.json")
 	first := filepath.Join(root, "first.txt")
-	content := `{"version":1,"paths":["` + first + `"],"active":"` + first + `"}`
+	content := `{"version":1,"paths":["` + jsonString(t, first) + `"],"active":"` + jsonString(t, first) + `"}`
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +362,8 @@ func TestTabColorsV12RoundTripAndV11Migration(t *testing.T) {
 			t.Fatalf("accepted invalid tab color %d", color)
 		}
 	}
-	if err := os.WriteFile(path, []byte(`{"version":11,"paths":["`+doc+`"],"active":"`+doc+`","view":{},"tab_colors":{"`+doc+`":5}}`), 0600); err != nil {
+	quoted := jsonString(t, doc)
+	if err := os.WriteFile(path, []byte(`{"version":11,"paths":["`+quoted+`"],"active":"`+quoted+`","view":{},"tab_colors":{"`+quoted+`":5}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := Load(path); err != nil || len(got.TabColors) != 0 {
@@ -372,4 +379,35 @@ func TestLegacyV2SessionStillLoads(t *testing.T) {
 	if got, err := Load(path); err != nil || len(got.Encodings) != 0 {
 		t.Fatalf("v2 session = %+v, %v", got, err)
 	}
+}
+
+// jsonString escapes value for use inside a JSON string literal, so fixtures that
+// embed a path stay valid where the path contains backslashes (Windows).
+func jsonString(t *testing.T, value string) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded[1 : len(encoded)-1])
+}
+
+// privateMode reports whether mode carries the private-file metadata this
+// platform supports: POSIX 0600 on macOS and Linux, or a writable regular file
+// on Windows, where Go reports synthetic permission bits and VivaPad keeps the
+// privacy of its stores in the profile directory ACL (a separate gate).
+func privateMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsRegular() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0600
+}
+
+// privateDirMode reports whether mode carries a private directory's metadata:
+// POSIX 0700 on macOS and Linux, or a writable directory on Windows.
+func privateDirMode(mode os.FileMode) bool {
+	if runtime.GOOS == "windows" {
+		return mode.IsDir() && mode.Perm()&0200 != 0
+	}
+	return mode.Perm() == 0700
 }

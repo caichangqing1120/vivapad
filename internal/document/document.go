@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/vivaui/viva/text"
+	"vivapad/internal/changehistory"
 )
 
 type Document struct {
@@ -26,11 +28,22 @@ type Document struct {
 	newline       string
 	encoding      Encoding
 	recovered     bool
-	eolBaseText   string
-	eolBreaks     []string
-	eolCacheText  string
+	eolEditor     *text.Editor
+	eolRevision   uint64
+	eolCacheValid bool
+	eolCacheEOL   string
+	eolUniform    bool
+	eolLabels     []byte
 	eolCache      []string
 	uniformEOL    bool
+
+	// history is the change-history consumer bound to historyEditor when the
+	// document was created. It is never rebound in place: a replaced editor
+	// retires the source and reads as an explicit unavailable history.
+	history       *changehistory.Consumer
+	historyEditor *text.Editor
+	historyErr    error
+	historyBound  bool
 }
 
 type LineEnding uint8
@@ -42,38 +55,85 @@ const (
 )
 
 func New(name string) *Document {
-	editor := text.NewEditor("")
+	doc := newDocument(name, text.NewEditor(""))
+	doc.bindChangeHistory()
+	return doc
+}
+
+// newDocument prepares a document around editor without enabling the history
+// producer yet. Callers that own a final editor enable it with
+// bindChangeHistory once the editor can no longer be replaced.
+func newDocument(name string, editor *text.Editor) *Document {
+	doc := &Document{Name: name, Editor: editor, newline: "\n", savedNewline: "\n"}
+	labels := bytes.Repeat([]byte{'L'}, strings.Count(editor.String(), "\n"))
+	if editor.TrackLFLabels(labels, 'L', mapLFLineEndings) {
+		doc.eolEditor = editor
+	}
 	editor.SetSavePoint()
 	editor.TrackLineEdits()
-	return &Document{Name: name, Editor: editor, newline: "\n", savedNewline: "\n"}
+	return doc
 }
 
 func Open(path string) (*Document, error) {
-	return open(path, nil)
+	return open(path, nil, 0)
 }
 
 func OpenWithEncoding(path string, encoding Encoding) (*Document, error) {
 	if legacyCodec(encoding) == nil {
 		return nil, fmt.Errorf("unsupported explicit encoding %d", encoding)
 	}
-	return open(path, &encoding)
+	return open(path, &encoding, 0)
 }
 
-func open(path string, selected *Encoding) (*Document, error) {
-	absolute, err := filepath.Abs(path)
+func open(path string, selected *Encoding, maxBytes int64) (*Document, error) {
+	file, err := readDecodedFile(path, selected, maxBytes)
 	if err != nil {
 		return nil, err
+	}
+	value, newline, breaks := normalizeLineEndings(file.value)
+	// Build the final editor first: there is no empty editor to replace and
+	// therefore no chance that a throwaway editor becomes the history source.
+	doc := newDocument(filepath.Base(file.path), text.NewEditor(value))
+	doc.Path, doc.newline, doc.encoding = file.path, newline, file.encoding
+	labels := bytes.Repeat([]byte{lineEndingCode(newline)}, strings.Count(value, "\n"))
+	for index, ending := range breaks {
+		labels[index] = lineEndingCode(ending)
+	}
+	if !doc.Editor.SetLFLabels(labels, lineEndingCode(newline)) {
+		return nil, fmt.Errorf("%s: cannot initialize EOL labels", file.path)
+	}
+	doc.Editor.MoveTo(0, false)
+	doc.Editor.SetSavePoint()
+	doc.Editor.TrackLineEdits()
+	doc.saved = value
+	doc.savedDisk = file.data
+	doc.savedDigest = digest(file.data)
+	doc.savedNewline, doc.savedEncoding = newline, file.encoding
+	// Bind only after the editor is final and before the first undoable edit.
+	doc.bindChangeHistory()
+	return doc, nil
+}
+
+type decodedFile struct {
+	path, value string
+	data        []byte
+	encoding    Encoding
+}
+
+func readDecodedFile(path string, selected *Encoding, maxBytes int64) (decodedFile, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return decodedFile{}, err
 	}
 	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
 		absolute = resolved
 	} else {
-		return nil, err
+		return decodedFile{}, err
 	}
-	data, err := os.ReadFile(absolute)
+	data, err := readDocumentFile(absolute, maxBytes)
 	if err != nil {
-		return nil, err
+		return decodedFile{}, err
 	}
-	original := data
 	var value string
 	var encoding Encoding
 	if selected == nil {
@@ -82,21 +142,9 @@ func open(path string, selected *Encoding) (*Document, error) {
 		value, encoding, err = decodeLegacy(data, *selected)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", absolute, err)
+		return decodedFile{}, &DecodeError{Path: absolute, Err: err}
 	}
-	value, newline, breaks := normalizeLineEndings(value)
-	doc := New(filepath.Base(absolute))
-	doc.Path, doc.newline, doc.encoding = absolute, newline, encoding
-	doc.eolBaseText, doc.eolBreaks = value, breaks
-	doc.Editor = text.NewEditor(value)
-	doc.Editor.MoveTo(0, false)
-	doc.Editor.SetSavePoint()
-	doc.Editor.TrackLineEdits()
-	doc.saved = value
-	doc.savedDisk = original
-	doc.savedDigest = digest(original)
-	doc.savedNewline, doc.savedEncoding = newline, encoding
-	return doc, nil
+	return decodedFile{path: absolute, value: value, data: data, encoding: encoding}, nil
 }
 
 func (doc *Document) Dirty() bool {
@@ -118,17 +166,22 @@ func (doc *Document) SetLineEnding(ending LineEnding) {
 	if ending != LF && ending != CRLF && ending != CR {
 		return
 	}
-	if len(doc.eolBreaks) != 0 {
-		doc.uniformEOL = true
-	}
+	newline := "\n"
 	switch ending {
-	case LF:
-		doc.newline = "\n"
 	case CRLF:
-		doc.newline = "\r\n"
+		newline = "\r\n"
 	case CR:
-		doc.newline = "\r"
+		newline = "\r"
 	}
+	labels, err := doc.currentLFLabels()
+	if err != nil || newline == doc.newline && uniformLFLabels(labels, lineEndingCode(newline)) {
+		return
+	}
+	if !doc.Editor.UnifyLFLabels(lineEndingCode(newline)) {
+		return
+	}
+	doc.uniformEOL = doc.uniformEOL || !uniformLFLabels(labels, lineEndingCode(doc.newline))
+	doc.newline = newline
 }
 
 func (doc *Document) LineEnding() LineEnding {
@@ -169,18 +222,30 @@ func (doc *Document) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	if doc.Path != "" && absolute == doc.Path {
-		current, err := os.ReadFile(absolute)
+	sameSource := doc.Path != "" && absolute == doc.Path
+	if doc.Path != "" && absolute != doc.Path {
+		requested, err := filepath.Abs(path)
 		if err != nil {
 			return err
 		}
-		if !bytes.Equal(current, doc.savedDisk) {
+		if requested == doc.Path {
+			return fmt.Errorf("%s no longer resolves to its original path; use Save As", doc.Name)
+		}
+		source, sourceErr := os.Stat(doc.Path)
+		target, targetErr := os.Stat(absolute)
+		sameSource = sourceErr == nil && targetErr == nil && os.SameFile(source, target)
+	}
+	if sameSource {
+		matches, err := diskBytesMatch(absolute, doc.savedDisk)
+		if err != nil {
+			return err
+		}
+		if !matches {
 			return fmt.Errorf("%s changed on disk; use Save As", doc.Name)
 		}
 	}
 	value := doc.Editor.String()
-	physical, breaks := doc.physicalValue(value)
-	data, err := encodeText(physical, doc.encoding)
+	data, err := doc.encodeForSave(value)
 	if err != nil {
 		return err
 	}
@@ -191,11 +256,84 @@ func (doc *Document) Save(path string) error {
 	doc.savedDisk = data
 	doc.savedDigest = digest(data)
 	doc.savedNewline, doc.savedEncoding = doc.newline, doc.encoding
-	doc.eolBaseText, doc.eolBreaks, doc.uniformEOL = value, breaks, false
-	doc.eolCacheText, doc.eolCache = "", nil
+	doc.uniformEOL = false
 	doc.recovered = false
 	doc.Editor.SetSavePoint()
 	return nil
+}
+
+var ErrDiskPathRedirected = errors.New("file path no longer resolves to its original location")
+
+// CheckDiskPath verifies that the document still names a regular file at its bound path.
+func (doc *Document) CheckDiskPath() error {
+	return CheckRecordedPath(doc.Path)
+}
+
+// CheckRecordedPath verifies that a previously canonicalized path still names a regular file there.
+func CheckRecordedPath(path string) error {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	if resolved != path {
+		return fmt.Errorf("%w: %s", ErrDiskPathRedirected, path)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", path)
+	}
+	return nil
+}
+
+// DiskMatchesSaved compares the current file with the saved bytes without
+// decoding it or allocating another copy of the file.
+func (doc *Document) DiskMatchesSaved() (bool, error) {
+	return diskBytesMatch(doc.Path, doc.savedDisk)
+}
+
+func diskBytesMatch(path string, expected []byte) (bool, error) {
+	file, err := openDocumentFile(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+	return fileBytesMatch(file, info.Size(), expected)
+}
+
+func fileBytesMatch(file io.Reader, size int64, expected []byte) (bool, error) {
+	if size != int64(len(expected)) {
+		return false, nil
+	}
+	var buffer [32 << 10]byte
+	for len(expected) != 0 {
+		chunk := buffer[:min(len(expected), len(buffer))]
+		if _, err := io.ReadFull(file, chunk); err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				return false, nil
+			}
+			return false, err
+		}
+		if !bytes.Equal(chunk, expected[:len(chunk)]) {
+			return false, nil
+		}
+		expected = expected[len(chunk):]
+	}
+	// Check for growth after Stat as well as changes within the saved length.
+	_, err := io.ReadFull(file, buffer[:1])
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err
 }
 
 func (doc *Document) SaveCopy(path string) error {
@@ -206,8 +344,7 @@ func (doc *Document) SaveCopy(path string) error {
 	if doc.Path != "" && absolute == doc.Path {
 		return fmt.Errorf("copy destination is the active document; use Save")
 	}
-	physical, _ := doc.physicalValue(doc.Editor.String())
-	data, err := encodeText(physical, doc.encoding)
+	data, err := doc.encodeForSave(doc.Editor.String())
 	if err != nil {
 		return err
 	}
@@ -244,9 +381,26 @@ func CanonicalSavePath(path string) (string, error) {
 }
 
 func (doc *Document) ValidateEncoding() error {
-	physical, _ := doc.physicalValue(doc.Editor.String())
-	_, err := encodeText(physical, doc.encoding)
+	_, err := doc.encodeForSave(doc.Editor.String())
 	return err
+}
+
+// SaveDiffersFromSnapshot compares save output with the captured disk bytes
+// without reading or writing the current file.
+func (doc *Document) SaveDiffersFromSnapshot() (bool, error) {
+	data, err := doc.encodeForSave(doc.Editor.String())
+	if err != nil {
+		return false, err
+	}
+	return !bytes.Equal(data, doc.savedDisk), nil
+}
+
+func (doc *Document) encodeForSave(value string) ([]byte, error) {
+	physical, err := doc.physicalValue(value)
+	if err != nil {
+		return nil, err
+	}
+	return encodeText(physical, doc.encoding)
 }
 
 func writeAtomic(path string, data []byte) (err error) {

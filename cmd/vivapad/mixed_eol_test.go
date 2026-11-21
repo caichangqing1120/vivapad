@@ -126,7 +126,7 @@ func TestMixedEOLBytePositionsAndMarkedLineClipboard(t *testing.T) {
 	if !doc.MixedLineEndings() || nppBytePosition(doc, 2) != 5 || nppBytePosition(doc, 4) != 7 || nppBytePosition(doc, 6) != 9 {
 		t.Fatalf("NPP mixed byte positions = %d,%d,%d", nppBytePosition(doc, 2), nppBytePosition(doc, 4), nppBytePosition(doc, 6))
 	}
-	if got := runeFromNPPPosition(doc, 7); got != 4 {
+	if got := nppSelectionAt(doc, 7, 7).Start; got != 4 {
 		t.Fatalf("mixed byte-to-rune position = %d", got)
 	}
 	state.setBookmarkLines(doc, []int{0, 1, 2})

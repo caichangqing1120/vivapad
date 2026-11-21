@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/hashops"
 )
 
@@ -104,7 +104,7 @@ func TestHashTextDialogUpdatesPerLineAndCopiesWithoutEditing(t *testing.T) {
 	if driver.Clipboard() != state.hashResult || state.space.Current().Editor.String() != "" {
 		t.Fatalf("copy hash result = %q editor=%q", driver.Clipboard(), state.space.Current().Editor.String())
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil || state.hashDialogOpen {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.hashDialogOpen {
 		t.Fatalf("Escape did not close text hash dialog: %v", err)
 	}
 }
@@ -190,10 +190,10 @@ func TestHashFileResultsScrollWithoutMovingDocument(t *testing.T) {
 		return result.String()
 	}
 	before := visible()
-	if err := driver.Scroll(ui.ScrollEvent{X: 320, Y: 190, DeltaY: 240}); err != nil {
+	if err := driver.Scroll(gfx.ScrollEvent{X: 320, Y: 190, DeltaY: 240}); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Scroll(ui.ScrollEvent{X: 320, Y: 190, DeltaY: 240}); err != nil {
+	if err := driver.Scroll(gfx.ScrollEvent{X: 320, Y: 190, DeltaY: 240}); err != nil {
 		t.Fatal(err)
 	}
 	after := visible()

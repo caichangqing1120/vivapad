@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -61,7 +61,7 @@ func TestHideLinesShareCloneAndClearAfterEdit(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []ui.ID{hideLineScope.At(0), rightHideLineScope.At(0)} {
+	for _, id := range []gfx.ID{hideLineScope.At(0), rightHideLineScope.At(0)} {
 		found := false
 		for _, hit := range driver.Snapshot().Hits {
 			found = found || hit.ID == id

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestNavigateFindMarksFollowsSourceBoundariesAndWraps(t *testing.T) {
@@ -71,7 +71,7 @@ func TestCompactSearchMenuFindMarkJumpAndEscape(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, menuItemScope.At(22))
+	clickID(t, driver, searchCommandID(t, "Jump Down"))
 	if !state.markJumpMenuOpen || state.markJumpPrevious {
 		t.Fatalf("Jump Down submenu: open=%v previous=%v", state.markJumpMenuOpen, state.markJumpPrevious)
 	}
@@ -87,11 +87,11 @@ func TestCompactSearchMenuFindMarkJumpAndEscape(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, menuItemScope.At(21))
+	clickID(t, driver, searchCommandID(t, "Jump Up"))
 	if !state.markJumpMenuOpen || !state.markJumpPrevious {
 		t.Fatal("Jump Up submenu missing")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil || state.markJumpMenuOpen || state.menuOpen != 2 {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.markJumpMenuOpen || state.menuOpen != 2 {
 		t.Fatalf("Escape did not dismiss only nested menu: %v submenu=%v menu=%d", err, state.markJumpMenuOpen, state.menuOpen)
 	}
 }

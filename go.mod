@@ -11,14 +11,19 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/rivo/uniseg v0.4.7
-	github.com/vivaui/viva v0.3.1-0.20261106090526-95ea45924f8e
+	github.com/vivaui/viva v0.6.7
 	golang.org/x/image v0.12.0
-	golang.org/x/sys v0.27.0
-	golang.org/x/text v0.43.0
+	golang.org/x/sys v0.50.0
+	golang.org/x/text v0.44.0
 )
 
-replace github.com/vivaui/viva => github.com/caichangqing1120/viva v0.2.2-0.20261109173254-ac36aac4a2cc
+replace github.com/vivaui/viva => github.com/caichangqing1120/viva v0.6.1-0.20261121100254-94e7042e6d27
 
 require (
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
+	github.com/dsnet/compress v0.0.0-20171208185109-cc9eb1d7ad76 // indirect
+	github.com/gabstv/go-bsdiff v1.0.5 // indirect
+	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 )
+
+tool github.com/vivaui/viva/cmd/viva

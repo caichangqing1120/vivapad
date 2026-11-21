@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -142,13 +142,13 @@ func TestViewTabMenuAllCommandsReachableAtCompactSize(t *testing.T) {
 	clickID(t, driver, menuItemScope.At(10))
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == viewTabScope.At(0) {
-			if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
 				t.Fatal(err)
 			}
 			if state.viewTabOffset == 0 {
 				t.Fatal("Tab submenu did not respond to the wheel")
 			}
-			if err := driver.Scroll(ui.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: -120}); err != nil {
+			if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 20, Y: hit.Bounds.Y + 8, DeltaY: -120}); err != nil {
 				t.Fatal(err)
 			}
 			if state.viewTabOffset != 0 {
@@ -186,7 +186,7 @@ func TestViewTabMenuAllCommandsReachableAtCompactSize(t *testing.T) {
 	if state.space.Current() != state.space.Documents[2] {
 		t.Fatal("compact 9th Tab did not select the last document")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 }

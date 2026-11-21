@@ -54,13 +54,7 @@ func (state *model) restoreClosed() {
 		return
 	}
 	entry := state.closedHistory[0]
-	var err error
-	if entry.Encoding.IsLegacy() {
-		err = state.space.OpenWithEncoding(entry.Path, entry.Encoding)
-	} else {
-		err = state.space.Open(entry.Path)
-	}
-	if err != nil {
+	if err := state.space.OpenRecorded(entry.Path, entry.Encoding); err != nil {
 		state.notice = "Cannot restore " + filepath.Base(entry.Path) + ": " + err.Error()
 		return
 	}

@@ -3,6 +3,7 @@ package document
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -47,7 +48,14 @@ func TestOpenSavePreservesCRLFAndBOM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0600 || doc.Dirty() {
+	if runtime.GOOS == "windows" {
+		// Go reports synthetic permission bits on Windows (0666, or 0444 while
+		// the read-only attribute is set), so POSIX privacy cannot be checked
+		// there; Save must leave the file writable instead.
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0200 == 0 || doc.Dirty() {
+			t.Fatalf("mode = %v; dirty = %v", info.Mode(), doc.Dirty())
+		}
+	} else if info.Mode().Perm() != 0600 || doc.Dirty() {
 		t.Fatalf("permissions = %v; dirty = %v", info.Mode().Perm(), doc.Dirty())
 	}
 }
@@ -130,6 +138,60 @@ func TestSaveRefusesToOverwriteExternallyChangedFile(t *testing.T) {
 	}
 	if output, err := os.ReadFile(path); err != nil || string(output) != "external" || !doc.Dirty() {
 		t.Fatalf("disk=%q, err=%v, dirty=%v", output, err, doc.Dirty())
+	}
+}
+
+func TestSaveChecksDiskBytesBeyondFirstBlock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shared.txt")
+	original := strings.Repeat("a", 100_000)
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.Editor.Insert("local ")
+	const suffix = "z"
+	external := original[:len(original)-len(suffix)] + suffix
+	if err := os.WriteFile(path, []byte(external), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Save(""); err == nil || !strings.Contains(err.Error(), "changed on disk") || !doc.Dirty() {
+		t.Fatalf("same-length disk edit did not stop Save: %v", err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != external {
+		t.Fatal("refused Save changed the external edit")
+	}
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Save(""); err != nil || doc.Dirty() {
+		t.Fatalf("restoring the original bytes should allow Save: %v", err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "local "+original {
+		t.Fatal("successful retry did not save the local edit")
+	}
+}
+
+func BenchmarkSaveRefusesGrownDiskFile(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "shared.txt")
+	if err := os.WriteFile(path, []byte("saved"), 0600); err != nil {
+		b.Fatal(err)
+	}
+	doc, err := Open(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	doc.Editor.Insert("local ")
+	if err := os.Truncate(path, 8<<20); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := doc.Save(""); err == nil || !strings.Contains(err.Error(), "changed on disk") {
+			b.Fatalf("grown file did not stop Save: %v", err)
+		}
 	}
 }
 
@@ -233,6 +295,64 @@ func TestSaveRejectsPathReplacedWithSymlink(t *testing.T) {
 	}
 	if value, _ := os.ReadFile(target); string(value) != "external" || !doc.Dirty() {
 		t.Fatalf("target=%q dirty=%v", value, doc.Dirty())
+	}
+}
+
+func TestSaveRefusesWhenTheOriginalDirectoryWasReplaced(t *testing.T) {
+	for _, useExplicitPath := range []bool{false, true} {
+		name := "implicit path"
+		if useExplicitPath {
+			name = "explicit original path"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			originalDir := filepath.Join(root, "original")
+			otherDir := filepath.Join(root, "other")
+			for _, dir := range []string{originalDir, otherDir} {
+				if err := os.Mkdir(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			path, other := filepath.Join(originalDir, "sample.txt"), filepath.Join(otherDir, "sample.txt")
+			for path, contents := range map[string]string{path: "original\r\n", other: "unrelated\r\n"} {
+				if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			doc, err := Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			boundPath := doc.Path
+			before := doc.DiskDigest()
+			doc.Editor.Insert("draft")
+			draft := doc.Editor.String()
+			moved := filepath.Join(root, "moved")
+			if err := os.Rename(originalDir, moved); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(otherDir, originalDir); err != nil {
+				if os.IsPermission(err) {
+					t.Skipf("directory symlinks unavailable: %v", err)
+				}
+				t.Fatal(err)
+			}
+			destination := ""
+			if useExplicitPath {
+				destination = boundPath
+			}
+			if err := doc.Save(destination); err == nil {
+				t.Fatal("save followed the replaced original directory")
+			}
+			if doc.Path != boundPath || doc.DiskDigest() != before || doc.Editor.String() != draft || !doc.Dirty() {
+				t.Fatal("rejected save changed the document or saved baseline")
+			}
+			for path, want := range map[string]string{filepath.Join(moved, "sample.txt"): "original\r\n", other: "unrelated\r\n"} {
+				if got, err := os.ReadFile(path); err != nil || string(got) != want {
+					t.Fatalf("saved bytes at %q: %q, %v", path, got, err)
+				}
+			}
+		})
 	}
 }
 

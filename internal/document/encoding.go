@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -12,6 +13,15 @@ import (
 )
 
 type Encoding uint8
+
+// DecodeError identifies a file that was read but could not be decoded as text.
+type DecodeError struct {
+	Path string
+	Err  error
+}
+
+func (err *DecodeError) Error() string { return fmt.Sprintf("%s: %v", err.Path, err.Err) }
+func (err *DecodeError) Unwrap() error { return err.Err }
 
 const (
 	UTF8 Encoding = iota
@@ -77,6 +87,12 @@ func (doc *Document) Encoding() Encoding { return doc.encoding }
 
 func (doc *Document) SavedEncoding() Encoding { return doc.savedEncoding }
 
+// DecodeLegacyByte reports an independently valid, round-trippable text byte.
+func DecodeLegacyByte(format Encoding, value byte) (string, bool) {
+	decoded, _, err := decodeLegacy([]byte{value}, format)
+	return decoded, err == nil
+}
+
 func (doc *Document) EncodingLabel() string {
 	switch doc.encoding {
 	case UTF8BOM:
@@ -100,6 +116,35 @@ func legacyCodec(format Encoding) encoding.Encoding {
 	return nil
 }
 
+func encodeLegacy(value string, format Encoding) ([]byte, error) {
+	codec := legacyCodec(format)
+	if codec == nil {
+		return nil, fmt.Errorf("unsupported text encoding %d", format)
+	}
+	encode, decode := legacyConverters(format, codec)
+	return encodeLegacyChecked([]byte(value), formatLabel(format), encode, decode)
+}
+
+func legacyConverters(format Encoding, codec encoding.Encoding) (encode, decode func([]byte) ([]byte, error)) {
+	if format == GB18030 {
+		return encodeGB18030, decodeGB18030
+	}
+	return codec.NewEncoder().Bytes, codec.NewDecoder().Bytes
+}
+
+func encodeLegacyChecked(input []byte, label string, encode, decode func([]byte) ([]byte, error)) ([]byte, error) {
+	data, err := encode(input)
+	if err != nil {
+		return nil, fmt.Errorf("cannot save text as %s: %w", label, err)
+	}
+	// A successful backend conversion can still map to different Unicode text.
+	decoded, err := decode(data)
+	if err != nil || !bytes.Equal(decoded, input) {
+		return nil, fmt.Errorf("cannot save text as %s without changing Unicode text", label)
+	}
+	return data, nil
+}
+
 func decodeLegacy(data []byte, format Encoding) (string, Encoding, error) {
 	codec := legacyCodec(format)
 	if codec == nil {
@@ -108,11 +153,12 @@ func decodeLegacy(data []byte, format Encoding) (string, Encoding, error) {
 	if bytes.IndexByte(data, 0) >= 0 {
 		return "", 0, errors.New("binary NUL in text")
 	}
-	decoded, err := codec.NewDecoder().Bytes(data)
+	encode, decode := legacyConverters(format, codec)
+	decoded, err := decode(data)
 	if err != nil {
 		return "", 0, err
 	}
-	encoded, err := codec.NewEncoder().Bytes(decoded)
+	encoded, err := encode(decoded)
 	if err != nil || !bytes.Equal(encoded, data) {
 		return "", 0, fmt.Errorf("invalid or non-round-trippable %s text", formatLabel(format))
 	}
@@ -168,7 +214,18 @@ func decodeText(data []byte) (string, Encoding, error) {
 	return string(utf16.Decode(units)), encoding, nil
 }
 
+func validateOutputText(value string) error {
+	// The text decoders refuse NUL. Do not write a file they cannot reopen.
+	if strings.IndexByte(value, 0) >= 0 {
+		return errors.New("text contains a binary NUL; remove it before saving")
+	}
+	return nil
+}
+
 func encodeText(value string, encoding Encoding) ([]byte, error) {
+	if err := validateOutputText(value); err != nil {
+		return nil, err
+	}
 	switch encoding {
 	case UTF8BOM:
 		return append([]byte{0xef, 0xbb, 0xbf}, value...), nil
@@ -186,16 +243,11 @@ func encodeText(value string, encoding Encoding) ([]byte, error) {
 		}
 		return data, nil
 	case UTF8:
+		if strings.HasPrefix(value, "\ufeff") {
+			return nil, errors.New("Use UTF-8 BOM to keep leading U+FEFF")
+		}
 		return []byte(value), nil
 	default:
-		codec := legacyCodec(encoding)
-		if codec == nil {
-			return nil, fmt.Errorf("unsupported text encoding %d", encoding)
-		}
-		data, err := codec.NewEncoder().Bytes([]byte(value))
-		if err != nil {
-			return nil, fmt.Errorf("cannot save text as %s: %w", formatLabel(encoding), err)
-		}
-		return data, nil
+		return encodeLegacy(value, encoding)
 	}
 }

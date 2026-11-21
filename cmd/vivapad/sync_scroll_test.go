@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -36,7 +36,7 @@ func syncScrollDriver(t *testing.T) (*model, *app.Driver, *document.Document, *d
 	return state, driver, left, right
 }
 
-func syncScrollHit(t *testing.T, driver *app.Driver, id ui.ID) ui.Rect {
+func syncScrollHit(t *testing.T, driver *app.Driver, id gfx.ID) gfx.Rect {
 	t.Helper()
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == id {
@@ -51,7 +51,7 @@ func syncScrollHit(t *testing.T, driver *app.Driver, id ui.ID) ui.Rect {
 		}
 	}
 	t.Fatalf("missing scroll hit %v", id)
-	return ui.Rect{}
+	return gfx.Rect{}
 }
 
 func TestSynchronizedScrollingPreservesOffsetsAndRoutesBothViews(t *testing.T) {
@@ -85,14 +85,14 @@ func TestSynchronizedScrollingPreservesOffsetsAndRoutesBothViews(t *testing.T) {
 		t.Fatal("horizontal toggle snapped previously independent views")
 	}
 	leftBounds := syncScrollHit(t, driver, editorID)
-	if err := driver.Scroll(ui.ScrollEvent{X: leftBounds.X + 30, Y: leftBounds.Y + 50, DeltaY: 120}); err != nil {
+	if err := driver.Scroll(gfx.ScrollEvent{X: leftBounds.X + 30, Y: leftBounds.Y + 50, DeltaY: 120}); err != nil {
 		t.Fatal(err)
 	}
 	if main.ScrollY() <= 200 || main.ScrollY()-sub.ScrollY() != 120 || main.ScrollX()-sub.ScrollX() != 60 {
 		t.Fatalf("left wheel offsets: main=(%v,%v) sub=(%v,%v)", main.ScrollX(), main.ScrollY(), sub.ScrollX(), sub.ScrollY())
 	}
 	rightBounds := syncScrollHit(t, driver, rightEditorID)
-	if err := driver.Scroll(ui.ScrollEvent{X: rightBounds.X + 30, Y: rightBounds.Y + 50, DeltaX: 120}); err != nil {
+	if err := driver.Scroll(gfx.ScrollEvent{X: rightBounds.X + 30, Y: rightBounds.Y + 50, DeltaX: 120}); err != nil {
 		t.Fatal(err)
 	}
 	if sub.ScrollX() <= 40 || main.ScrollX()-sub.ScrollX() != 60 || main.ScrollY()-sub.ScrollY() != 120 {

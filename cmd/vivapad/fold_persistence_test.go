@@ -3,9 +3,12 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/components"
 	"vivapad/internal/recovery"
 	"vivapad/internal/session"
 )
@@ -53,6 +56,172 @@ func TestFoldStatePrivateSessionChecksDiskAndDirtyRecoveryRestores(t *testing.T)
 	changed := newStartupModel(nil, sessionPath)
 	if len(changed.foldRanges(changed.space.Current())) != 0 || changed.space.Current().Editor.String() != value+"changed\n" {
 		t.Fatal("stale fold state was applied to changed disk content")
+	}
+}
+
+func TestIntelHEXFoldStateRestoresFromSessionWithoutEditing(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "address.HEX")
+	sessionPath := filepath.Join(root, "settings", "session.json")
+	const original = ":020000040002F8\r\n:0100000001FE\r\n:00000001FF\r\n"
+	const text = ":020000040002F8\n:0100000001FE\n:00000001FF\n"
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newStartupModel([]string{path}, sessionPath)
+	state.command("Fold All")
+	doc := state.space.Current()
+	if got := state.foldRanges(doc); len(got) != 1 || got[0].Header != 0 || got[0].LastLine != 1 {
+		t.Fatalf("Intel HEX fold ranges = %+v", got)
+	}
+	exported, err := state.nppSessionState()
+	if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != "ihex" ||
+		len(exported.Main[0].Folds) != 1 || exported.Main[0].Folds[0] != 0 {
+		t.Fatalf("NPP HEX fold export = %+v, %v", exported, err)
+	}
+	newConfig(state).OnCloseRequest(func() {})
+	restarted := newStartupModel(nil, sessionPath)
+	doc = restarted.space.Current()
+	if got := restarted.foldRanges(doc); len(got) != 1 || got[0].Header != 0 || got[0].LastLine != 1 {
+		t.Fatalf("restored HEX fold = %+v, notice=%q", got, restarted.notice)
+	}
+	restarted.command("Normal Text")
+	if got := restarted.foldRanges(doc); len(got) != 0 || doc.Dirty() || doc.Editor.CanUndo() || doc.Editor.String() != text {
+		t.Fatal("explicit plain text did not clear the fold without editing")
+	}
+	if value, err := os.ReadFile(path); err != nil || string(value) != original {
+		t.Fatalf("folding modified CRLF bytes: %q, %v", value, err)
+	}
+}
+
+func TestInnoSetupFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.ISS", "inno",
+		"\xef\xbb\xbf[Setup]\r\nAppName=Demo\r\n[Files]\r\nSource: data.txt\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 1}, {Header: 2, LastLine: 3}},
+		[]string{"AppName=Demo", "Source: data.txt"})
+}
+
+func TestCSoundFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "score.CSD", "csound",
+		"\xef\xbb\xbfinstr 1\r\n  a1 oscil .5, p4\r\nendin\r\ninstr 2\r\n  out a1\r\nendin\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"a1 oscil .5", "out a1"})
+}
+
+func TestREBOLFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.R3", "rebol",
+		"\xef\xbb\xbfREBOL [\r\n  Title: \"demo\"\r\n]\r\nmain: [\r\n  print {inside [ignored]}\r\n]\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"Title:", "inside [ignored]"})
+}
+
+func TestAviSynthFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.AVSI", "avs",
+		"\xef\xbb\xbffunction demo() {\r\n  return BlankClip()\r\n}\r\n[* outer\r\n  [* nested *] still comment\r\n*]\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"return BlankClip()", "still comment"})
+}
+
+func TestFreeBasicFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.BI", "freebasic",
+		"\xef\xbb\xbfSub Demo()\r\n  Print &h2a\r\nEnd Sub\r\nType Packet\r\n  value As Integer\r\nEnd Type\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"Print &h2a", "value As Integer"})
+}
+
+func TestOScriptFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.OSX", "oscript",
+		"\xef\xbb\xbfInteger Function Demo()\r\n  Echo(42)\r\nEnd\r\n#ifdef DOC\r\n  documentation\r\n#endif\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"Echo(42)", "documentation"})
+}
+
+func TestPureBasicFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.PB", "purebasic",
+		"\xef\xbb\xbfProcedure Demo()\r\n  Debug $2a\r\nEndProcedure\r\nStructure Record\r\n  count.i\r\nEndStructure\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 2}, {Header: 3, LastLine: 5}},
+		[]string{"Debug $2a", "count.i"})
+}
+
+func TestGui4CliFoldingRestoresSessionsAndExpandsInCompactEditor(t *testing.T) {
+	checkLanguageFoldingRoundTrip(t, "script.GUI", "gui4cli",
+		"\xef\xbb\xbfWindow Demo\r\n  Say ready\r\nXONLOAD\r\n  Say loaded\r\n",
+		[]components.CodeEditorFoldRange{{Header: 0, LastLine: 1}, {Header: 2, LastLine: 3}},
+		[]string{"Say ready", "Say loaded"})
+}
+
+func checkLanguageFoldingRoundTrip(t *testing.T, name, language, original string, want []components.CodeEditorFoldRange, bodies []string) {
+	t.Helper()
+	root := t.TempDir()
+	path, sessionPath := filepath.Join(root, name), filepath.Join(root, "session.json")
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newStartupModel([]string{path}, sessionPath)
+	doc := state.space.Current()
+	before := doc.Editor.String()
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(3))
+	revealViewMenuItem(t, driver, 11)
+	clickID(t, driver, menuItemScope.At(11))
+	if got := state.foldRanges(doc); !slices.Equal(got, want) {
+		t.Fatalf("%s Fold All = %+v, want %+v", language, got, want)
+	}
+	for _, label := range driver.Snapshot().Texts {
+		for _, body := range bodies {
+			if strings.Contains(label.Value, body) {
+				t.Fatalf("painted a collapsed body: %q", label.Value)
+			}
+		}
+	}
+	clickID(t, driver, leftFoldScope.At(0))
+	if got := state.foldRanges(doc); !slices.Equal(got, want[1:]) {
+		t.Fatalf("gutter expansion changed the other section: %+v", got)
+	}
+	clickID(t, driver, leftFoldScope.At(0))
+	if doc.Dirty() || doc.Editor.CanUndo() || doc.Editor.String() != before {
+		t.Fatal("folding changed buffer content or history")
+	}
+	exported, err := state.nppSessionState()
+	headers := make([]int, 0, len(want))
+	for _, region := range want {
+		headers = append(headers, region.Header)
+	}
+	if err != nil || len(exported.Main) != 1 || exported.Main[0].Language != language || !slices.Equal(exported.Main[0].Folds, headers) {
+		t.Fatalf("NPP %s fold export = %+v, %v", language, exported, err)
+	}
+	newConfig(state).OnCloseRequest(func() {})
+	reopened := newStartupModel(nil, sessionPath)
+	if got := reopened.foldRanges(reopened.space.Current()); !slices.Equal(got, want) {
+		t.Fatalf("private %s fold restore = %+v; %q", language, got, reopened.notice)
+	}
+	xmlPath := filepath.Join(root, "session.xml")
+	if err := session.SaveNPP(xmlPath, exported); err != nil {
+		t.Fatal(err)
+	}
+	loaded, loader := startDriver(t)
+	if err := loader.QueueOpenFiles([]string{xmlPath}, nil); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, loader, menuScope.At(0))
+	clickID(t, loader, menuItemScope.At(13))
+	clickID(t, loader, sessionScope.At(0))
+	if got := loaded.foldRanges(loaded.space.Current()); !slices.Equal(got, want) {
+		t.Fatalf("NPP %s fold import = %+v; %q", language, got, loaded.notice)
+	}
+	loaded.command("Unfold All")
+	if doc := loaded.space.Current(); len(loaded.foldRanges(doc)) != 0 || doc.Dirty() || doc.Editor.String() != before || doc.Editor.CanUndo() {
+		t.Fatal("Unfold All changed source or history")
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != original {
+		t.Fatalf("%s folding changed the saved bytes: %q, %v", language, data, err)
 	}
 }
 

@@ -1,0 +1,28 @@
+break breakif by case continue continueif default downto else elseif
+end for goto if in repeat switch to until while
+function return void dll inbyref inout linked nodebug super this
+xcmd xfcn
+
+false true undefined booleantype bytestype datatype dynamictype errortype externtype integertype
+listtype longtype objecttype objreftype pointtype realtype scripttype stringtype undefinedtype voidtype
+
+and eq ge gt le lt ne not or xor
+
+assoc boolean bytes date dynamic error extern file integer list
+long object point real recarray record script string cachetree capiconnect
+capierr capilog capilogin compiler dapisession dapinode dapiversion dapistream filecopy fileprefs
+frame javaobject mailmessage pop3session smtpsession ssloptions patfind patchange regex socket
+sqlconnection sqlcursor uapisession uapiuser wapisession wapimap wapimaptask wapiwork wapisubwork domattr
+domcdatasection domcharacterdata domcomment domdocument domdocumentfragment domdocumenttype domelement domentity domentityreference domimplementation
+domnamednodemap domnode domnodelist domnotation domparser domprocessinginstruction domtext saxparser xslprocessor
+
+datatypename echo echodebug echoerror echoinfo echostamp echowarn getfeatures isdefined iserror
+isfeature isinvokable isnoterror isnotset isobject isset isundefined length nparameters parameters
+pointh pointv type
+
+cachetree capiconnect capierr capilog capilogin compiler dapisession dapinode dapiversion dapistream
+filecopy fileprefs frame javaobject mailmessage pop3session smtpsession ssloptions patfind patchange
+regex socket sqlconnection sqlcursor uapisession uapiuser wapisession wapimap wapimaptask wapiwork
+wapisubwork domattr domcdatasection domcharacterdata domcomment domdocument domdocumentfragment domdocumenttype domelement domentity
+domentityreference domimplementation domnamednodemap domnode domnodelist domnotation domparser domprocessinginstruction domtext saxparser
+xslprocessor

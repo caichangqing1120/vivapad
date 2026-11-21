@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/macro"
 )
@@ -121,7 +121,7 @@ func TestMacroDialogCancelAndReadOnlySplitPreserveDocuments(t *testing.T) {
 	state.macroLast = []macro.Step{{Kind: macro.TextStep, TextKind: app.TextInsert, Text: "!"}}
 	clickID(t, driver, menuScope.At(8))
 	clickLabeledControl(t, driver, "Run a Macro Multiple Times...")
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if left.Editor.String() != "left" || right.Editor.String() != "right" {

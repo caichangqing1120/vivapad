@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestLineOperationsMenuSortsSelectionAndUndoes(t *testing.T) {
@@ -54,7 +54,7 @@ func TestLineOperationsSubmenuEscapeLeavesTextUntouched(t *testing.T) {
 	}
 	clickID(t, driver, menuScope.At(1))
 	clickID(t, driver, menuItemScope.At(10))
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.lineMenuOpen || state.space.Current().Editor.String() != "z\na" {

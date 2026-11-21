@@ -58,6 +58,43 @@ func TestPortalPrintResultUsesPhysicalPageSelectionAndDisjointRanges(t *testing.
 	}
 }
 
+func TestPortalPrintRejectsRangeEndingAfterLastPage(t *testing.T) {
+	// The portal can return syntactically valid ranges before VivaPad paginates
+	// against its chosen printer. The second range asks for a page we don't have.
+	ranges, err := parsePortalRanges("0,2-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages := []Page{{Number: 1}, {Number: 2}, {Number: 3}, {Number: 4}}
+	if selected, err := SelectPageRanges(pages, ranges); err == nil || len(selected) != 0 {
+		t.Fatalf("out-of-bounds portal range was accepted: pages=%v, err=%v", selected, err)
+	}
+	if all, err := SelectPages(pages, 1, maxPrintPages); err != nil || !reflect.DeepEqual(all, pages) {
+		t.Fatalf("default print-all bounds changed: pages=%v, err=%v", all, err)
+	}
+}
+
+func TestPortalPrintResolvesUnsortedRangesAndThroughLastPage(t *testing.T) {
+	// GTK preserves input order and encodes "4-, 2" as zero-based "3--1,1".
+	ranges, err := parsePortalRanges("3--1,1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages := []Page{{Number: 1}, {Number: 2}, {Number: 3}, {Number: 4}, {Number: 5}}
+	selected, err := SelectPageRanges(pages, ranges)
+	if want := []Page{pages[1], pages[3], pages[4]}; err != nil || !reflect.DeepEqual(selected, want) {
+		t.Fatalf("selected pages = %+v, %v; want %+v", selected, err, want)
+	}
+	if selected, err := SelectPageRanges(pages[:3], ranges); err == nil || len(selected) != 0 {
+		t.Fatalf("range starts past end: selected=%+v, err=%v", selected, err)
+	}
+	for _, value := range []string{"3--1,4", "3--1,2-4", "2--2", "1-3,0-1"} {
+		if ranges, err := parsePortalRanges(value); err == nil || len(ranges) != 0 {
+			t.Errorf("accepted invalid portal ranges %q: %+v, %v", value, ranges, err)
+		}
+	}
+}
+
 func TestPortalPrintSelectionAndLandscapeMargins(t *testing.T) {
 	job := Job{Interactive: true, Text: "alpha", Selection: text.Span{Start: 0, End: 3}}
 	result, err := parsePortalPrintResult(job, map[string]any{

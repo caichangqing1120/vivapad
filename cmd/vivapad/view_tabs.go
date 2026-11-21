@@ -3,7 +3,7 @@ package main
 import (
 	"slices"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -95,7 +95,7 @@ func (state *model) moveViewTab(command string) {
 	state.tabActive = -1
 }
 
-func (state *model) paintViewTabMenu(canvas *ui.Canvas, size ui.Size, parentRight float32) {
+func (state *model) paintViewTabMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
 	width := min(float32(260), size.Width-parentRight-4)
 	available := size.Height - menuHeight - statusHeight - 8
 	rowHeight := float32(24)
@@ -115,14 +115,14 @@ func (state *model) paintViewTabMenu(canvas *ui.Canvas, size ui.Size, parentRigh
 	x := parentRight
 	y := min(menuHeight+4+10*27, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	panel := ui.Rect{X: x, Y: y, Width: width, Height: height}
+	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
 	canvas.Border(panel, 1, palette.border, palette.white)
-	canvas.HitWithOptions(viewTabPanelID, panel, "Tab commands", ui.HitOptions{Role: ui.RoleMenu})
+	canvas.HitWithOptions(viewTabPanelID, panel, "Tab commands", gfx.HitOptions{Role: gfx.RoleMenu})
 	if scrolling {
-		previous := ui.Rect{X: x + 4, Y: y + 4, Width: width - 8, Height: 22}
-		next := ui.Rect{X: x + 4, Y: y + height - 26, Width: width - 8, Height: 22}
-		canvas.DrawIcon(upIcon, ui.Rect{X: previous.X + previous.Width/2 - 8, Y: previous.Y + 3, Width: 16, Height: 16}, palette.muted)
-		canvas.DrawIcon(downIcon, ui.Rect{X: next.X + next.Width/2 - 8, Y: next.Y + 3, Width: 16, Height: 16}, palette.muted)
+		previous := gfx.Rect{X: x + 4, Y: y + 4, Width: width - 8, Height: 22}
+		next := gfx.Rect{X: x + 4, Y: y + height - 26, Width: width - 8, Height: 22}
+		canvas.DrawIcon(upIcon, gfx.Rect{X: previous.X + previous.Width/2 - 8, Y: previous.Y + 3, Width: 16, Height: 16}, palette.muted)
+		canvas.DrawIcon(downIcon, gfx.Rect{X: next.X + next.Width/2 - 8, Y: next.Y + 3, Width: 16, Height: 16}, palette.muted)
 		if hitButton(canvas, viewTabPreviousID, previous, "Previous tab commands") {
 			state.viewTabOffset = max(0, state.viewTabOffset-1)
 		}
@@ -134,7 +134,7 @@ func (state *model) paintViewTabMenu(canvas *ui.Canvas, size ui.Size, parentRigh
 	for row := range visible {
 		index := state.viewTabOffset + row
 		command := viewTabCommands[index]
-		item := ui.Rect{X: x + 4, Y: y + 4 + controls/2 + float32(row)*rowHeight, Width: width - 8, Height: rowHeight}
+		item := gfx.Rect{X: x + 4, Y: y + 4 + controls/2 + float32(row)*rowHeight, Width: width - 8, Height: rowHeight}
 		id := viewTabScope.At(index)
 		if canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
@@ -145,8 +145,8 @@ func (state *model) paintViewTabMenu(canvas *ui.Canvas, size ui.Size, parentRigh
 			state.tabColorMenuRow(canvas, item, command, checked)
 			left = 28
 		}
-		smallLabel(canvas, command, ui.Rect{X: item.X + left, Y: item.Y, Width: item.Width - left - 9, Height: item.Height}, palette.text, 11)
-		canvas.HitWithOptions(id, item, command, ui.HitOptions{Role: ui.RoleMenuItem, Checked: checked})
+		smallLabel(canvas, command, gfx.Rect{X: item.X + left, Y: item.Y, Width: item.Width - left - 9, Height: item.Height}, palette.text, 11)
+		canvas.HitWithOptions(id, item, command, gfx.HitOptions{Role: gfx.RoleMenuItem, Checked: checked})
 		if canvas.Clicked(id) {
 			selected = index
 		}

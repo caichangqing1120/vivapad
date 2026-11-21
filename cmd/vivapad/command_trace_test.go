@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestFindPreviousButtonMenuAndShortcutWrap(t *testing.T) {
@@ -22,11 +22,11 @@ func TestFindPreviousButtonMenuAndShortcutWrap(t *testing.T) {
 		t.Fatalf("previous button did not wrap: %+v", got)
 	}
 	clickID(t, driver, menuScope.At(2))
-	clickID(t, driver, menuItemScope.At(2))
+	clickID(t, driver, searchCommandID(t, "Find Previous"))
 	if got := doc.Editor.Selection(); got != (text.Range{Start: 0, End: 3}) {
 		t.Fatalf("previous menu did not move back: %+v", got)
 	}
-	if err := driver.Key(ui.KeyF3, ui.ModifierShift); err != nil {
+	if err := driver.Key(gfx.KeyF3, gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	if got := doc.Editor.Selection(); got != (text.Range{Start: 8, End: 11}) {

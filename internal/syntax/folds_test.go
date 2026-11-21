@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -40,5 +41,92 @@ func TestFoldRegionsFollowPythonIndentationAndSkipBlankComments(t *testing.T) {
 	}
 	if got := FoldRegions(".html", "<div>\n  body\n</div>"); len(got) != 0 {
 		t.Fatalf("unsupported grammar advertised folds: %+v", got)
+	}
+}
+
+func TestInnoSetupFoldRegionsFollowRecognizedSections(t *testing.T) {
+	lines := []string{
+		"preamble",
+		"[Setup]", // An adjacent recognized section leaves it empty.
+		"\t[cOdE]",
+		"(*",
+		"[Files]", // Comment text does not end the Code section.
+		"*)",
+		"begin",
+		"end;",
+		"[Unknown]",
+		"[Setup",
+		"[Files]",
+		`Source: "data.txt"; DestDir: {app}`,
+		"",
+		"[Run]", // EOF without a body must not produce a fold.
+	}
+	want := []FoldRegion{{Header: 2, LastLine: 9, Level: 1}, {Header: 10, LastLine: 12, Level: 1}}
+	for _, eol := range []string{"\n", "\r\n", "\r"} {
+		for _, terminator := range []string{"", eol} {
+			value := strings.Join(lines, eol) + terminator
+			if got := FoldRegions(".ISS", value); !reflect.DeepEqual(got, want) {
+				t.Errorf("Inno folds with EOL %q and terminator %q = %+v, want %+v", eol, terminator, got, want)
+			}
+			if got := FoldRegions("", value); len(got) != 0 {
+				t.Fatalf("Normal Text applied Inno folds: %+v", got)
+			}
+		}
+	}
+}
+
+func TestIntelHEXFoldRegionsFollowExtendedAddresses(t *testing.T) {
+	value := strings.Join([]string{
+		"preamble",
+		":0100000001FE",
+		":020000020100FB",
+		":0100000001FE",
+		"",
+		"non-record between data lines",
+		":0100010002FC",
+		":0400000500000000F7",
+		":0100000001FE",
+		":020000040002F8",
+		":02000004",
+		":0100000001FE",
+		":020000040003F7",
+		":0100000001FE",
+		"", // The terminal newline does not add a folded child.
+	}, "\n")
+	want := []FoldRegion{{Header: 2, LastLine: 6, Level: 1}, {Header: 12, LastLine: 13, Level: 1}}
+	if got := FoldRegions(".HEX", value); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Intel HEX fold regions = %+v, want %+v", got, want)
+	}
+	for _, mode := range []string{"", ".srec", ".tek"} {
+		if got := FoldRegions(mode, value); len(got) > 0 {
+			t.Fatalf("mode %q unexpectedly folded Intel HEX: %+v", mode, got)
+		}
+	}
+}
+
+func TestIntelHEXFoldRegionsRequireCompleteAddressRecords(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		header string
+		fold   bool
+	}{
+		{"missing checksum padded with spaces", ":020000040002  ", false},
+		{"incomplete checksum", ":020000040002F ", false},
+		{"nonhex address", ":02oops040002F8", false},
+		{"extra segment address byte", ":020000020100FB00", false},
+		{"invalid suffix after linear address", ":020000040002F8oops", false},
+		{"well formed checksum mismatch", ":02000004000200", true},
+		{"complete segment address", "\t:020000020100fb", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			text := test.header + "\n:0100000001FE\n:00000001FF\n"
+			var want []FoldRegion
+			if test.fold {
+				want = []FoldRegion{{Header: 0, LastLine: 1, Level: 1}}
+			}
+			if got := FoldRegions(".hex", text); !reflect.DeepEqual(got, want) {
+				t.Fatalf("Intel HEX fold regions = %+v, want %+v", got, want)
+			}
+		})
 	}
 }

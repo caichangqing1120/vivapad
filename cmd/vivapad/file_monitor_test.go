@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,8 +9,8 @@ import (
 	"time"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 	"vivapad/internal/session"
 )
@@ -83,6 +84,104 @@ func TestFileMonitorSignalsAppendReplaceAndPersistentDeletion(t *testing.T) {
 	case <-wake:
 		t.Fatal("closed monitor retained a live wake")
 	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestMonitoringKeepsUnchangedBindingAndReloadsSameLengthEdits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "current.log")
+	before := bytes.Repeat([]byte("start\r\n"), 12_000)
+	if err := os.WriteFile(path, before, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{path})
+	doc := state.space.Current()
+	state.toggleMonitoring()
+	t.Cleanup(state.stopAllMonitors)
+	watcher := state.monitors[doc]
+	if watcher == nil {
+		t.Fatalf("monitoring did not start: %q", state.notice)
+	}
+	doc.Editor.MoveTo(2, false)
+	watcher.changed.Store(true)
+	state.consumeMonitorChanges()
+	if state.space.Current() != doc || doc.Editor.Caret() != 2 {
+		t.Fatal("unchanged bytes replaced the document or moved the caret")
+	}
+	before[len(before)-3] = '!'
+	if err := os.WriteFile(path, before, 0600); err != nil {
+		t.Fatal(err)
+	}
+	watcher.changed.Store(true)
+	state.consumeMonitorChanges()
+	updated := state.space.Current()
+	if updated == doc || !strings.HasSuffix(updated.Editor.String(), "star!\n") ||
+		updated.Editor.Caret() != updated.Editor.RuneCount() || state.monitors[updated] != watcher {
+		t.Fatal("monitor failed to reload the same-length edit and follow its end")
+	}
+}
+
+func TestMonitoringStopsWhenItsCanonicalPathIsRedirected(t *testing.T) {
+	root := t.TempDir()
+	path, target := filepath.Join(root, "current.log"), filepath.Join(root, "other.log")
+	if err := os.WriteFile(path, []byte("original\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("other\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{path})
+	doc, originalPath := state.space.Current(), state.space.Current().Path
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	state.toggleMonitoring()
+	watcher := state.monitors[doc]
+	if watcher == nil {
+		t.Fatalf("monitoring did not start: %q", state.notice)
+	}
+	if err := os.Rename(path, filepath.Join(root, "parked.log")); err != nil {
+		t.Fatal(err)
+	}
+	workspaceFixtureLink(t, target, path)
+	watcher.changed.Store(true)
+	state.consumeMonitorChanges()
+	if len(state.monitors) != 0 || !strings.Contains(state.notice, "Monitoring stopped") {
+		t.Errorf("redirect left the monitor active: %q", state.notice)
+	}
+	if state.space.Current() != doc || doc.Path != originalPath || doc.Editor.String() != "original\n" {
+		t.Fatal("monitor rebound the tab to a different file")
+	}
+}
+
+func BenchmarkMonitoringUnchangedNotification(b *testing.B) {
+	for _, tc := range []struct {
+		name string
+		size int
+	}{{"1MiB", 1 << 20}, {"16MiB", 16 << 20}} {
+		b.Run(tc.name, func(b *testing.B) {
+			path := filepath.Join(b.TempDir(), "current.log")
+			line := append(bytes.Repeat([]byte("x"), 127), '\n')
+			if err := os.WriteFile(path, bytes.Repeat(line, tc.size/len(line)), 0600); err != nil {
+				b.Fatal(err)
+			}
+			state := newModelWithFiles([]string{path})
+			doc := state.space.Current()
+			if doc.Path == "" {
+				b.Fatalf("fixture was not opened: %q", state.notice)
+			}
+			watcher := &fileMonitor{}
+			state.monitors = map[*document.Document]*fileMonitor{doc: watcher}
+			b.ReportAllocs()
+			for b.Loop() {
+				watcher.changed.Store(true)
+				state.consumeMonitorChanges()
+				if state.space.Current() != doc {
+					b.Fatal("unchanged bytes replaced the document")
+				}
+			}
+		})
 	}
 }
 
@@ -255,7 +354,7 @@ func TestMonitoringBackgroundLegacyReloadAndDecodeFailure(t *testing.T) {
 	if len(state.monitors) != 0 || state.isReadOnly(previous) {
 		t.Fatal("closing the window retained monitoring state")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -326,6 +425,60 @@ func TestMonitoringCompactMenuCheckedStateAndClose(t *testing.T) {
 	clickID(t, driver, menuItemScope.At(23))
 	if len(state.monitors) != 0 || state.isReadOnly(state.space.Current()) {
 		t.Fatal("View menu did not stop monitoring cleanly")
+	}
+}
+
+func TestMonitoringMenuStopReturnsInputToReloadedRightPane(t *testing.T) {
+	root := t.TempDir()
+	leftPath, rightPath := filepath.Join(root, "peer.txt"), filepath.Join(root, "tail.log")
+	for path, value := range map[string]string{leftPath: "peer", rightPath: "old\r\n"} {
+		if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := newModelWithFiles([]string{leftPath, rightPath})
+	left, right := state.space.Documents[0], state.space.Documents[1]
+	state.splitEnabled, state.activePane = true, 1
+	state.paneDocs = [2]*document.Document{left, right}
+	state.paneOwner[left], state.paneOwner[right] = 0, 1
+	state.space.Select(1)
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, rightEditorID)
+	toggle := func() {
+		clickID(t, driver, menuScope.At(3))
+		revealViewMenuItem(t, driver, 23)
+		clickID(t, driver, menuItemScope.At(23))
+	}
+	toggle()
+	const saved = "new\r\nlast"
+	if err := os.WriteFile(rightPath, []byte(saved), 0600); err != nil {
+		t.Fatal(err)
+	}
+	waitMonitorState(t, driver, func() bool { return state.space.Current().Editor.String() == "new\nlast" })
+	current := state.space.Current()
+	if current == right || state.paneDocs != ([2]*document.Document{left, current}) || !state.isReadOnly(current) || current.Editor.CanUndo() {
+		t.Fatal("reload did not bind a fresh, monitored history source to the right pane")
+	}
+	toggle()
+	if state.isReadOnly(current) || state.monitors[current] != nil || current.Editor.Caret() != current.Editor.RuneCount() {
+		t.Fatal("stopping monitoring changed the restored editor policy or caret")
+	}
+	requireEditorCommandFocus(t, driver, rightEditorID)
+	if err := driver.Type("x"); err != nil || current.Editor.String() != "new\nlastx" || left.Editor.String() != "peer" {
+		t.Fatalf("first edit after stopping monitoring: left=%q right=%q, %v", left.Editor.String(), current.Editor.String(), err)
+	}
+	if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || current.Editor.String() != "new\nlast" || current.Dirty() {
+		t.Fatalf("Undo after stopping monitoring: %q, %v", current.Editor.String(), err)
+	}
+	if bytes, err := os.ReadFile(rightPath); err != nil || string(bytes) != saved {
+		t.Fatalf("monitoring modified the file: %q, %v", bytes, err)
 	}
 }
 

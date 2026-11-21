@@ -1,0 +1,654 @@
+package main
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/text"
+	"vivapad/internal/document"
+	"vivapad/internal/session"
+)
+
+func TestFileCommandsDoNotPersistLegacyPreedit(t *testing.T) {
+	for _, command := range []string{"Save", "Save As...", "Save a Copy As...", "Cancel Save As", "Cancel Open"} {
+		t.Run(command, func(t *testing.T) {
+			root := t.TempDir()
+			source, target := filepath.Join(root, "source.txt"), filepath.Join(root, "target.txt")
+			const original = "one\r\ntwo\nthree"
+			if err := os.WriteFile(source, []byte(original), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			state := newStartupModel([]string{source}, "")
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer driver.Close()
+			clickID(t, driver, editorID)
+			doc := state.space.Current()
+			doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+			doc.Editor.Insert("!")
+			doc.Editor.SetSelection(text.Range{Start: 8, End: 4})
+			input := documentCompositionInput(t, state, 0)
+			if next, err := input.OnEvent(app.TextEvent{Kind: app.TextSetMarked, Text: "p\nq"}); err != nil || !next.Composing {
+				t.Fatalf("marked input = %+v, %v", next, err)
+			}
+			// File menu focus can remove the editor provider before the command runs.
+			state.reconcileTextOwner(gfx.ID{}, nil)
+			switch command {
+			case "Save":
+				state.save(state.space.Active, false)
+			case "Save As...", "Save a Copy As...":
+				if err := driver.QueueSaveFile(target, nil); err != nil {
+					t.Fatal(err)
+				}
+				if command == "Save As..." {
+					state.save(state.space.Active, true)
+				} else {
+					state.saveCopy(state.space.Active)
+				}
+			case "Cancel Save As":
+				if err := driver.QueueSaveFile("", app.ErrCanceled); err != nil {
+					t.Fatal(err)
+				}
+				state.save(state.space.Active, true)
+			case "Cancel Open":
+				if err := driver.QueueOpenFiles(nil, app.ErrCanceled); err != nil {
+					t.Fatal(err)
+				}
+				state.openFiles()
+			}
+			if command == "Save" {
+				if data, err := os.ReadFile(source); err != nil || string(data) != original+"!" {
+					t.Fatalf("Save bytes = %q, %v", data, err)
+				}
+			} else if data, err := os.ReadFile(source); err != nil || string(data) != original {
+				t.Fatalf("source bytes changed = %q, %v", data, err)
+			}
+			if command == "Save As..." || command == "Save a Copy As..." {
+				if data, err := os.ReadFile(target); err != nil || string(data) != original+"!" {
+					t.Fatalf("target bytes = %q, %v", data, err)
+				}
+			}
+			if doc.Editor.String() != "one\ntwo\nthree!" || doc.Editor.CompositionActive() || doc.EOLSequence() != "WL" ||
+				doc.Editor.Selection() != (text.Range{Start: 4, End: 8}) || doc.Editor.Caret() != 4 {
+				t.Fatalf("file command did not restore the selected text: text=%q EOL=%q selection=%v caret=%d", doc.Editor.String(), doc.EOLSequence(), doc.Editor.Selection(), doc.Editor.Caret())
+			}
+			if !doc.Editor.Undo() || doc.Editor.String() != "one\ntwo\nthree" || doc.Editor.Undo() {
+				t.Fatal("file command left preedit in Undo history")
+			}
+		})
+	}
+}
+
+func TestWorkspaceAndSessionChoosersRestoreEditorFocus(t *testing.T) {
+	for _, command := range []string{"folder", "session"} {
+		for _, canceled := range []bool{true, false} {
+			outcome := "confirm"
+			if canceled {
+				outcome = "cancel"
+			}
+			t.Run(command+"/"+outcome, func(t *testing.T) {
+				root := t.TempDir()
+				source := filepath.Join(root, "source.txt")
+				if err := os.WriteFile(source, []byte("cat"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				state := newModelWithFiles([]string{source})
+				driver, err := app.NewDriver(newConfig(state), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer driver.Close()
+				clickID(t, driver, editorID)
+				state.space.Current().Editor.MoveTo(3, false)
+				var response error
+				if canceled {
+					response = app.ErrCanceled
+				}
+				clickID(t, driver, menuScope.At(0))
+				if command == "folder" {
+					if err := driver.QueueOpenDirectory(root, response); err != nil {
+						t.Fatal(err)
+					}
+					clickID(t, driver, menuItemScope.At(16))
+				} else {
+					state.saveSessionPicker = app.SaveFileWithCheckbox
+					if err := driver.QueueSaveFileWithCheckbox(filepath.Join(root, "session.xml"), false, response); err != nil {
+						t.Fatal(err)
+					}
+					clickID(t, driver, menuItemScope.At(13))
+					clickID(t, driver, sessionScope.At(1))
+				}
+				requireEditorCommandFocus(t, driver, editorID)
+				if err := driver.Type("x"); err != nil || state.space.Current().Editor.String() != "catx" {
+					t.Fatalf("first key after chooser: %q, %v", state.space.Current().Editor.String(), err)
+				}
+			})
+		}
+	}
+}
+
+func TestLoadSessionChooserRestoresActiveEditor(t *testing.T) {
+	for _, size := range []struct {
+		name          string
+		width, height int
+	}{{"desktop", 1280, 800}, {"compact", 640, 400}} {
+		for _, outcome := range []string{"cancel", "invalid", "load"} {
+			t.Run(size.name+"/"+outcome, func(t *testing.T) {
+				root := t.TempDir()
+				source, right := filepath.Join(root, "source.txt"), filepath.Join(root, "right.txt")
+				for path, value := range map[string]string{source: "left", right: "right"} {
+					if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				state := newModelWithFiles([]string{source})
+				driver, err := app.NewDriver(newConfig(state), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer driver.Close()
+				if err := driver.Resize(size.width, size.height); err != nil {
+					t.Fatal(err)
+				}
+				clickID(t, driver, editorID)
+				original := state.space.Current()
+				original.Editor.MoveTo(4, false)
+				if err := driver.Type("!"); err != nil || original.Editor.String() != "left!" {
+					t.Fatalf("initial edit = %q, %v", original.Editor.String(), err)
+				}
+				original.Editor.BreakUndoGroup()
+				xml := filepath.Join(root, "session.xml")
+				var paths []string
+				var response error
+				switch outcome {
+				case "cancel":
+					response = app.ErrCanceled
+				case "invalid":
+					if err := os.WriteFile(xml, []byte("<NotepadPlus><Session"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					paths = []string{xml}
+				case "load":
+					if err := session.SaveNPP(xml, session.NPPState{
+						Main:       []session.NPPFile{{Path: source, Encoding: -1}},
+						Sub:        []session.NPPFile{{Path: right, Encoding: -1, StartPos: 5, EndPos: 5}},
+						ActiveView: 1,
+					}); err != nil {
+						t.Fatal(err)
+					}
+					paths = []string{xml}
+				}
+				if err := driver.QueueOpenFiles(paths, response); err != nil {
+					t.Fatal(err)
+				}
+				clickID(t, driver, menuScope.At(0))
+				revealFileMenuItem(t, driver, 13)
+				clickID(t, driver, menuItemScope.At(13))
+				clickID(t, driver, sessionScope.At(0))
+				if req, ok := driver.LastOpenFilesRequest(); !ok || req.Title != "Load Session" || req.AllowMultiple {
+					t.Fatalf("load request = %+v, present=%v", req, ok)
+				}
+				active := state.space.Current()
+				focus, before := editorID, "left!"
+				if outcome == "load" {
+					focus, before = rightEditorID, "right"
+					if !state.splitEnabled || state.activePane != 1 || state.paneDocs[0] != original || state.paneDocs[1] != active || active == original {
+						t.Fatal("load did not activate the session's right document")
+					}
+				} else if active != original || state.splitEnabled || len(state.space.Documents) != 1 || active.Editor.Caret() != 5 {
+					t.Fatal("canceled or rejected session changed the current view")
+				}
+				requireEditorCommandFocus(t, driver, focus)
+				if err := driver.Type("x"); err != nil || active.Editor.String() != before+"x" {
+					t.Fatalf("first key = %q, %v", active.Editor.String(), err)
+				}
+				if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || active.Editor.String() != before {
+					t.Fatalf("Undo = %q, handled=%v, %v", active.Editor.String(), handled, err)
+				}
+				if original.Editor.String() != "left!" || !original.Dirty() {
+					t.Fatal("session picker changed the original unsaved edit")
+				}
+			})
+		}
+	}
+}
+
+func TestSaveAsChooserReturnsToActiveEditor(t *testing.T) {
+	testSaveChooserReturnsToActiveEditor(t, "Save As", 3, false)
+}
+
+func TestSaveCopyChooserReturnsToActiveEditor(t *testing.T) {
+	testSaveChooserReturnsToActiveEditor(t, "Save a Copy As", 4, true)
+}
+
+func testSaveChooserReturnsToActiveEditor(t *testing.T, title string, menuIndex int, copyOnly bool) {
+	t.Helper()
+	for _, size := range []struct {
+		name          string
+		width, height int
+	}{{"desktop", 1280, 800}, {"compact", 640, 400}} {
+		for _, pane := range []struct {
+			name  string
+			right bool
+		}{{"single", false}, {"right", true}} {
+			for _, result := range []string{"cancel", "save"} {
+				t.Run(size.name+"/"+pane.name+"/"+result, func(t *testing.T) {
+					root := t.TempDir()
+					source := filepath.Join(root, "source.txt")
+					target := filepath.Join(root, "target.txt")
+					paths := []string{source}
+					if pane.right {
+						paths = append(paths, filepath.Join(root, "right.txt"))
+					}
+					for _, path := range paths {
+						if err := os.WriteFile(path, []byte("base"), 0600); err != nil {
+							t.Fatal(err)
+						}
+					}
+					sessionPath := filepath.Join(root, "session.json")
+					state := newStartupModel(paths, sessionPath)
+					left := state.space.Documents[0]
+					doc := left
+					focus := editorID
+					expectedPane := 0
+					if pane.right {
+						expectedPane = 1
+						doc = state.space.Documents[1]
+						state.splitEnabled, state.activePane = true, 1
+						state.paneDocs = [2]*document.Document{left, doc}
+						state.paneOwner[doc] = 1
+						state.space.Select(1)
+						focus = rightEditorID
+					}
+					oldPath := doc.Path
+					driver, err := app.NewDriver(newConfig(state), nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer driver.Close()
+					if err := driver.Resize(size.width, size.height); err != nil {
+						t.Fatal(err)
+					}
+					clickID(t, driver, focus)
+					doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+					if err := driver.Type("x"); err != nil || doc.Editor.String() != "basex" {
+						t.Fatalf("initial edit = %q, %v", doc.Editor.String(), err)
+					}
+					doc.Editor.SetSelection(text.Range{Start: 5, End: 1})
+					selection, caret := doc.Editor.Selection(), doc.Editor.Caret()
+					suggestedName := doc.Name
+					if result == "cancel" {
+						err = driver.QueueSaveFile("", app.ErrCanceled)
+					} else {
+						err = driver.QueueSaveFile(target, nil)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					clickID(t, driver, menuScope.At(0))
+					revealFileMenuItem(t, driver, menuIndex)
+					clickID(t, driver, menuItemScope.At(menuIndex))
+					if request, ok := driver.LastSaveFileRequest(); !ok || request.Title != title || request.SuggestedName != suggestedName || request.DefaultExtension != "txt" {
+						t.Fatalf("%s picker request = %+v, present=%v", title, request, ok)
+					}
+					requireEditorCommandFocus(t, driver, focus)
+					if state.activePane != expectedPane || state.space.Current() != doc || doc.Editor.String() != "basex" || doc.Editor.Selection() != selection || doc.Editor.Caret() != caret {
+						t.Fatal("Save As changed the active pane, text, selection or caret")
+					}
+					if result == "cancel" || copyOnly {
+						if doc.Path != oldPath || !doc.Dirty() {
+							t.Fatal("chooser changed source path or dirty state")
+						}
+					} else {
+						canonical, err := filepath.EvalSymlinks(target)
+						if err != nil || doc.Path != canonical || doc.Dirty() {
+							t.Fatalf("Save As path/dirty = %q/%v, canonical=%q, err=%v", doc.Path, doc.Dirty(), canonical, err)
+						}
+					}
+					saved := result == "save" && !copyOnly
+					if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || doc.Editor.String() != "base" || doc.Dirty() != saved {
+						t.Fatalf("first Undo after chooser = %q, dirty=%v, handled=%v, err=%v", doc.Editor.String(), doc.Dirty(), handled, err)
+					}
+					if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'z'); err != nil || !handled || doc.Editor.String() != "basex" || doc.Dirty() == saved {
+						t.Fatalf("first Redo after chooser = %q, dirty=%v, handled=%v, err=%v", doc.Editor.String(), doc.Dirty(), handled, err)
+					}
+					if disk, err := os.ReadFile(oldPath); err != nil || string(disk) != "base" {
+						t.Fatalf("%s or Undo/Redo changed source bytes: %q, %v", title, disk, err)
+					}
+					if result == "save" {
+						if disk, err := os.ReadFile(target); err != nil || string(disk) != "basex" {
+							t.Fatalf("%s target bytes = %q, %v", title, disk, err)
+						}
+					} else if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("canceled chooser created a target: %v", err)
+					}
+					if pane.right && (left.Editor.String() != "base" || left.Dirty() || state.paneDocs[0] != left || state.paneDocs[1] != doc) {
+						t.Fatalf("%s or Undo/Redo changed the inactive pane", title)
+					}
+					if _, err := os.Stat(sessionPath); !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("Save As wrote an early session: %v", err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestToolbarAndShortcutChoosersReturnToEditor(t *testing.T) {
+	for _, action := range []struct {
+		name string
+		open bool
+		run  func(*testing.T, *app.Driver)
+	}{
+		{"toolbar-open", true, func(t *testing.T, driver *app.Driver) { clickID(t, driver, openID) }},
+		{"shortcut-open", true, func(t *testing.T, driver *app.Driver) {
+			if handled, err := driver.ShortcutChord(primary(), 'o'); err != nil || !handled {
+				t.Fatalf("Ctrl+O = handled %v, %v", handled, err)
+			}
+		}},
+		{"toolbar-save-untitled", false, func(t *testing.T, driver *app.Driver) { clickID(t, driver, saveID) }},
+		{"shortcut-save-as", false, func(t *testing.T, driver *app.Driver) {
+			if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 's'); err != nil || !handled {
+				t.Fatalf("Ctrl+Shift+S = handled %v, %v", handled, err)
+			}
+		}},
+	} {
+		for _, result := range []string{"cancel", "success"} {
+			t.Run(action.name+"/"+result, func(t *testing.T) {
+				state, driver := startDriver(t)
+				doc := state.space.Current()
+				clickID(t, driver, editorID)
+				if err := driver.Type("draft"); err != nil || doc.Editor.String() != "draft" {
+					t.Fatalf("initial document = %q, %v", doc.Editor.String(), err)
+				}
+				target := filepath.Join(t.TempDir(), "target.txt")
+				if action.open {
+					if err := os.WriteFile(target, []byte("opened"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					var paths []string
+					var err error
+					if result == "success" {
+						paths = []string{target}
+					} else {
+						err = app.ErrCanceled
+					}
+					if err := driver.QueueOpenFiles(paths, err); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					path, queueErr := "", error(app.ErrCanceled)
+					if result == "success" {
+						path, queueErr = target, nil
+					}
+					if err := driver.QueueSaveFile(path, queueErr); err != nil {
+						t.Fatal(err)
+					}
+				}
+				action.run(t, driver)
+				if action.open {
+					if request, ok := driver.LastOpenFilesRequest(); !ok || request.Title != "Open" || !request.AllowMultiple {
+						t.Fatalf("Open request = %+v, present=%v", request, ok)
+					}
+				} else if request, ok := driver.LastSaveFileRequest(); !ok || request.Title != "Save As" {
+					t.Fatalf("Save request = %+v, present=%v", request, ok)
+				}
+				requireEditorCommandFocus(t, driver, editorID)
+				active := state.space.Current()
+				before := "draft"
+				if action.open && result == "success" {
+					if active == doc || doc.Editor.String() != "draft" || !doc.Dirty() {
+						t.Fatal("Open changed the original unsaved document")
+					}
+					before = "opened"
+				} else if active != doc {
+					t.Fatal("chooser changed the active document unexpectedly")
+				}
+				active.Editor.MoveTo(active.Editor.RuneCount(), false)
+				if err := driver.Type("x"); err != nil || active.Editor.String() != before+"x" {
+					t.Fatalf("first typing after chooser = %q, %v", active.Editor.String(), err)
+				}
+				if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || active.Editor.String() != before {
+					t.Fatalf("first Undo after chooser = %q, handled=%v, %v", active.Editor.String(), handled, err)
+				}
+			})
+		}
+	}
+}
+
+func TestChooserShortcutDismissesOpenFileMenuAfterCancel(t *testing.T) {
+	for _, action := range []struct {
+		name string
+		open bool
+		key  rune
+		mods gfx.Modifiers
+	}{
+		{"Open", true, 'o', primary()},
+		{"Save As", false, 's', primary() | gfx.ModifierShift},
+	} {
+		t.Run(action.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			clickID(t, driver, editorID)
+			if err := driver.Type("draft"); err != nil {
+				t.Fatal(err)
+			}
+			doc.Editor.BreakUndoGroup()
+			if action.open {
+				if err := driver.QueueOpenFiles(nil, app.ErrCanceled); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := driver.QueueSaveFile("", app.ErrCanceled); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuScope.At(0))
+			if state.menuOpen != 0 {
+				t.Fatal("File menu was not open before the shortcut")
+			}
+			if handled, err := driver.ShortcutChord(action.mods, action.key); err != nil || !handled {
+				t.Fatalf("%s shortcut = handled %v, %v", action.name, handled, err)
+			}
+			if action.open {
+				if _, ok := driver.LastOpenFilesRequest(); !ok {
+					t.Fatal("Open shortcut did not invoke its picker")
+				}
+			} else if _, ok := driver.LastSaveFileRequest(); !ok {
+				t.Fatal("Save As shortcut did not invoke its picker")
+			}
+			requireEditorCommandFocus(t, driver, editorID)
+			if state.menuOpen != -1 || state.space.Current() != doc || doc.Editor.String() != "draft" || doc.Path != "" {
+				t.Fatalf("Cancel left menu=%d, text=%q, path=%q", state.menuOpen, doc.Editor.String(), doc.Path)
+			}
+			if err := driver.Type("x"); err != nil || doc.Editor.String() != "draftx" {
+				t.Fatalf("first typing after shortcut Cancel = %q, %v", doc.Editor.String(), err)
+			}
+			if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || doc.Editor.String() != "draft" {
+				t.Fatalf("first Undo after shortcut Cancel = %q, handled=%v, %v", doc.Editor.String(), handled, err)
+			}
+		})
+	}
+}
+
+func TestSaveAsShortcutFromMenuFocusesBeforeNextKey(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	clickID(t, driver, editorID)
+	if err := driver.Type("draft"); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "saved.txt")
+	if err := driver.QueueSaveFile(target, nil); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(0))
+	if driver.Snapshot().Focused == editorID {
+		t.Fatal("the File menu did not take focus before the chooser")
+	}
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 's'); err != nil || !handled {
+		t.Fatalf("Ctrl+Shift+S = handled %v, %v", handled, err)
+	}
+	if _, ok := driver.LastSaveFileRequest(); !ok || state.menuOpen != -1 || doc.Dirty() || state.space.Current() != doc {
+		t.Fatal("Save As did not complete from the open File menu")
+	}
+	if disk, err := os.ReadFile(target); err != nil || string(disk) != "draft" {
+		t.Fatalf("saved bytes = %q, %v", disk, err)
+	}
+	if got := driver.Snapshot().Focused; got != editorID || state.focusViewRequested {
+		t.Fatalf("first post-chooser frame focus = %v, requested=%v, want ready editor", got, state.focusViewRequested)
+	}
+	if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || doc.Editor.String() != "" {
+		t.Fatalf("first Undo after Save As = %q, handled=%v, %v", doc.Editor.String(), handled, err)
+	}
+}
+
+func TestCanceledSaveAsFromDirtyCloseDoesNotStealDialogFocus(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	doc.Editor.Insert("draft")
+	state.command("Close")
+	if state.pendingClose < 0 {
+		t.Fatal("dirty close did not open its confirmation")
+	}
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.QueueSaveFile("", app.ErrCanceled); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, saveCloseID)
+	if _, ok := driver.LastSaveFileRequest(); !ok || state.pendingClose < 0 || !doc.Dirty() || doc.Editor.String() != "draft" {
+		t.Fatal("canceled Save As dismissed the dirty close confirmation")
+	}
+	if state.focusViewRequested || driver.Snapshot().Focused == editorID {
+		t.Fatalf("canceled Save As stole focus from the close dialog: requested=%v focused=%v", state.focusViewRequested, driver.Snapshot().Focused)
+	}
+}
+
+func TestOpenChooserReturnsToActiveEditor(t *testing.T) {
+	testOpenChooserReturnsToActiveEditor(t, "Open", 1, "new\r\nfile\n", "new\nfile\n", document.UTF8)
+}
+
+func TestOpenWithEncodingChooserReturnsToActiveEditor(t *testing.T) {
+	testOpenChooserReturnsToActiveEditor(t, "Open as Windows-1252", 8, "caf\xe9\r\n", "caf\u00e9\n", document.Windows1252)
+}
+
+func testOpenChooserReturnsToActiveEditor(t *testing.T, title string, menuIndex int, targetBytes, targetText string, encoding document.Encoding) {
+	t.Helper()
+	for _, size := range []struct {
+		name          string
+		width, height int
+	}{{"desktop", 1280, 800}, {"compact", 640, 400}} {
+		for _, pane := range []struct {
+			name  string
+			right bool
+		}{{"single", false}, {"right", true}} {
+			for _, result := range []string{"cancel", "open"} {
+				t.Run(size.name+"/"+pane.name+"/"+result, func(t *testing.T) {
+					root := t.TempDir()
+					oldPath := filepath.Join(root, "source.txt")
+					openedPath := filepath.Join(root, "opened.txt")
+					paths := []string{oldPath}
+					if pane.right {
+						paths = append(paths, filepath.Join(root, "right.txt"))
+					}
+					for _, path := range paths {
+						if err := os.WriteFile(path, []byte("base"), 0600); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if err := os.WriteFile(openedPath, []byte(targetBytes), 0600); err != nil {
+						t.Fatal(err)
+					}
+					sessionPath := filepath.Join(root, "session.json")
+					state := newStartupModel(paths, sessionPath)
+					left := state.space.Documents[0]
+					original := left
+					focus := editorID
+					expectedPane := 0
+					if pane.right {
+						expectedPane = 1
+						original = state.space.Documents[1]
+						state.splitEnabled, state.activePane = true, 1
+						state.paneDocs = [2]*document.Document{left, original}
+						state.paneOwner[original] = 1
+						state.space.Select(1)
+						focus = rightEditorID
+					}
+					driver, err := app.NewDriver(newConfig(state), nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer driver.Close()
+					if err := driver.Resize(size.width, size.height); err != nil {
+						t.Fatal(err)
+					}
+					clickID(t, driver, focus)
+					original.Editor.MoveTo(original.Editor.RuneCount(), false)
+					if err := driver.Type("x"); err != nil || original.Editor.String() != "basex" {
+						t.Fatalf("initial edit = %q, %v", original.Editor.String(), err)
+					}
+					original.Editor.SetSelection(text.Range{Start: 5, End: 1})
+					selection, caret := original.Editor.Selection(), original.Editor.Caret()
+					if result == "cancel" {
+						err = driver.QueueOpenFiles(nil, app.ErrCanceled)
+					} else {
+						err = driver.QueueOpenFiles([]string{openedPath}, nil)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					clickID(t, driver, menuScope.At(0))
+					revealFileMenuItem(t, driver, menuIndex)
+					clickID(t, driver, menuItemScope.At(menuIndex))
+					if request, ok := driver.LastOpenFilesRequest(); !ok || request.Title != title || !request.AllowMultiple {
+						t.Fatalf("%s picker request = %+v, present=%v", title, request, ok)
+					}
+					requireEditorCommandFocus(t, driver, focus)
+					if state.activePane != expectedPane || original.Editor.String() != "basex" || original.Editor.Selection() != selection || original.Editor.Caret() != caret || !original.Dirty() {
+						t.Fatal("Open changed the original dirty document or its selection")
+					}
+					if result == "cancel" {
+						if state.space.Current() != original || state.paneDocs[state.activePane] != original || len(state.space.Documents) != len(paths) {
+							t.Fatal("Open Cancel changed document identity or active pane")
+						}
+						if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || original.Editor.String() != "base" {
+							t.Fatalf("first Undo after Open Cancel = %q, handled=%v, err=%v", original.Editor.String(), handled, err)
+						}
+					} else {
+						opened := state.space.Current()
+						canonical, err := filepath.EvalSymlinks(openedPath)
+						if err != nil || opened == original || opened.Path != canonical || opened.Editor.String() != targetText || opened.Encoding() != encoding || state.paneDocs[state.activePane] != opened {
+							t.Fatalf("Open result = %q, pane=%d, path=%q", opened.Editor.String(), state.activePane, opened.Path)
+						}
+						opened.Editor.MoveTo(opened.Editor.RuneCount(), false)
+						if err := driver.Type("x"); err != nil || opened.Editor.String() != targetText+"x" {
+							t.Fatalf("first typing after Open = %q, %v", opened.Editor.String(), err)
+						}
+						if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || opened.Editor.String() != targetText {
+							t.Fatalf("first Undo after Open = %q, handled=%v, err=%v", opened.Editor.String(), handled, err)
+						}
+					}
+					if disk, err := os.ReadFile(original.Path); err != nil || string(disk) != "base" {
+						t.Fatalf("Open changed original disk bytes: %q, %v", disk, err)
+					}
+					if disk, err := os.ReadFile(openedPath); err != nil || string(disk) != targetBytes {
+						t.Fatalf("Open changed target disk bytes: %q, %v", disk, err)
+					}
+					if pane.right && (left.Editor.String() != "base" || left.Dirty() || state.paneDocs[0] != left) {
+						t.Fatal("Open or subsequent editing changed the inactive pane")
+					}
+					if _, err := os.Stat(sessionPath); !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("Open wrote an early session: %v", err)
+					}
+				})
+			}
+		}
+	}
+}

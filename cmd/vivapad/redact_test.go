@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -44,11 +44,11 @@ func TestRedactSelectionShiftMenuUsesLegacyASCIIAndCompactReachability(t *testin
 		t.Fatalf("On Selection row clipped: %+v", item)
 	}
 	clickID(t, driver, menuItemScope.At(24))
-	if err := driver.KeyDown(ui.KeyShiftLeft, ""); err != nil {
+	if err := driver.KeyDown(gfx.KeyShiftLeft, ""); err != nil {
 		t.Fatal(err)
 	}
 	clickID(t, driver, onSelectionScope.At(2))
-	if err := driver.KeyUp(ui.KeyShiftLeft, ""); err != nil {
+	if err := driver.KeyUp(gfx.KeyShiftLeft, ""); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Editor.String() != ".." || doc.Encoding() != document.DOS720 {

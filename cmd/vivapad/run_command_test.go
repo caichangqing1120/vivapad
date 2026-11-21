@@ -1,18 +1,68 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/runcommand"
 )
+
+func TestRunProgramChooserReturnsToCommandField(t *testing.T) {
+	for _, trial := range []struct {
+		name string
+		err  error
+	}{
+		{"cancel", app.ErrCanceled},
+		{"error", errors.New("program chooser failed")},
+		{"choose", nil},
+	} {
+		t.Run(trial.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			doc.Editor.Insert("document")
+			state.runLauncher = func(runcommand.Prepared) error {
+				t.Error("choosing a program launched it")
+				return nil
+			}
+			clickID(t, driver, menuScope.At(9))
+			clickID(t, driver, runOpenID)
+			if err := driver.Type("args"); err != nil || state.runInput.String() != "args" {
+				t.Fatalf("initial command = %q, %v", state.runInput.String(), err)
+			}
+			state.runInput.SetSelection(text.Range{Start: 0, End: 4})
+			path := filepath.Join(t.TempDir(), "program with space")
+			if err := driver.QueueOpenFiles([]string{path}, trial.err); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, runDialogBrowseID)
+			if req, ok := driver.LastOpenFilesRequest(); !ok || req.Title != "Program to Run" || req.AllowMultiple || !state.runDialogOpen {
+				t.Fatalf("unexpected picker request or dialog state: %+v, present=%v", req, ok)
+			}
+			if got := driver.Snapshot().Focused; got != runDialogInputID {
+				t.Fatalf("focus after chooser = %v, want Run command field", got)
+			}
+			want := "x"
+			if trial.err == nil {
+				want = strconv.Quote(path) + "x"
+			}
+			if err := driver.Type("x"); err != nil || state.runInput.String() != want || doc.Editor.String() != "document" {
+				t.Fatalf("first key = %q, want %q; document=%q, %v", state.runInput.String(), want, doc.Editor.String(), err)
+			}
+		})
+	}
+}
 
 func TestRunDialogCancelFailureAndExplicitLaunch(t *testing.T) {
 	state, driver := startDriver(t)
@@ -225,13 +275,13 @@ func TestRunDialogEscapeAndDuplicateNameLeavePriorSaveUntouched(t *testing.T) {
 	if !state.runDialogOpen || state.runDialogError == "" || len(state.namedRuns) != 1 {
 		t.Fatal("duplicate Run name replaced an existing command")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if !state.runDialogOpen || state.runSaveMode {
 		t.Fatal("Escape did not return from named-command form")
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.runDialogOpen {

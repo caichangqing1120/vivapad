@@ -8,6 +8,7 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -19,6 +20,9 @@ import (
 
 //go:embed fonts/NotoSansSC.ttf
 var linuxPrintFont []byte
+
+//go:embed fonts/NotoMusic-Regular.ttf
+var linuxMusicFont []byte
 
 const portalName = "org.freedesktop.portal.Desktop"
 const portalPath = dbus.ObjectPath("/org/freedesktop/portal/desktop")
@@ -34,7 +38,7 @@ type Printer struct {
 }
 
 func ChoosePrinter(job Job, fontSize float64, tabWidth int) (*Printer, error) {
-	renderer, err := newPDFRenderer(linuxPrintFont, fontSize, tabWidth)
+	renderer, err := newPDFRendererWithFallback(linuxPrintFont, fontSize, tabWidth, linuxMusicFont)
 	if err != nil {
 		return nil, err
 	}
@@ -178,22 +182,13 @@ func (printer *Printer) PrintPages(job Job, pages []Page) error {
 	if printer.bus == nil && !printer.cups || job.Scope != printer.choice.Scope {
 		return fmt.Errorf("printing: Linux print portal is closed or page scope changed")
 	}
-	if len(printer.choice.Ranges) != 0 {
-		if _, err := SelectPageRanges(pages, printer.choice.Ranges); err != nil {
-			return err
-		}
-	}
-	data, err := printer.renderer.Render(job, pages, printer.device)
-	if err != nil {
-		return err
-	}
 	file, err := os.CreateTemp("", "vivapad-print-*.pdf")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(file.Name())
 	defer file.Close()
-	if _, err := file.Write(data); err != nil {
+	if err := printer.writePDF(file, job, pages); err != nil {
 		return err
 	}
 	if _, err := file.Seek(0, 0); err != nil {
@@ -217,6 +212,19 @@ func (printer *Printer) PrintPages(job Job, pages []Page) error {
 		"supported_output_file_formats": dbus.MakeVariant([]string{"pdf"}),
 	})
 	return err
+}
+
+func (printer *Printer) writePDF(output io.Writer, job Job, pages []Page) error {
+	if len(printer.choice.Ranges) != 0 {
+		// Portal submission sends a ready-to-print PDF. Apply the range before
+		// rendering, leaving copy count and other spool settings with the portal.
+		selected, err := SelectPageRanges(pages, printer.choice.Ranges)
+		if err != nil {
+			return err
+		}
+		pages = selected
+	}
+	return printer.renderer.writePDF(output, job, pages, printer.device)
 }
 
 func (printer *Printer) Close() {

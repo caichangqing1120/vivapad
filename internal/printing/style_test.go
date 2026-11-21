@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/syntax"
 )
 
@@ -21,7 +21,7 @@ func TestColorizeUsesEditorSyntaxRunsOnOriginalByteSpans(t *testing.T) {
 	if err != nil || len(colored) != len(pages) || len(pages[0].Styles) != 0 {
 		t.Fatalf("style output changed input pages: %+v, %v", colored, err)
 	}
-	keyword := ColorRun{StartByte: 0, EndByte: 4, Color: ui.RGB(49, 92, 167)}
+	keyword := ColorRun{StartByte: 0, EndByte: 4, Color: gfx.RGB(49, 92, 167)}
 	if len(colored[0].Styles) != len(colored[0].Rows) || len(colored[0].Styles[0]) == 0 || colored[0].Styles[0][0] != keyword {
 		t.Fatalf("first keyword style = %+v, want %+v", colored[0].Styles, keyword)
 	}
@@ -44,7 +44,7 @@ func TestColorizeClipsRunsAcrossSoftWrapAndRejectsInvalidLexerOutput(t *testing.
 	if err != nil || len(pages[0].Rows) != 3 {
 		t.Fatalf("wrapped source = %+v, %v", pages, err)
 	}
-	color := ui.RGB(172, 77, 64)
+	color := gfx.RGB(172, 77, 64)
 	calls := 0
 	all := func(string, string, []components.CodeEditorRun) []components.CodeEditorRun {
 		calls++
@@ -70,7 +70,7 @@ func TestColorizeKeepsOriginalByteCoordinatesAcrossExpandedTab(t *testing.T) {
 	if err != nil || len(pages) != 1 || pages[0].Rows[0].Text != "a   b" {
 		t.Fatalf("expanded tab row = %+v, %v", pages, err)
 	}
-	color := ui.RGB(172, 77, 64)
+	color := gfx.RGB(172, 77, 64)
 	colored, err := Colorize(job, pages, func(string, string, []components.CodeEditorRun) []components.CodeEditorRun {
 		return []components.CodeEditorRun{{Start: 1, End: 2, Color: color}}
 	})

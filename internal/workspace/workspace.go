@@ -3,9 +3,12 @@ package workspace
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"golang.org/x/text/unicode/norm"
 
 	"vivapad/internal/document"
 )
@@ -60,29 +63,73 @@ func (space *Workspace) Select(index int) bool {
 }
 
 func (space *Workspace) Open(path string) error {
-	return space.open(path, nil)
+	return space.open(path, nil, openExplicit)
 }
 
 func (space *Workspace) OpenWithEncoding(path string, encoding document.Encoding) error {
-	return space.open(path, &encoding)
+	return space.open(path, &encoding, openExplicit)
 }
 
-func (space *Workspace) open(path string, encoding *document.Encoding) error {
+// OpenInteractive reuses open tabs for verified spelling aliases of a user-selected path.
+func (space *Workspace) OpenInteractive(path string) error {
+	return space.open(path, nil, openInteractive)
+}
+
+func (space *Workspace) OpenInteractiveWithEncoding(path string, encoding document.Encoding) error {
+	return space.open(path, &encoding, openInteractive)
+}
+
+// OpenRecorded opens an entry whose path was canonicalized when recorded.
+// UTF8 is the history default and requests normal encoding detection.
+func (space *Workspace) OpenRecorded(path string, encoding document.Encoding) error {
+	if encoding == document.UTF8 {
+		return space.open(path, nil, openRecorded)
+	}
+	return space.open(path, &encoding, openRecorded)
+}
+
+type openMode uint8
+
+const (
+	openExplicit openMode = iota
+	openRecorded
+	openInteractive
+)
+
+func (space *Workspace) open(path string, encoding *document.Encoding, mode openMode) error {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return err
 	}
-	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+	if mode == openRecorded {
+		if err := document.CheckRecordedPath(path); err != nil {
+			return err
+		}
+	} else if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
 		absolute = resolved
 	}
+	openIndex := -1
 	for index, doc := range space.Documents {
 		if doc.Path == absolute {
-			if encoding != nil && doc.Encoding() != *encoding {
+			openIndex = index
+			break
+		}
+	}
+	if openIndex < 0 && mode == openInteractive {
+		openIndex = space.findOpenSpellingAlias(absolute)
+	}
+	if openIndex >= 0 {
+		doc := space.Documents[openIndex]
+		if encoding != nil {
+			if mode == openRecorded && doc.SavedEncoding() != *encoding {
+				return fmt.Errorf("%s is already open with another saved encoding", doc.Name)
+			}
+			if mode != openRecorded && doc.Encoding() != *encoding {
 				return fmt.Errorf("%s is already open as %s", doc.Name, doc.EncodingLabel())
 			}
-			space.Active = index
-			return nil
 		}
+		space.Active = openIndex
+		return nil
 	}
 	var doc *document.Document
 	if encoding == nil {
@@ -93,7 +140,35 @@ func (space *Workspace) open(path string, encoding *document.Encoding) error {
 	if err != nil {
 		return err
 	}
+	if mode == openRecorded && doc.Path != path {
+		return document.ErrDiskPathRedirected
+	}
 	return space.AddOpened(doc)
+}
+
+func (space *Workspace) findOpenSpellingAlias(path string) int {
+	spelling := norm.NFC.String(path)
+	var incoming os.FileInfo
+	for index, doc := range space.Documents {
+		if doc.Path == "" || !strings.EqualFold(spelling, norm.NFC.String(doc.Path)) {
+			continue
+		}
+		if incoming == nil {
+			info, err := os.Stat(path)
+			if err != nil || !info.Mode().IsRegular() {
+				return -1
+			}
+			incoming = info
+		}
+		// A spelling match is only a hint: distinct files and redirected tabs
+		// must keep their own bindings.
+		if doc.CheckDiskPath() == nil {
+			if existing, err := os.Lstat(doc.Path); err == nil && os.SameFile(existing, incoming) {
+				return index
+			}
+		}
+	}
+	return -1
 }
 
 func (space *Workspace) AddOpened(doc *document.Document) error {
@@ -116,6 +191,10 @@ func (space *Workspace) AddOpened(doc *document.Document) error {
 	return nil
 }
 
+// Reload replaces the tab's document with a freshly opened one. The replacement
+// carries its own document identity, editor and change-history source; the
+// returned retired document keeps its own history and never transfers it to the
+// replacement (H03 document lifecycle).
 func (space *Workspace) Reload(index int) (*document.Document, error) {
 	return space.reload(index, false)
 }
@@ -135,6 +214,9 @@ func (space *Workspace) reload(index int, discard bool) (*document.Document, err
 	if old.Path == "" {
 		return nil, fmt.Errorf("untitled tab has no disk path")
 	}
+	if err := old.CheckDiskPath(); err != nil {
+		return nil, err
+	}
 	var updated *document.Document
 	var err error
 	if old.SavedEncoding() >= document.GB18030 {
@@ -144,6 +226,9 @@ func (space *Workspace) reload(index int, discard bool) (*document.Document, err
 	}
 	if err != nil {
 		return nil, err
+	}
+	if updated.Path != old.Path {
+		return nil, document.ErrDiskPathRedirected
 	}
 	space.Documents[index] = updated
 	return old, nil

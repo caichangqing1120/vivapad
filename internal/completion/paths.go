@@ -9,11 +9,19 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"unicode"
+	"unicode/utf8"
 )
 
+const pathPunctuation = "\"'()[]<>"
+
 func Paths(value string, caret int, base string) (Result, error) {
-	raw, start := pathAtCaret(value, caret)
+	offset := pathCaretByteOffset(value, caret)
+	if offset <= 0 {
+		return Result{}, nil
+	}
+	raw, _, quote := pathAtCaret(value, offset, false)
 	if raw == "" {
 		return Result{}, nil
 	}
@@ -23,31 +31,59 @@ func Paths(value string, caret int, base string) (Result, error) {
 	if runtime.GOOS != "windows" && len(raw) >= 3 && unicode.IsLetter(rune(raw[0])) && raw[1] == ':' && (raw[2] == '\\' || raw[2] == '/') {
 		return Result{}, fmt.Errorf("Windows path completion requires Windows")
 	}
-	resolved := raw
-	if strings.HasPrefix(raw, "~/") {
-		home, err := os.UserHomeDir()
+	end := pathTokenEnd(value, offset, quote)
+	tail := value[offset:end]
+	result := Result{Start: caret - utf8.RuneCountInString(raw), End: caret + utf8.RuneCountInString(tail)}
+	if tail != "" {
+		if strings.ContainsRune(tail, '/') || runtime.GOOS == "windows" && strings.ContainsRune(tail, '\\') {
+			return result, nil
+		}
+		if len(raw)+len(tail) > 4096 {
+			return Result{}, fmt.Errorf("path token exceeds 4096 bytes")
+		}
+		full, err := resolvePath(raw+tail, base)
 		if err != nil {
 			return Result{}, err
 		}
-		resolved = filepath.Join(home, raw[2:])
-	} else if !filepath.IsAbs(raw) {
-		resolved = filepath.Join(base, raw)
+		if _, err := os.Stat(full); err == nil {
+			return result, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return Result{}, err
+		}
 	}
-	result := Result{Start: start, End: caret}
+	resolved, err := resolvePath(raw, base)
+	if err != nil {
+		return Result{}, err
+	}
 	parent, suffix, display := "", "", ""
 	info, err := os.Stat(resolved)
+	explicitDirectory := os.IsPathSeparator(raw[len(raw)-1])
+	if explicitDirectory {
+		if err != nil {
+			return Result{}, err
+		}
+		if !info.IsDir() {
+			return Result{}, fmt.Errorf("path is not a directory: %s", resolved)
+		}
+	}
 	switch {
 	case err == nil && info.Mode().IsRegular():
+		if tail != "" {
+			result.Candidates = []string{strings.Clone(raw)}
+		}
 		return result, nil
 	case err == nil && info.IsDir():
 		parent, display = resolved, raw
-		if !strings.HasSuffix(display, string(filepath.Separator)) {
+		if !explicitDirectory {
 			display += string(filepath.Separator)
 		}
 	case err == nil:
 		return Result{}, fmt.Errorf("path is not a regular file or directory: %s", resolved)
 	case errors.Is(err, os.ErrNotExist):
-		parent, suffix = filepath.Dir(resolved), filepath.Base(resolved)
+		parent, suffix = filepath.Split(resolved)
+		if parent == "" {
+			parent = "."
+		}
 		display = raw[:len(raw)-len(suffix)]
 	default:
 		return Result{}, err
@@ -67,14 +103,26 @@ func Paths(value string, caret int, base string) (Result, error) {
 	}
 	type candidate struct {
 		name      string
+		folded    string
 		directory bool
 	}
 	var matches []candidate
 	for _, entry := range entries {
-		if entry.Name() == "." || entry.Name() == ".." || !pathPrefix(entry.Name(), suffix) {
+		name := entry.Name()
+		if name == "." || name == ".." || !pathPrefix(name, suffix) || !pathNameFitsToken(name, quote) {
 			continue
 		}
-		matches = append(matches, candidate{name: entry.Name(), directory: entry.IsDir()})
+		mode := entry.Type()
+		if mode&os.ModeSymlink != 0 {
+			info, err := os.Stat(joinLookupPath(parent, name))
+			if err != nil {
+				continue
+			}
+			mode = info.Mode()
+		}
+		if mode.IsDir() || mode.IsRegular() {
+			matches = append(matches, candidate{name: name, folded: strings.ToLower(name), directory: mode.IsDir()})
+		}
 	}
 	slices.SortFunc(matches, func(first, second candidate) int {
 		if first.directory != second.directory {
@@ -83,7 +131,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 			}
 			return 1
 		}
-		if order := strings.Compare(strings.ToLower(first.name), strings.ToLower(second.name)); order != 0 {
+		if order := strings.Compare(first.folded, second.folded); order != 0 {
 			return order
 		}
 		return strings.Compare(first.name, second.name)
@@ -98,85 +146,200 @@ func Paths(value string, caret int, base string) (Result, error) {
 	return result, nil
 }
 
-func pathPrefix(name, prefix string) bool {
-	nameRunes, prefixRunes := []rune(name), []rune(prefix)
-	return len(nameRunes) >= len(prefixRunes) && strings.EqualFold(string(nameRunes[:len(prefixRunes)]), prefix)
+// PathNamesFile checks the current file system without listing the directory.
+func PathNamesFile(raw, base string) (bool, error) {
+	info, err := pathInfo(raw, base)
+	return info != nil && info.Mode().IsRegular(), err
 }
 
-func pathAtCaret(value string, caret int) (string, int) {
-	characters := []rune(value)
-	if caret <= 0 || caret > len(characters) {
-		return "", 0
+// PathCandidateAvailable checks a selected suggestion without rescanning its directory.
+func PathCandidateAvailable(raw, base string) (bool, error) {
+	info, err := pathInfo(raw, base)
+	if errors.Is(err, syscall.ENOTDIR) {
+		return false, nil
 	}
-	lineStart := caret
-	for lineStart > 0 && characters[lineStart-1] != '\n' && characters[lineStart-1] != '\r' {
-		lineStart--
+	if err != nil || info == nil {
+		return false, err
 	}
-	quoteStart, quote := -1, rune(0)
-	for index := lineStart; index < caret; index++ {
-		if characters[index] != '\'' && characters[index] != '"' {
-			continue
+	if raw != "" && os.IsPathSeparator(raw[len(raw)-1]) {
+		return info.IsDir(), nil
+	}
+	return info.Mode().IsRegular(), nil
+}
+
+func pathInfo(raw, base string) (os.FileInfo, error) {
+	path, err := resolvePath(raw, base)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	return info, err
+}
+
+func resolvePath(raw, base string) (string, error) {
+	if strings.HasPrefix(raw, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
 		}
+		return joinLookupPath(home, raw[2:]), nil
+	}
+	if !filepath.IsAbs(raw) {
+		return joinLookupPath(base, raw), nil
+	}
+	return raw, nil
+}
+
+func joinLookupPath(dir, tail string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(dir, tail)
+	}
+	// On Unix, a symlink must be followed before resolving a later "..".
+	if dir == "" || os.IsPathSeparator(dir[len(dir)-1]) {
+		return dir + tail
+	}
+	return dir + string(filepath.Separator) + tail
+}
+
+func pathPrefix(name, prefix string) bool {
+	if strings.HasPrefix(name, prefix) {
+		return true
+	}
+	// Case folding can match runes with different UTF-8 widths, such as K and Kelvin sign.
+	end := 0
+	for range prefix {
+		if end == len(name) {
+			return false
+		}
+		_, width := utf8.DecodeRuneInString(name[end:])
+		end += width
+	}
+	return strings.EqualFold(name[:end], prefix)
+}
+
+func pathCaretByteOffset(value string, caret int) int {
+	if caret < 0 || caret > len(value) {
+		return -1
+	}
+	for offset := range value {
+		if caret == 0 {
+			return offset
+		}
+		caret--
+	}
+	if caret == 0 {
+		return len(value)
+	}
+	return -1
+}
+
+// Path token scanning uses byte offsets so a filename on a long log line
+// does not require a second copy of the line.
+func pathAtCaret(value string, caret int, allowSpacedDrive bool) (prefix string, start int, delimiter rune) {
+	if caret <= 0 {
+		return "", 0, 0
+	}
+	lineStart := strings.LastIndexAny(value[:caret], "\r\n") + 1
+	quoteStart, quote := -1, byte(0)
+	for from := lineStart; from < caret; {
+		next := strings.IndexAny(value[from:caret], "\"'")
+		if next < 0 {
+			break
+		}
+		index := from + next
+		from = index + 1
 		if quoteStart < 0 {
-			quoteStart, quote = index, characters[index]
-		} else if characters[index] == quote {
+			// An apostrophe inside a word in surrounding prose cannot open a path.
+			if value[index] == '\'' && index > lineStart && from < caret {
+				before, _ := utf8.DecodeLastRuneInString(value[lineStart:index])
+				after, _ := utf8.DecodeRuneInString(value[from:caret])
+				if unicode.In(before, unicode.L, unicode.M, unicode.N) && unicode.In(after, unicode.L, unicode.M, unicode.N) {
+					continue
+				}
+			}
+			quoteStart, quote = index, value[index]
+		} else if value[index] == quote {
 			quoteStart, quote = -1, 0
 		}
 	}
 	if quoteStart >= 0 {
-		start := quoteStart + 1
-		raw := string(characters[start:caret])
-		if pathLike(raw) {
-			return raw, start
+		return value[quoteStart+1 : caret], quoteStart + 1, rune(quote)
+	}
+	if allowSpacedDrive {
+		for end := caret; end > lineStart; {
+			character, width := utf8.DecodeLastRuneInString(value[lineStart:end])
+			index := end - width
+			if strings.ContainsRune(pathPunctuation, character) {
+				break
+			}
+			delimiter := end
+			end = index
+			if delimiter+1 >= caret || value[delimiter] != ':' || value[delimiter+1] != '\\' && value[delimiter+1] != '/' || !unicode.IsLetter(character) {
+				continue
+			}
+			before, _ := utf8.DecodeLastRuneInString(value[lineStart:index])
+			if index == lineStart || barePathBoundary(before) {
+				return value[index:caret], index, 0
+			}
 		}
 	}
-	for index := caret - 3; index >= lineStart; index-- {
-		if !unicode.IsLetter(characters[index]) || characters[index+1] != ':' || characters[index+2] != '\\' && characters[index+2] != '/' {
-			continue
+	start = caret
+	for start > lineStart {
+		character, width := utf8.DecodeLastRuneInString(value[lineStart:start])
+		if barePathBoundary(character) {
+			break
 		}
-		if index == lineStart || unicode.IsSpace(characters[index-1]) || strings.ContainsRune("\"'(", characters[index-1]) {
-			return string(characters[index:caret]), index
-		}
+		start -= width
 	}
-	start := caret
-	for start > lineStart && !unicode.IsSpace(characters[start-1]) && !strings.ContainsRune("\"'()", characters[start-1]) {
-		start--
+	if start < caret {
+		return value[start:caret], start, 0
 	}
-	raw := string(characters[start:caret])
-	if pathLike(raw) {
-		return raw, start
-	}
-	return "", 0
+	return "", 0, 0
 }
 
 func PathTokenAtCaret(value string, caret int) (string, int, int) {
-	characters := []rune(value)
-	if caret < 0 || caret > len(characters) {
+	offset := pathCaretByteOffset(value, caret)
+	if offset < 0 {
 		return "", 0, 0
 	}
-	_, start := pathAtCaret(value, caret)
-	if caret == 0 || start == 0 && caret > 0 && (unicode.IsSpace(characters[caret-1]) || strings.ContainsRune("\"'()[]<>", characters[caret-1])) {
-		start = caret
+	// Opening an existing drive path permits spaces to the left of the caret.
+	_, start, quote := pathAtCaret(value, offset, true)
+	before, _ := utf8.DecodeLastRuneInString(value[:offset])
+	if offset == 0 || start == 0 && barePathBoundary(before) {
+		start = offset
 	}
-	quote := rune(0)
-	if start > 0 && (characters[start-1] == '"' || characters[start-1] == '\'') {
-		quote = characters[start-1]
-	}
-	end := caret
-	for end < len(characters) {
-		character := characters[end]
-		if character == '\r' || character == '\n' || quote != 0 && character == quote ||
-			quote == 0 && (unicode.IsSpace(character) || strings.ContainsRune("\"'()[]<>", character)) {
-			break
-		}
-		end++
-	}
-	if start >= end || end-start > 4096 {
+	end := pathTokenEnd(value, offset, quote)
+	length := utf8.RuneCountInString(value[start:end])
+	if length == 0 || length > 4096 {
 		return "", 0, 0
 	}
-	return string(characters[start:end]), start, end
+	startRune := caret - utf8.RuneCountInString(value[start:offset])
+	return strings.Clone(value[start:end]), startRune, startRune + length
 }
 
-func pathLike(raw string) bool {
-	return raw != ""
+func pathTokenEnd(value string, caret int, quote rune) int {
+	for offset, character := range value[caret:] {
+		if pathTokenBoundary(character, quote) {
+			return caret + offset
+		}
+	}
+	return len(value)
+}
+
+func pathNameFitsToken(name string, quote rune) bool {
+	return utf8.ValidString(name) && !strings.ContainsFunc(name, func(character rune) bool {
+		return pathTokenBoundary(character, quote)
+	})
+}
+
+func pathTokenBoundary(character, quote rune) bool {
+	return character == '\r' || character == '\n' || quote != 0 && character == quote ||
+		quote == 0 && barePathBoundary(character)
+}
+
+func barePathBoundary(character rune) bool {
+	return unicode.IsSpace(character) || strings.ContainsRune(pathPunctuation, character)
 }

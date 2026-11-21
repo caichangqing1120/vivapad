@@ -1,11 +1,14 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 )
 
 func TestWordCompletionSingleCandidateIsOneUndoUnitAndKeepsBookmark(t *testing.T) {
@@ -33,7 +36,7 @@ func TestWordCompletionPopupKeyboardAndPointerAtCompactSize(t *testing.T) {
 	if err := driver.Type("alpha alphabet alp"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyEnter, primary()); err != nil {
+	if err := driver.Key(gfx.KeyEnter, primary()); err != nil {
 		t.Fatal(err)
 	}
 	if state.wordCompletion == nil || len(state.wordCompletion.items) != 2 {
@@ -44,7 +47,7 @@ func TestWordCompletionPopupKeyboardAndPointerAtCompactSize(t *testing.T) {
 			t.Fatalf("completion row overlaps status: %+v", hit.Bounds)
 		}
 	}
-	if err := driver.Key(ui.KeyDown, 0); err != nil {
+	if err := driver.Key(gfx.KeyDown, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.wordCompletion == nil {
@@ -56,7 +59,7 @@ func TestWordCompletionPopupKeyboardAndPointerAtCompactSize(t *testing.T) {
 	if !state.validWordCompletion() {
 		t.Fatalf("Down invalidated completion: caret=%d expected=%d source=%q current=%q focus=%v", state.space.Current().Editor.Caret(), state.wordCompletion.end, state.wordCompletion.source, state.space.Current().Editor.String(), driver.Snapshot().Focused)
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.wordCompletion != nil || state.space.Current().Editor.String() != "alpha alphabet alphabet" {
@@ -110,6 +113,80 @@ func TestWordCompletionRejectsReadOnlyIMEAndStalePopup(t *testing.T) {
 	}
 }
 
+func TestCompletionCommandsPreserveTentativeComposition(t *testing.T) {
+	for _, tc := range []struct {
+		command, filename, value string
+	}{
+		{"Word Completion", "current.txt", "alphabet\nalp"},
+		{"Path Completion", "current.txt", "al"},
+		{functionCompletionCommand, "current.go", "app"},
+	} {
+		t.Run(tc.command, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, tc.filename)
+			if err := os.WriteFile(path, []byte(tc.value), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "alpha.txt"), nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			state := newModelWithFiles([]string{path})
+			doc := state.space.Current()
+			doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+			if !doc.Editor.EnableTentativeComposition() {
+				t.Fatal("tentative composition unavailable")
+			}
+			if _, err := state.macroTextInput(doc).OnEvent(app.TextEvent{Kind: app.TextSetMarked,
+				CompositionPhase: text.CompositionUpdate, Text: "x", MarkedSelection: app.TextRange{Start: 1, End: 1}}); err != nil {
+				t.Fatal(err)
+			}
+			before, selection, canUndo := doc.Editor.String(), doc.Editor.Selection(), doc.Editor.CanUndo()
+			if !doc.Editor.TentativeCompositionActive() || before != tc.value+"x" {
+				t.Fatal("invalid tentative composition fixture")
+			}
+			state.command(tc.command)
+			if state.wordCompletion != nil || !doc.Editor.TentativeCompositionActive() ||
+				doc.Editor.String() != before || doc.Editor.Selection() != selection || doc.Editor.CanUndo() != canUndo {
+				t.Fatalf("completion disturbed preedit: popup=%t active=%t text=%q selection=%+v undo=%t",
+					state.wordCompletion != nil, doc.Editor.TentativeCompositionActive(), doc.Editor.String(), doc.Editor.Selection(), doc.Editor.CanUndo())
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != tc.value {
+				t.Fatalf("completion changed the saved file: %q, %v", data, err)
+			}
+		})
+	}
+}
+
+func TestCompletionRefusesAnAdditionalCaretAtOpenAndAccept(t *testing.T) {
+	state := newModel()
+	doc := state.space.Current()
+	const value = "alpha alphabet alp"
+	doc.Editor.Insert(value)
+	doc.Editor.ClearHistory()
+	last := doc.Editor.RuneCount()
+	setCarets := func() {
+		doc.Editor.SetSelections([]text.Range{{Start: 0, End: 0}, {Start: last, End: last}}, 1)
+		if doc.Editor.SelectionCount() != 2 || doc.Editor.Caret() != last {
+			t.Fatal("invalid multiple-caret fixture")
+		}
+	}
+	setCarets()
+	state.command("Word Completion")
+	if state.wordCompletion != nil {
+		t.Error("completion opened for multiple carets")
+	}
+	doc.Editor.ClearSecondarySelections()
+	state.command("Word Completion")
+	if state.wordCompletion == nil {
+		t.Fatal("expected a popup for the single caret")
+	}
+	setCarets()
+	state.acceptWordCompletion(0)
+	if state.wordCompletion != nil || doc.Editor.String() != value || doc.Editor.SelectionCount() != 2 || doc.Editor.CanUndo() {
+		t.Fatalf("accepting a stale candidate edited the document: %q, selections=%d", doc.Editor.String(), doc.Editor.SelectionCount())
+	}
+}
+
 func TestWordCompletionMenuAndSplitPaneScope(t *testing.T) {
 	state, driver := startDriver(t)
 	if err := driver.Resize(640, 400); err != nil {
@@ -134,7 +211,7 @@ func TestWordCompletionMenuAndSplitPaneScope(t *testing.T) {
 	if state.wordCompletion == nil || state.wordCompletion.doc != right || state.wordCompletion.pane != 1 {
 		t.Fatalf("menu completion used wrong pane: %+v", state.wordCompletion)
 	}
-	if err := driver.Key(ui.KeyEscape, 0); err != nil {
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.wordCompletion != nil || left.Editor.String() != "" || right.Editor.String() != "alpha alphabet alp" {
@@ -183,7 +260,7 @@ func TestWordCompletionPopupStaysInsideCompactViewportNearBottom(t *testing.T) {
 	if err := driver.Type("alpha alphabet\n" + strings.Repeat("line\n", 18) + "alp"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyEnter, primary()); err != nil {
+	if err := driver.Key(gfx.KeyEnter, primary()); err != nil {
 		t.Fatal(err)
 	}
 	if state.wordCompletion == nil {
@@ -229,7 +306,7 @@ func TestWordCompletionFiltersWhileTypingAndEnterDoesNotInsertNewline(t *testing
 	if err := driver.Type("alpha alphabet alp"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Key(ui.KeyEnter, primary()); err != nil {
+	if err := driver.Key(gfx.KeyEnter, primary()); err != nil {
 		t.Fatal(err)
 	}
 	if state.wordCompletion == nil {
@@ -242,7 +319,7 @@ func TestWordCompletionFiltersWhileTypingAndEnterDoesNotInsertNewline(t *testing
 		state.space.Current().Editor.String() != "alpha alphabet alpha" {
 		t.Fatalf("typed filter = %+v, text=%q", current, state.space.Current().Editor.String())
 	}
-	if err := driver.Key(ui.KeyEnter, 0); err != nil {
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
 		t.Fatal(err)
 	}
 	if state.wordCompletion != nil || state.space.Current().Editor.String() != "alpha alphabet alphabet" {

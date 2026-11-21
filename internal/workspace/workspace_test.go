@@ -4,10 +4,44 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"vivapad/internal/document"
 )
+
+func TestReloadKeepsItsOriginalBindingWhenDiskPathIsRedirected(t *testing.T) {
+	root := t.TempDir()
+	path, target := filepath.Join(root, "original.txt"), filepath.Join(root, "other.txt")
+	if err := os.WriteFile(path, []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("other"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	space := New()
+	if err := space.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	doc, bound := space.Current(), space.Current().Path
+	doc.Editor.Insert("draft ")
+	value := doc.Editor.String()
+	if err := os.Rename(path, filepath.Join(root, "parked.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("symbolic links unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+	if _, err := space.ReloadDiscard(space.Active); err == nil {
+		t.Fatal("reload accepted a redirected document path")
+	}
+	if space.Current() != doc || doc.Path != bound || doc.Editor.String() != value || !doc.Dirty() {
+		t.Fatal("refused reload replaced the document or lost its draft")
+	}
+}
 
 func TestNewSwitchAndCloseTabs(t *testing.T) {
 	space := New()

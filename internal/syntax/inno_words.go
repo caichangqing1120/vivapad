@@ -1,0 +1,35 @@
+package syntax
+
+import "strings"
+
+// Notepad++ v8.9.8.1, PowerEditor/src/langs.model.xml, language inno.
+var innoSections = innoWords(`code components custommessages dirs files icons ini installdelete langoptions languages messages registry run setup types tasks uninstalldelete uninstallrun _istool`)
+
+var innoAssignments = innoWords(`
+allowcancelduringinstall allownetworkdrive allownoicons allowrootdirectory allowuncpath alwayscreateuninstallicon alwaysrestart alwaysshowcomponentslist alwaysshowdironreadypage alwaysshowgrouponreadypage alwaysusepersonalgroup
+appcomments appcontact appcopyright appenddefaultdirname appenddefaultgroupname appid appmodifypath appmutex appname apppublisher apppublisherurl appreadmefile appsupportphone appsupporturl appupdatesurl appvername appversion
+architecturesallowed architecturesinstallin64bitmode aslrcompatible backcolor backcolor2 backcolordirection backsolid changesassociations changesenvironment closeapplications closeapplicationsfilter compression compressionthreads
+copyrightfontname copyrightfontsize createappdir createuninstallregkey defaultdialogfontname defaultdirname defaultgroupname defaultuserinfoname defaultuserinfoorg defaultuserinfoserial depcompatible dialogfontname dialogfontsize
+direxistswarning disableappenddir disabledirpage disablefinishedpage disableprogramgrouppage disablereadymemo disablereadypage disablestartupprompt disablewelcomepage diskclustersize diskslicesize diskspanning dontmergeduplicatefiles
+enabledirdoesntexistwarning enablesdirdoesntexistwarning encryption extradiskspacerequired flatcomponentslist infoafterfile infobeforefile internalcompresslevel languagecodepage languagedetectionmethod languageid languagename licensefile
+lzmaalgorithm lzmablocksize lzmadictionarysize lzmamatchfinder lzmanumblockthreads lzmanumfastbytes lzmauseseparateprocess mergeduplicatefiles messagesfile minversion missingmessageswarning missingrunonceidswarning notrecognizedmessageswarning
+onlybelowversion output outputbasefilename outputdir outputmanifestfile password privilegesrequired privilegesrequiredoverridesallowed reservebytes restartapplications restartifneededbyrun setupiconfile setuplogging setupmutex
+showcomponentsizes showlanguagedialog showtaskstreelines signeduninstaller signeduninstallerdir signtool signtoolminimumtimebetween signtoolretrycount signtoolretrydelay signtoolrunminimized slicesperdisk solidcompression sourcedir
+terminalservicesaware timestamprounding timestampsinutc titlefontname titlefontsize touchdate touchtime uninstallable uninstalldisplayicon uninstalldisplayname uninstalldisplaysize uninstallfilesdir uninstalliconfile uninstalliconname
+uninstalllogmode uninstallrestartcomputer uninstallstyle updateuninstalllogappname useduserareaswarning usepreviousappdir usepreviousgroup usepreviouslanguage usepreviousprivileges useprevioussetuptype useprevioustasks useprevioususerinfo
+userinfopage usesetupldr versioninfocompany versioninfocopyright versioninfodescription versioninfooriginalfilename versioninfoproductname versioninfoproducttextversion versioninfoproductversion versioninfotextversion versioninfoversion
+welcomefontname welcomefontsize windowresizable windowshowcaption windowstartmaximized windowvisible wizardimagealphaformat wizardimagebackcolor wizardimagefile wizardimagestretch wizardresizable wizardsizepercent wizardsmallimagebackcolor wizardsmallimagefile wizardstyle`)
+
+var innoParameters = innoWords(`afterinstall attribs beforeinstall check comment components copymode description destdir destname excludes extradiskspacerequired filename flags fontinstall groupdescription hotkey infoafterfile infobeforefile iconfilename iconindex key languages licensefile messagesfile minversion name onlybelowversion parameters permissions root runonceid section source statusmsg string subkey tasks type types valuedata valuename valuetype workingdir`)
+
+var innoDirectives = innoWords(`append define dim elif else emit endif endsub error expr file for if ifdef ifexist ifndef ifnexist include insert pragma sub undef`)
+
+var innoPascal = innoWords(`begin break case const continue do downto else end except finally for function if of procedure repeat then to try until uses var while with`)
+
+func innoWords(words string) map[string]bool {
+	set := make(map[string]bool)
+	for _, word := range strings.Fields(words) {
+		set[word] = true
+	}
+	return set
+}

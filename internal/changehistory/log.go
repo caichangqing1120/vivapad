@@ -246,3 +246,14 @@ func (log *changeLog) deletionCount(position, length int) int {
 	}
 	return count
 }
+
+func (log changeLog) clone() changeLog {
+	return changeLog{
+		stack: changeStack{
+			steps:   slices.Clone(log.stack.steps),
+			changes: slices.Clone(log.stack.changes),
+		},
+		insertions: log.insertions.clone(),
+		deletions:  log.deletions.clone(),
+	}
+}

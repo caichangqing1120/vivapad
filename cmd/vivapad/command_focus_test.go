@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
+	"vivapad/internal/printing"
 )
 
-func requireEditorCommandFocus(t *testing.T, driver *app.Driver, want ui.ID) {
+func requireEditorCommandFocus(t *testing.T, driver *app.Driver, want gfx.ID) {
 	t.Helper()
 	for range 2 {
 		if err := driver.Pump(); err != nil {
@@ -46,6 +47,110 @@ func TestCommentMenuReturnsFocusForNativeUndoAndTyping(t *testing.T) {
 	}
 	if err := driver.Type("!"); err != nil || doc.Editor.String() != "!alpha" {
 		t.Fatalf("typing immediately after menu Undo = %q, %v", doc.Editor.String(), err)
+	}
+}
+
+func TestPrintNowMenuReturnsFocusWithoutChangingSelection(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	clickID(t, driver, editorID)
+	doc.Editor.Insert("alpha\nPRINTJOB")
+	doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneCount(), End: 6})
+	before, caret, value, dirty := doc.Editor.Selection(), doc.Editor.Caret(), doc.Editor.String(), doc.Dirty()
+	if before.Start == before.End {
+		t.Fatal("test did not establish an editor selection")
+	}
+	called := false
+	state.printJob = func(job printing.Job) (int, error) {
+		called = true
+		if job.Scope != printing.ScopeAll || job.Text != value || job.Interactive || job.Selection.Start != job.Selection.End {
+			t.Fatalf("Print Now selection contract = %+v", job)
+		}
+		return 1, nil
+	}
+	clickID(t, driver, menuScope.At(0))
+	revealFileMenuItem(t, driver, 22)
+	clickID(t, driver, menuItemScope.At(22))
+	if !called {
+		t.Fatal("Print Now was not dispatched from the actual File menu")
+	}
+	requireEditorCommandFocus(t, driver, editorID)
+	if doc.Editor.Selection() != before || doc.Editor.Caret() != caret ||
+		doc.Editor.String() != value || doc.Dirty() != dirty {
+		t.Fatal("Print Now changed text, directional selection, caret or dirty state")
+	}
+}
+
+func TestPrintDialogCancelReturnsFocusWithoutChangingSelection(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	clickID(t, driver, editorID)
+	doc.Editor.Insert("alpha\nPRINTJOB")
+	doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneCount(), End: 6})
+	before, caret, value, dirty := doc.Editor.Selection(), doc.Editor.Caret(), doc.Editor.String(), doc.Dirty()
+	called := false
+	state.printJob = func(job printing.Job) (int, error) {
+		called = true
+		if !job.Interactive || job.Text != value || job.Selection.End <= job.Selection.Start {
+			t.Fatalf("Print... selection contract = %+v", job)
+		}
+		return 0, printing.ErrPrintCanceled
+	}
+	clickID(t, driver, menuScope.At(0))
+	revealFileMenuItem(t, driver, 21)
+	clickID(t, driver, menuItemScope.At(21))
+	if !called {
+		t.Fatal("Print... was not dispatched from the actual File menu")
+	}
+	requireEditorCommandFocus(t, driver, editorID)
+	if doc.Editor.Selection() != before || doc.Editor.Caret() != caret ||
+		doc.Editor.String() != value || doc.Dirty() != dirty {
+		t.Fatal("Print... Cancel changed text, directional selection, caret or dirty state")
+	}
+}
+
+func TestFilesDialogCancelRestoresActiveEditorFocus(t *testing.T) {
+	for _, command := range []string{"Find in Files...", "Replace in Files..."} {
+		for _, method := range []string{"Escape", "Cancel button"} {
+			t.Run(command+"/"+method, func(t *testing.T) {
+				state, driver := startDriver(t)
+				if err := driver.Resize(640, 400); err != nil {
+					t.Fatal(err)
+				}
+				left := state.space.Current()
+				left.Editor.Insert("left draft")
+				right := state.space.NewDocument()
+				right.Editor.Insert("right draft")
+				state.toggleSplit()
+				state.invalidator.Invalidate()
+				if err := driver.Pump(); err != nil {
+					t.Fatal(err)
+				}
+				clickID(t, driver, rightEditorID)
+				right.Editor.MoveTo(right.Editor.RuneCount(), false)
+				clickID(t, driver, menuScope.At(2))
+				revealSearchMenuItem(t, driver, searchCommandIndex(t, command))
+				clickID(t, driver, searchCommandID(t, command))
+				clickID(t, driver, queryID)
+				if err := driver.Type("leaving this dialog"); err != nil {
+					t.Fatal(err)
+				}
+				if method == "Escape" {
+					if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					clickID(t, driver, filesCancelID)
+				}
+				if state.filesDialogOpen || state.activePane != 1 || state.space.Current() != right {
+					t.Fatal("cancel did not dismiss the dialog on the active pane")
+				}
+				requireEditorCommandFocus(t, driver, rightEditorID)
+				if err := driver.Type("x"); err != nil || right.Editor.String() != "right draftx" || left.Editor.String() != "left draft" {
+					t.Fatalf("first key after cancel: left=%q right=%q err=%v", left.Editor.String(), right.Editor.String(), err)
+				}
+			})
+		}
 	}
 }
 
@@ -175,7 +280,7 @@ func TestPendingEditorFocusYieldsToNewDialogOrModelessQuery(t *testing.T) {
 	for _, scenario := range []struct {
 		name    string
 		command string
-		focus   ui.ID
+		focus   gfx.ID
 	}{
 		{"column dialog", "Column Editor...", columnTextID},
 		{"modeless mark", "Mark...", queryID},

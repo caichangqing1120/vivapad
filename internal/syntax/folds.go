@@ -24,6 +24,31 @@ func FoldRegions(mode, value string) []FoldRegion {
 	if len(value) > 8<<20 {
 		return nil
 	}
+	if strings.EqualFold(mode, ".hex") {
+		return intelHEXFoldRegions(value)
+	}
+	if strings.EqualFold(mode, ".iss") {
+		return innoFoldRegions(value)
+	}
+	if csoundMode(mode) {
+		return csoundFoldRegions(value)
+	}
+	switch strings.ToLower(mode) {
+	case ".reb", ".r2", ".r3":
+		return rebolFoldRegions(value)
+	case ".avs", ".avsi":
+		return avsFoldRegions(value)
+	case ".bas", ".bi":
+		return freeBasicFoldRegions(value)
+	case ".osx":
+		return oscriptFoldRegions(value)
+	case ".pb":
+		return pureBasicFoldRegions(value)
+	case ".gui":
+		return gui4CliFoldRegions(value)
+	case ".hws":
+		return hollywoodFoldRegions(value)
+	}
 	if mode == ".py" || mode == ".yaml" || mode == ".yml" {
 		return indentFoldRegions(value, mode == ".py")
 	}
@@ -74,6 +99,62 @@ func FoldRegions(mode, value string) []FoldRegion {
 		}
 	}
 	return sortedFoldRegions(regions)
+}
+
+func innoFoldRegions(value string) []FoldRegion {
+	var regions []FoldRegion
+	var state innoState
+	header, line := -1, 0
+	finish := func() {
+		if header >= 0 && header < line-1 {
+			regions = append(regions, FoldRegion{Header: header, LastLine: line - 1, Level: 1})
+		}
+	}
+	for value != "" {
+		end, next := syntaxLineBounds(value)
+		var isHeader bool
+		state, isHeader = scanInnoLine(value[:end], state, nil)
+		if isHeader {
+			finish()
+			header = line
+		}
+		value = value[next:]
+		line++
+	}
+	finish()
+	return regions
+}
+
+func intelHEXFoldRegions(value string) []FoldRegion {
+	var regions []FoldRegion
+	header, last := -1, -1
+	finish := func() {
+		if header >= 0 && last > header {
+			regions = append(regions, FoldRegion{Header: header, LastLine: last, Level: 1})
+		}
+		header = -1
+	}
+	lineNumber := 0
+	for line := range strings.SplitSeq(strings.TrimSuffix(value, "\n"), "\n") {
+		line = strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(line, ":") {
+			kind, valid := hexByte(line, 7)
+			if !valid || kind != 0 {
+				finish()
+				// A header must match its declared width, including the checksum
+				// digits. Highlighting handles checksum mismatches.
+				count, known := hexByte(line, 1)
+				if valid && (kind == 2 || kind == 4) && known && count == 2 &&
+					len(line) == 15 && hexDigits(line, 3, len(line)) {
+					header = lineNumber
+				}
+			}
+		}
+		last = lineNumber
+		lineNumber++
+	}
+	finish()
+	return regions
 }
 
 func braceFoldMode(mode string) bool {

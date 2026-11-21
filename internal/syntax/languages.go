@@ -60,6 +60,46 @@ var languages = [...]Language{
 	{"Scheme", ".scm", "scheme", "IDM_LANG_SCHEME", "Scheme", ";", ""},
 	{"CoffeeScript", ".coffee", "coffeescript", "IDM_LANG_COFFEESCRIPT", "CoffeeScript", "#", ""},
 	{"GDScript", ".gd", "gdscript", "IDM_LANG_GDSCRIPT", "GDScript", "#", ""},
+	{"Ada", ".ada", "ada", "IDM_LANG_ADA", "Ada", "--", ""},
+	{"AutoIt", ".au3", "autoit", "IDM_LANG_AU3", "AutoIt", ";", ""},
+	{"Batch", ".bat", "batch", "IDM_LANG_BATCH", "Batchfile", "REM", ""},
+	{"Caml", ".ml", "caml", "IDM_LANG_CAML", "OCaml", "", ""},
+	{"COBOL", ".cob", "cobol", "IDM_LANG_COBOL", "COBOL", "", ""},
+	{"D", ".d", "d", "IDM_LANG_D", "D", "//", "{[("},
+	{"Fortran (fixed form)", ".f77", "fortran77", "IDM_LANG_FORTRAN_77", "FortranFixed", "", ""},
+	{"Forth", ".forth", "forth", "IDM_LANG_FORTH", "Forth", "\\", ""},
+	{"NSIS", ".nsi", "nsis", "IDM_LANG_NSIS", "NSIS", ";", ""},
+	{"Properties", ".properties", "props", "IDM_LANG_PROPS", "properties", "#", ""},
+	{"Registry", ".reg", "registry", "IDM_LANG_REGISTRY", "reg", ";;", ""},
+	{"SAS", ".sas", "sas", "IDM_LANG_SAS", "SAS", "", ""},
+	{"Smalltalk", ".st", "smalltalk", "IDM_LANG_SMALLTALK", "Smalltalk", "", ""},
+	{"ActionScript", ".as", "actionscript", "IDM_LANG_FLASH", "ActionScript", "//", "{[("},
+	{"Assembly", ".asm", "asm", "IDM_LANG_ASM", "NASM", ";", ""},
+	{"BlitzBasic", ".bb", "blitzbasic", "IDM_LANG_BLITZBASIC", "BlitzBasic", "", ""},
+	{"LISP", ".lisp", "lisp", "IDM_LANG_LISP", "Common Lisp", ";", "("},
+	{"Microsoft Transact-SQL", ".tsql", "mssql", "IDM_LANG_MSSQL", "Transact-SQL", "--", ""},
+	{"TeX", "lang:tex", "tex", "IDM_LANG_TEX", "TeX", "%", ""},
+	{"JSON5", ".json5", "json5", "IDM_LANG_JSON5", "JSON5", "//", "{[("},
+	{"Intel HEX", ".hex", "ihex", "IDM_LANG_IHEX", "Intel HEX", "", ""},
+	{"S-Record", ".srec", "srec", "IDM_LANG_SREC", "Motorola S-Record", "", ""},
+	{"Tektronix extended HEX", ".tek", "tehex", "IDM_LANG_TEHEX", "Tektronix extended HEX", "", ""},
+	{"Resource file", ".rc", "rc", "IDM_LANG_RC", "Windows Resource", "//", ""},
+	{"Inno Setup", ".iss", "inno", "IDM_LANG_INNO", "Inno Setup", ";", ""},
+	{"ASN.1", ".mib", "asn1", "IDM_LANG_ASN1", "ASN.1", "", ""},
+	{"MMIXAL", ".mms", "mmixal", "IDM_LANG_MMIXAL", "MMIXAL", "%", ""},
+	{"ErrorList", ".err", "errorlist", "IDM_LANG_ERRORLIST", "ErrorList", "#", ""},
+	{"Spice", ".scp", "spice", "IDM_LANG_SPICE", "Spice", "*", ""},
+	{"KIXtart", ".kix", "kix", "IDM_LANG_KIX", "KIXtart", ";", ""},
+	{"CSound", ".orc", "csound", "IDM_LANG_CSOUND", "CSound", ";", ""},
+	{"REBOL", ".reb", "rebol", "IDM_LANG_REBOL", "REBOL", ";", ""},
+	{"AviSynth", ".avs", "avs", "IDM_LANG_AVS", "AviSynth", "#", ""},
+	{"FreeBasic", ".bas", "freebasic", "IDM_LANG_FREEBASIC", "FreeBasic", "", ""},
+	{"OScript", ".osx", "oscript", "IDM_LANG_OSCRIPT", "OScript", "//", ""},
+	{"PureBasic", ".pb", "purebasic", "IDM_LANG_PUREBASIC", "PureBasic", "", ""},
+	{"Gui4Cli", ".gui", "gui4cli", "IDM_LANG_GUI4CLI", "Gui4Cli", "//", ""},
+	{"Nncrontab", ".tab", "nncrontab", "IDM_LANG_NNCRONTAB", "Nncrontab", "\\", ""},
+	{"txt2tags", ".t2t", "txt2tags", "IDM_LANG_TXT2TAGS", "txt2tags", "", ""},
+	{"Hollywood", ".hws", "hollywood", "IDM_LANG_HOLLYWOOD", "Hollywood", ";", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
@@ -74,11 +114,39 @@ func LanguageByLabel(label string) (Language, bool) {
 }
 
 func LanguageByMode(mode string) (Language, bool) {
-	if strings.EqualFold(mode, ".yml") {
+	mode = strings.ToLower(mode)
+	switch mode {
+	case ".yml":
 		mode = ".yaml"
+	case ".adb", ".ads":
+		mode = ".ada"
+	case ".cmd":
+		mode = ".bat"
+	case ".mli":
+		mode = ".ml"
+	case ".cpy":
+		mode = ".cob"
+	case ".nsh":
+		mode = ".nsi"
+	case ".jsonc":
+		mode = ".json5"
+	case ".mot":
+		mode = ".srec"
+	case ".out":
+		mode = ".scp"
+	case ".sco", ".csd":
+		mode = ".orc"
+	case ".r2", ".r3":
+		mode = ".reb"
+	case ".avsi":
+		mode = ".avs"
+	case ".bi":
+		mode = ".bas"
+	case ".spf":
+		mode = ".tab"
 	}
 	for _, spec := range languages {
-		if spec.Mode == strings.ToLower(mode) {
+		if spec.Mode == mode {
 			return spec, true
 		}
 	}

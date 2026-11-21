@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/vivaui/viva/app"
+	"vivapad/internal/external"
 )
 
 func (state *model) openDefaultViewer() {
@@ -15,6 +16,23 @@ func (state *model) openDefaultViewer() {
 		return
 	}
 	state.notice = "Opened in default viewer"
+}
+
+func (state *model) openCurrentConsole(kind external.ConsoleKind, label string) {
+	if state.openConsole == nil {
+		state.notice = label + " is unavailable on this platform"
+		return
+	}
+	path := state.space.Current().Path
+	if path == "" {
+		state.notice = "Save the document before opening its folder"
+		return
+	}
+	if err := state.openConsole(kind, path); err != nil {
+		state.notice = label + ": " + err.Error()
+		return
+	}
+	state.notice = "Opened " + label + " in containing folder"
 }
 
 func (state *model) revealCurrentFile() {

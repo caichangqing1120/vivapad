@@ -62,11 +62,13 @@ func TestOpenReplacePreflightsLaterEditorConstraintsBeforeAnyMutation(t *testing
 			second.Editor.Insert("cat")
 			second.Editor.ClearHistory()
 			second.Editor.MoveTo(1, false)
-			scenario.set(second.Editor)
 			plan, err := PreviewOpenReplace([]*document.Document{first, second}, "cat", "dog", document.SearchOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Constraints can change after preview. Apply must still refuse
+			// atomically, without consuming the existing plan.
+			scenario.set(second.Editor)
 			firstCursor, secondCursor := first.Editor.TrackEdits(), second.Editor.TrackEdits()
 			firstSelection, secondSelection := first.Editor.Selection(), second.Editor.Selection()
 			if err := plan.Apply([]*document.Document{first, second}); err == nil {

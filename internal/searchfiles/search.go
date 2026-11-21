@@ -2,6 +2,7 @@ package searchfiles
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -22,17 +23,52 @@ type Options struct {
 	Encoding     document.Encoding
 }
 
+func (options Options) fileByteLimit() int64 {
+	if options.MaxFileBytes > 0 {
+		return options.MaxFileBytes
+	}
+	return 8 << 20
+}
+
 type Match struct {
 	Path       string
 	DiskDigest string
-	Encoding   document.Encoding
-	Line       int
-	Column     int
-	Preview    string
-	Text       string
-	Start      int
-	End        int
+	// Source and Text share an open document's immutable snapshot.
+	Source       string
+	Encoding     document.Encoding
+	Line         int
+	Column       int
+	Preview      string
+	Text         string
+	Start        int
+	End          int
+	fileSnapshot *fileSnapshot
 }
+
+type fileSnapshot struct {
+	length int
+	digest [sha256.Size]byte
+}
+
+func (match Match) MatchesSource(value string) bool {
+	if snapshot := match.fileSnapshot; snapshot != nil {
+		return snapshot.length == len(value) && snapshot.digest == sha256.Sum256([]byte(value))
+	}
+	return match.Source == value
+}
+
+func (match Match) MatchesRange(value string) bool {
+	return match.Start >= 0 && match.Start < match.End && match.End <= len(value) &&
+		match.MatchesSource(value) && (match.fileSnapshot != nil || value[match.Start:match.End] == match.Text)
+}
+
+type matchSnapshot uint8
+
+const (
+	previewOnly matchSnapshot = iota
+	directorySnapshot
+	documentSnapshot
+)
 
 type Result struct {
 	Matches       []Match
@@ -44,6 +80,10 @@ type Result struct {
 var errLimit = errors.New("match limit reached")
 
 func Find(ctx context.Context, root, query string, search document.SearchOptions, options Options) (Result, error) {
+	return find(ctx, root, query, search, options, directorySnapshot)
+}
+
+func find(ctx context.Context, root, query string, search document.SearchOptions, options Options, snapshot matchSnapshot) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -69,9 +109,7 @@ func Find(ctx context.Context, root, query string, search document.SearchOptions
 			return Result{}, err
 		}
 	}
-	if options.MaxFileBytes <= 0 {
-		options.MaxFileBytes = 8 << 20
-	}
+	maxFileBytes := options.fileByteLimit()
 	if options.MaxMatches <= 0 {
 		options.MaxMatches = 2000
 	}
@@ -118,21 +156,28 @@ func Find(ctx context.Context, root, query string, search document.SearchOptions
 			return nil
 		}
 		info, err := entry.Info()
-		if err != nil || info.Size() > options.MaxFileBytes {
+		if err != nil || info.Size() > maxFileBytes {
 			result.FilesSkipped++
 			return nil
 		}
-		doc, err := openWithEncoding(path, options.Encoding)
+		source, err := document.ReadSearchSource(path, options.Encoding, maxFileBytes)
 		if err != nil {
 			result.FilesSkipped++
 			return nil
 		}
 		result.FilesSearched++
-		spans, err := doc.MatchesWith(query, search)
+		spans, truncated, err := document.MatchesInTextWithLimit(ctx, source.Text, query, search, options.MaxMatches-len(result.Matches))
 		if err != nil {
 			return err
 		}
-		return appendMatches(ctx, &result, doc, spans, options.MaxMatches)
+		if err := appendMatches(ctx, &result, source, spans, options.MaxMatches, snapshot); err != nil {
+			return err
+		}
+		if truncated {
+			result.Truncated = true
+			return errLimit
+		}
+		return nil
 	}
 	if err := filepath.WalkDir(absolute, visit); err != nil && !errors.Is(err, errLimit) {
 		return result, err
@@ -144,23 +189,30 @@ func FindDocument(doc *document.Document, query string, search document.SearchOp
 	if doc == nil || query == "" {
 		return Result{}, fmt.Errorf("enter text to find in an open document")
 	}
-	spans, err := doc.MatchesWith(query, search)
-	if err != nil {
-		return Result{}, err
-	}
 	if maxMatches <= 0 {
 		maxMatches = 2000
 	}
-	result := Result{FilesSearched: 1}
-	if err := appendMatches(context.Background(), &result, doc, spans, maxMatches); err != nil && !errors.Is(err, errLimit) {
+	ctx := context.Background()
+	source := document.SearchSource{Path: doc.Path, Text: doc.Editor.CommittedString(), DiskDigest: doc.DiskDigest(), Encoding: doc.Encoding()}
+	spans, truncated, err := document.MatchesInTextWithLimit(ctx, source.Text, query, search, maxMatches)
+	if err != nil {
 		return Result{}, err
 	}
+	result := Result{FilesSearched: 1}
+	if err := appendMatches(ctx, &result, source, spans, maxMatches, documentSnapshot); err != nil && !errors.Is(err, errLimit) {
+		return Result{}, err
+	}
+	result.Truncated = result.Truncated || truncated
 	return result, nil
 }
 
-func appendMatches(ctx context.Context, result *Result, doc *document.Document, spans []text.Span, maxMatches int) error {
-	value := doc.Editor.String()
-	line, lineStart, scanned := 1, 0, 0
+func appendMatches(ctx context.Context, result *Result, source document.SearchSource, spans []text.Span, maxMatches int, snapshot matchSnapshot) error {
+	value := source.Text
+	var fingerprint *fileSnapshot
+	if snapshot == directorySnapshot && len(spans) != 0 {
+		fingerprint = &fileSnapshot{length: len(value), digest: sha256.Sum256([]byte(value))}
+	}
+	line, column, lineStart, scanned, lineEnd, cachedLineStart := 1, 1, 0, 0, 0, -1
 	for _, span := range spans {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -169,53 +221,69 @@ func appendMatches(ctx context.Context, result *Result, doc *document.Document, 
 			result.Truncated = true
 			return errLimit
 		}
-		for scanned < span.Start {
-			if value[scanned] == '\n' {
+		for offset, character := range value[scanned:span.Start] {
+			if character == '\n' {
 				line++
-				lineStart = scanned + 1
+				lineStart = scanned + offset + 1
+				column = 1
+			} else {
+				column++
 			}
-			scanned++
 		}
-		lineEnd := len(value)
-		if newline := strings.IndexByte(value[lineStart:], '\n'); newline >= 0 {
-			lineEnd = lineStart + newline
+		scanned = span.Start
+		if cachedLineStart != lineStart {
+			cachedLineStart, lineEnd = lineStart, len(value)
+			if newline := strings.IndexByte(value[lineStart:], '\n'); newline >= 0 {
+				lineEnd = lineStart + newline
+			}
 		}
 		preview := previewLine(value[lineStart:lineEnd], span.Start-lineStart, min(span.End, lineEnd)-lineStart)
-		result.Matches = append(result.Matches, Match{
-			Path: doc.Path, DiskDigest: doc.DiskDigest(), Encoding: doc.Encoding(), Line: line, Column: utf8.RuneCountInString(value[lineStart:span.Start]) + 1,
-			Preview: preview, Text: value[span.Start:span.End], Start: span.Start, End: span.End,
-		})
+		match := Match{
+			Path: source.Path, DiskDigest: source.DiskDigest, Encoding: source.Encoding, Line: line, Column: column,
+			Preview: preview, Start: span.Start, End: span.End,
+		}
+		if snapshot == documentSnapshot {
+			match.Source, match.Text = value, value[span.Start:span.End]
+		} else {
+			// Short previews can be slices of the complete source string.
+			match.Preview = strings.Clone(preview)
+			match.fileSnapshot = fingerprint
+		}
+		result.Matches = append(result.Matches, match)
 	}
 	return nil
 }
 
-func openWithEncoding(path string, encoding document.Encoding) (*document.Document, error) {
-	if encoding.IsLegacy() {
-		return document.OpenWithEncoding(path, encoding)
-	}
-	return document.Open(path)
-}
-
 func previewLine(line string, matchStart, matchEnd int) string {
-	if utf8.RuneCountInString(line) <= 160 {
+	characters := 0
+	for range line {
+		characters++
+		if characters > 160 {
+			break
+		}
+	}
+	if characters <= 160 {
 		return strings.TrimSpace(line)
 	}
 	matchStart = min(max(matchStart, 0), len(line))
 	matchEnd = min(max(matchEnd, matchStart), len(line))
-	first := max(0, utf8.RuneCountInString(line[:matchStart])-60)
-	if end := utf8.RuneCountInString(line[:matchEnd]); first+160 < end {
-		first = end - 160
+	// The window starts 60 runes before the match, or 160 before its end
+	// when a longer match needs the window to include its final rune.
+	startByte := matchStart
+	for steps := 0; steps < 60 && startByte > 0; steps++ {
+		_, width := utf8.DecodeLastRuneInString(line[:startByte])
+		startByte -= width
 	}
-	startByte, endByte, index := 0, len(line), 0
-	for offset := range line {
-		if index == first {
-			startByte = offset
-		}
-		if index == first+160 {
-			endByte = offset
-			break
-		}
-		index++
+	fromEnd := matchEnd
+	for steps := 0; steps < 160 && fromEnd > 0; steps++ {
+		_, width := utf8.DecodeLastRuneInString(line[:fromEnd])
+		fromEnd -= width
+	}
+	startByte = max(startByte, fromEnd)
+	endByte := startByte
+	for steps := 0; steps < 160 && endByte < len(line); steps++ {
+		_, width := utf8.DecodeRuneInString(line[endByte:])
+		endByte += width
 	}
 	preview := strings.TrimSpace(line[startByte:endByte])
 	if startByte > 0 {

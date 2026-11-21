@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
 )
 
@@ -27,7 +27,7 @@ func multiSelectModeForCommand(command string) (all bool, options document.Searc
 	return false, document.SearchOptions{}, false
 }
 
-func (state *model) paintMultiSelectMenu(canvas *ui.Canvas, size ui.Size, parentRight float32) {
+func (state *model) paintMultiSelectMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
 	all := state.multiAllMenuOpen
 	label := "Multi-select Next"
 	scope := multiSelectNextScope
@@ -39,17 +39,17 @@ func (state *model) paintMultiSelectMenu(canvas *ui.Canvas, size ui.Size, parent
 	x := parentRight
 	y := max(menuHeight, size.Height-statusHeight-height-4)
 	canvas.PushLayer(3)
-	panel := ui.Rect{X: x, Y: y, Width: width, Height: height}
+	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
 	canvas.Border(panel, 1, palette.border, palette.white)
-	canvas.HitWithOptions(scope.At(len(multiSelectModes)), panel, label, ui.HitOptions{Role: ui.RoleMenu})
+	canvas.HitWithOptions(scope.At(len(multiSelectModes)), panel, label, gfx.HitOptions{Role: gfx.RoleMenu})
 	for index, mode := range multiSelectModes {
-		item := ui.Rect{X: x + 4, Y: y + 4 + float32(index)*26, Width: width - 8, Height: 26}
+		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*26, Width: width - 8, Height: 26}
 		id := scope.At(index)
 		if canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
-		smallLabel(canvas, mode.label, item.Inset(ui.All(8)), palette.text, 11)
-		canvas.HitWithOptions(id, item, mode.label, ui.HitOptions{Role: ui.RoleMenuItem})
+		smallLabel(canvas, mode.label, item.Inset(gfx.All(8)), palette.text, 11)
+		canvas.HitWithOptions(id, item, mode.label, gfx.HitOptions{Role: gfx.RoleMenuItem})
 		if canvas.Clicked(id) {
 			state.command(label + " / " + mode.label)
 		}

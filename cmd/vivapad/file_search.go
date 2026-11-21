@@ -4,13 +4,31 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
+	"golang.org/x/text/unicode/norm"
 	"vivapad/internal/document"
 	"vivapad/internal/searchfiles"
 )
+
+const (
+	missingSearchResultPrefix = "Search result file is missing: "
+	staleSearchResultNotice   = "Search result changed; run the search again"
+	composingResultNotice     = "Finish composing before opening this result"
+	resultDecodingNotice      = "Search result encoding differs from the open tab"
+)
+
+func (state *model) filesDialogField(id gfx.ID) bool {
+	return id == queryID || id == filesRootID || id == filesPatternID ||
+		state.filesReplaceMode && id == replacementID
+}
 
 func (state *model) openFilesDialog() {
 	state.closeIncrementalSearch()
@@ -22,9 +40,21 @@ func (state *model) openFilesDialog() {
 	}
 }
 
+func (state *model) cancelFilesDialog() {
+	state.cancelFileSearch()
+	state.filesDialogOpen = false
+}
+
 func (state *model) clearResultFocus() {
 	state.resultFocusMode, state.resultFocusRequested = false, false
 	state.resultFocusArmed, state.resultReturnToEditor = false, false
+}
+
+func (state *model) discardFileResults() {
+	state.fileResults = searchfiles.Result{}
+	state.resultQuery, state.resultOffset, state.resultSelected = "", 0, -1
+	state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
+	state.clearResultFocus()
 }
 
 func (state *model) browseFilesDirectory() {
@@ -40,12 +70,10 @@ func (state *model) browseFilesDirectory() {
 }
 
 func (state *model) startFileSearch() {
-	state.cancelFileSearch()
+	generation := state.cancelFileSearch()
 	state.clearResultFocus()
 	state.resultSelected = -1
 	state.filesMessage = ""
-	state.searchGeneration++
-	generation := state.searchGeneration
 	root, pattern, query, options := state.filesRoot.String(), state.filesPattern.String(), state.query.String(), state.searchOptions
 	recursive, encoding := state.filesRecursive, state.filesEncoding
 	ctx, cancel := context.WithCancel(context.Background())
@@ -60,10 +88,8 @@ func (state *model) startFileSearch() {
 }
 
 func (state *model) startReplacePreview() {
-	state.cancelFileSearch()
+	generation := state.cancelFileSearch()
 	state.filesMessage = ""
-	state.searchGeneration++
-	generation := state.searchGeneration
 	root, pattern, query, replacement, options := state.filesRoot.String(), state.filesPattern.String(), state.query.String(), state.replacement.String(), state.searchOptions
 	recursive, encoding := state.filesRecursive, state.filesEncoding
 	ctx, cancel := context.WithCancel(context.Background())
@@ -76,30 +102,49 @@ func (state *model) startReplacePreview() {
 	}()
 }
 
+func matchesReplacePath(openedPath, plannedPath string) bool {
+	if openedPath == "" {
+		return false
+	}
+	if openedPath == plannedPath {
+		return true
+	}
+	if !strings.EqualFold(norm.NFC.String(openedPath), norm.NFC.String(plannedPath)) {
+		return false
+	}
+	// Case and Unicode spelling variants can also name distinct files.
+	opened, err := os.Stat(openedPath)
+	if err != nil {
+		return false
+	}
+	planned, err := os.Stat(plannedPath)
+	return err == nil && os.SameFile(opened, planned)
+}
+
 func (state *model) startReplaceApply() {
 	if state.replacePlan == nil || state.filesApplying {
 		return
 	}
 	for _, change := range state.replacePlan.Changes {
 		for _, doc := range state.space.Documents {
-			if doc.Path == change.Path {
-				if state.isReadOnly(doc) {
-					state.notice = "Read-only open tab cannot be replaced on disk"
-					return
-				}
-				if doc.Dirty() {
-					state.notice = "Save or close modified tabs before replacing files"
-					return
-				}
-				if doc.Encoding() != change.Encoding {
-					state.notice = "Close tabs opened with another encoding before replacing files"
-					return
-				}
+			if !matchesReplacePath(doc.Path, change.Path) {
+				continue
+			}
+			if state.isReadOnly(doc) {
+				state.notice = "Read-only open tab cannot be replaced on disk"
+				return
+			}
+			if doc.Dirty() {
+				state.notice = "Save or close modified tabs before replacing files"
+				return
+			}
+			if doc.Encoding() != change.Encoding {
+				state.notice = "Close tabs opened with another encoding before replacing files"
+				return
 			}
 		}
 	}
-	state.searchGeneration++
-	generation, plan := state.searchGeneration, state.replacePlan
+	generation, plan := state.searchReplies.advance(), state.replacePlan
 	state.filesApplying = true
 	state.notice = "Replacing files..."
 	go func() {
@@ -108,123 +153,145 @@ func (state *model) startReplaceApply() {
 	}()
 }
 
+func (state *model) cancelReplacePreview() {
+	if state.filesApplying {
+		return
+	}
+	state.replaceConfirmOpen, state.replacePlan = false, nil
+	state.requestEditorCommandFocus()
+}
+
+// Each file job delivers one reply. Only the active generation can publish it.
+type fileSearchMailbox struct {
+	mu         sync.Mutex
+	generation uint64
+	pending    *fileSearchResponse
+}
+
+func (mailbox *fileSearchMailbox) advance() uint64 {
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	mailbox.generation++
+	mailbox.pending = nil
+	return mailbox.generation
+}
+
+func (mailbox *fileSearchMailbox) publish(reply fileSearchResponse) bool {
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	if reply.generation != mailbox.generation {
+		return false
+	}
+	mailbox.pending = &reply
+	return true
+}
+
+func (mailbox *fileSearchMailbox) take() *fileSearchResponse {
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	reply := mailbox.pending
+	mailbox.pending = nil
+	return reply
+}
+
 func (state *model) sendFileReply(reply fileSearchResponse) {
-	for {
-		select {
-		case state.searchReplies <- reply:
-			state.invalidator.Invalidate()
-			return
-		default:
-			select {
-			case <-state.searchReplies:
-			default:
-			}
-		}
+	if state.searchReplies.publish(reply) {
+		state.invalidator.Invalidate()
 	}
 }
 
 func (state *model) consumeFileSearch() {
-	for {
-		select {
-		case reply := <-state.searchReplies:
-			if reply.generation != state.searchGeneration {
-				continue
-			}
-			if reply.kind == fileJobReplaceApply {
-				if !state.filesApplying {
-					continue
-				}
-				state.filesApplying, state.replaceConfirmOpen = false, false
-				state.replacePlan, state.resultsOpen = nil, false
-				state.resultSelected = -1
-				state.clearResultFocus()
-				state.resultDocument, state.resultDocuments, state.resultOpenDocuments = nil, nil, false
-				reloadErr := state.refreshReplacedTabs(reply.applied)
-				if reply.err != nil {
-					state.notice = reply.err.Error()
-				} else {
-					state.notice = fmt.Sprintf("Replaced %d matches in %d files", reply.applied.Replacements, reply.applied.FilesChanged)
-				}
-				if reloadErr != nil {
-					state.notice += "; tab reload failed: " + reloadErr.Error()
-				}
-				continue
-			}
-			if !state.filesSearching {
-				continue
-			}
-			state.filesSearching = false
-			state.searchCancel()
-			state.searchCancel = nil
-			if reply.err != nil {
-				state.notice = reply.err.Error()
-				state.filesMessage = reply.err.Error()
-				return
-			}
-			if reply.kind == fileJobReplacePreview {
-				if len(reply.plan.Changes) == 0 {
-					state.notice = "No changes to preview"
-					state.filesMessage = state.notice
-					return
-				}
-				state.replacePlan = reply.plan
-				state.replaceConfirmOpen, state.filesDialogOpen = true, false
-				state.resultsOpen = false
-				state.clearResultFocus()
-				state.resultDocument, state.resultDocuments, state.resultOpenDocuments = nil, nil, false
-				state.notice = fmt.Sprintf("Preview: %d matches in %d files", reply.plan.Replacements, len(reply.plan.Changes))
-				continue
-			}
-			state.fileResults, state.resultOffset, state.resultSelected = reply.result, 0, -1
-			state.clearResultFocus()
-			state.resultDocument = nil
-			state.resultDocuments, state.resultOpenDocuments = nil, false
-			state.resultQuery = reply.query
-			state.resultsOpen, state.filesDialogOpen = true, false
-			state.notice = fmt.Sprintf("%d matches in %d files (%d skipped)", len(reply.result.Matches), reply.result.FilesSearched, reply.result.FilesSkipped)
-		default:
+	reply := state.searchReplies.take()
+	if reply == nil {
+		return
+	}
+	if reply.kind == fileJobReplaceApply {
+		if !state.filesApplying {
 			return
 		}
+		state.filesApplying, state.replaceConfirmOpen = false, false
+		state.replacePlan = nil
+		state.discardFileResults()
+		reloadErr := state.refreshReplacedTabs(reply.applied)
+		if reply.err != nil {
+			state.notice = reply.err.Error()
+		} else {
+			state.notice = fmt.Sprintf("Replaced %d matches in %d files", reply.applied.Replacements, reply.applied.FilesChanged)
+		}
+		if reloadErr != nil {
+			state.notice += "; tab reload failed: " + reloadErr.Error()
+		}
+		state.requestEditorCommandFocus()
+		return
 	}
+	if !state.filesSearching {
+		return
+	}
+	state.filesSearching = false
+	state.searchCancel()
+	state.searchCancel = nil
+	if reply.err != nil {
+		state.notice = reply.err.Error()
+		state.filesMessage = reply.err.Error()
+		return
+	}
+	if reply.kind == fileJobReplacePreview {
+		if len(reply.plan.Changes) == 0 {
+			state.notice = "No changes to preview"
+			state.filesMessage = state.notice
+			return
+		}
+		state.replacePlan = reply.plan
+		state.replaceConfirmOpen, state.filesDialogOpen = true, false
+		state.discardFileResults()
+		state.notice = fmt.Sprintf("Preview: %d matches in %d files", reply.plan.Replacements, len(reply.plan.Changes))
+		return
+	}
+	state.fileResults, state.resultOffset, state.resultSelected = reply.result, 0, -1
+	state.clearResultFocus()
+	state.resultDocument = nil
+	state.resultDocuments, state.resultOpenDocuments = nil, false
+	state.resultQuery = reply.query
+	state.resultsOpen, state.filesDialogOpen = true, false
+	state.notice = fmt.Sprintf("%d matches in %d files (%d skipped)", len(reply.result.Matches), reply.result.FilesSearched, reply.result.FilesSkipped)
 }
 
 func (state *model) refreshReplacedTabs(result searchfiles.ApplyResult) error {
 	var reloadErrors []error
 	for _, path := range result.Paths {
 		for index, doc := range state.space.Documents {
-			if doc.Path != path {
+			if !matchesReplacePath(doc.Path, path) {
 				continue
 			}
-			language, selected := state.languages[doc]
 			old, err := state.space.Reload(index)
 			if err != nil {
 				reloadErrors = append(reloadErrors, fmt.Errorf("%s: %w", path, err))
 				continue
 			}
-			state.rebindBookmarksOnReload(old, state.space.Documents[index])
-			state.replacePaneDocument(old, state.space.Documents[index])
-			state.releaseDocument(old)
-			if selected {
-				state.languages[state.space.Documents[index]] = language
+			updated := state.space.Documents[index]
+			// Report unavailable history before releasing the source with pending frames.
+			if _, historyErr := old.ChangeHistory(); historyErr != nil {
+				reloadErrors = append(reloadErrors, fmt.Errorf("%s retired history: %w", path, historyErr))
 			}
+			state.rebindReloadedDocument(old, updated)
 		}
 	}
 	return errors.Join(reloadErrors...)
 }
 
-func (state *model) cancelFileSearch() {
+func (state *model) cancelFileSearch() uint64 {
 	if state.searchCancel != nil {
 		state.searchCancel()
 		state.searchCancel = nil
 	}
-	state.searchGeneration++
 	state.filesSearching = false
+	return state.searchReplies.advance()
 }
 
-func (state *model) navigateFileResult(previous bool) {
+func (state *model) navigateFileResult(previous bool) bool {
 	if !state.resultsOpen || len(state.fileResults.Matches) == 0 {
 		state.notice = "No search results"
-		return
+		return false
 	}
 	index := state.resultSelected + 1
 	if previous {
@@ -238,7 +305,7 @@ func (state *model) navigateFileResult(previous bool) {
 	} else if index >= len(state.fileResults.Matches) {
 		index = 0
 	}
-	state.openFileResult(index)
+	return state.openFileResult(index)
 }
 
 func (state *model) selectFileResult(index int) {
@@ -251,6 +318,33 @@ func (state *model) selectFileResult(index int) {
 	}
 }
 
+func (state *model) directoryResultTab(path string) *document.Document {
+	for _, doc := range state.space.Documents {
+		if doc.Path == path {
+			return doc
+		}
+	}
+	spelling := norm.NFC.String(path)
+	var target os.FileInfo
+	for _, doc := range state.space.Documents {
+		if !strings.EqualFold(norm.NFC.String(doc.Path), spelling) {
+			continue
+		}
+		if target == nil {
+			var err error
+			target, err = os.Stat(path)
+			if err != nil {
+				return nil
+			}
+		}
+		// A redirected tab must not acquire the identity of its new target.
+		if info, err := os.Stat(doc.Path); err == nil && os.SameFile(target, info) && doc.CheckDiskPath() == nil {
+			return doc
+		}
+	}
+	return nil
+}
+
 func (state *model) openFileResult(index int) bool {
 	if index < 0 || index >= len(state.fileResults.Matches) {
 		return false
@@ -260,60 +354,126 @@ func (state *model) openFileResult(index int) bool {
 	if state.resultOpenDocuments && index < len(state.resultDocuments) {
 		doc = state.resultDocuments[index]
 	}
+	inMemory, alreadyOpen := doc != nil, doc != nil
 	if doc != nil {
 		position := state.documentIndex(doc)
 		if position < 0 {
-			state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
-			state.resultSelected = -1
-			state.clearResultFocus()
+			state.discardFileResults()
 			state.notice = "Search result document is closed"
 			return false
 		}
-		value := doc.Editor.String()
-		if match.Start < 0 || match.End > len(value) || match.Start >= match.End || value[match.Start:match.End] != match.Text {
-			state.notice = "Search result changed; run the search again"
+	} else {
+		absolute, err := filepath.Abs(match.Path)
+		if err != nil {
+			state.notice = err.Error()
 			return false
 		}
-		state.space.Select(position)
-		if state.splitEnabled {
-			pane := state.activePane
-			if state.paneDocs[pane] != doc {
-				if state.paneDocs[1-pane] == doc {
-					pane = 1 - pane
-				} else {
-					pane = state.paneOwner[doc]
-				}
+		// Directory results already carry the canonical path from collection.
+		if err := document.CheckRecordedPath(absolute); err != nil {
+			switch {
+			case errors.Is(err, fs.ErrNotExist):
+				state.notice = missingSearchResultPrefix + filepath.Base(absolute)
+			case errors.Is(err, document.ErrDiskPathRedirected):
+				state.notice = staleSearchResultNotice
+			default:
+				state.notice = err.Error()
 			}
-			state.activePane, state.paneDocs[pane] = pane, doc
-		} else {
-			state.showInActivePane(doc)
+			return false
 		}
-		doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
-		state.codeEditor().Reveal(match.End)
-		state.selectFileResult(index)
-		return true
+		doc = state.directoryResultTab(absolute)
+		alreadyOpen = doc != nil
+		if !alreadyOpen {
+			if match.Encoding.IsLegacy() {
+				doc, err = document.OpenWithEncoding(absolute, match.Encoding)
+			} else {
+				doc, err = document.Open(absolute)
+			}
+			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					state.notice = missingSearchResultPrefix + filepath.Base(absolute)
+				} else {
+					state.notice = err.Error()
+				}
+				return false
+			}
+			if doc.Path != absolute {
+				state.notice = staleSearchResultNotice
+				return false
+			}
+		}
+		// A pending save conversion does not change how the tab was decoded.
+		if doc.SavedEncoding() != match.Encoding {
+			state.notice = staleSearchResultNotice
+			if alreadyOpen {
+				state.notice = resultDecodingNotice
+			}
+			return false
+		}
+		if match.DiskDigest != "" && doc.DiskDigest() != match.DiskDigest {
+			state.notice = staleSearchResultNotice
+			return false
+		}
+		if alreadyOpen {
+			unchanged, err := doc.DiskMatchesSaved()
+			if errors.Is(err, fs.ErrNotExist) {
+				state.notice = missingSearchResultPrefix + filepath.Base(absolute)
+				return false
+			}
+			if err != nil {
+				state.notice = err.Error()
+				return false
+			}
+			if !unchanged {
+				state.notice = staleSearchResultNotice
+				return false
+			}
+		}
 	}
-	var err error
-	if match.Encoding.IsLegacy() {
-		err = state.space.OpenWithEncoding(match.Path, match.Encoding)
-	} else {
-		err = state.space.Open(match.Path)
-	}
-	if err != nil {
-		state.notice = err.Error()
+	if doc.Editor.CompositionActive() {
+		state.notice = composingResultNotice
+		if !match.MatchesSource(doc.Editor.CommittedString()) {
+			state.notice = staleSearchResultNotice
+		}
 		return false
 	}
-	state.showInActivePane(state.space.Current())
-	state.rememberRecent(state.space.Current())
-	doc = state.space.Current()
 	value := doc.Editor.String()
-	if match.Start < 0 || match.End > len(value) || match.Start >= match.End || value[match.Start:match.End] != match.Text {
-		state.notice = "Search result changed; run the search again"
+	if !match.MatchesRange(value) {
+		state.notice = staleSearchResultNotice
 		return false
+	}
+	if !alreadyOpen {
+		if err := state.space.AddOpened(doc); err != nil {
+			state.notice = err.Error()
+			return false
+		}
+	}
+	// A refused result must leave live input alone. Once the target is valid,
+	// cancel any outgoing composition before transferring editor ownership.
+	state.cancelLiveComposition()
+	state.space.Select(state.documentIndex(doc))
+	if alreadyOpen && state.splitEnabled {
+		pane := state.activePane
+		if state.paneDocs[pane] != doc {
+			if state.paneDocs[1-pane] == doc {
+				pane = 1 - pane
+			} else {
+				pane = state.paneOwner[doc]
+			}
+		}
+		state.activePane, state.paneDocs[pane] = pane, doc
+	} else {
+		state.showInActivePane(doc)
+	}
+	if !inMemory {
+		state.rememberRecent(doc)
 	}
 	doc.Editor.SetSelection(text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
 	state.codeEditor().Reveal(match.End)
 	state.selectFileResult(index)
+	if state.notice == staleSearchResultNotice || state.notice == composingResultNotice ||
+		state.notice == resultDecodingNotice || strings.HasPrefix(state.notice, missingSearchResultPrefix) {
+		state.notice = ""
+	}
 	return true
 }
 
@@ -325,7 +485,7 @@ func (state *model) findAllCurrent() {
 	query := state.query.String()
 	result, err := searchfiles.FindDocument(doc, query, state.searchOptions, 2000)
 	if err != nil {
-		state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
+		state.discardFileResults()
 		state.notice = err.Error()
 		return
 	}
@@ -352,7 +512,7 @@ func (state *model) findAllOpenDocuments() {
 		}
 		part, err := searchfiles.FindDocument(doc, query, state.searchOptions, remaining)
 		if err != nil {
-			state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
+			state.discardFileResults()
 			state.notice = err.Error()
 			return
 		}
@@ -385,7 +545,7 @@ func (state *model) findAllOpenDocuments() {
 func (state *model) replaceAllOpenDocuments() {
 	state.cancelMacroForCommand()
 	state.cancelFileSearch()
-	plan, err := searchfiles.PreviewOpenReplace(state.space.Documents, state.query.String(), state.replacement.String(), state.searchOptions)
+	plan, err := searchfiles.PreviewOpenReplace(state.space.Documents, state.query.CommittedString(), state.replacement.CommittedString(), state.searchOptions)
 	if err != nil {
 		state.notice = err.Error()
 		return
@@ -407,13 +567,25 @@ func (state *model) replaceAllOpenDocuments() {
 	for _, change := range plan.Changes {
 		state.bookmarkLines(change.Doc)
 	}
+	// Every document in the plan may have changed (including a partial apply);
+	// consume each bound source exactly once before reporting.
+	var historyErr error
+	for _, change := range plan.Changes {
+		if _, err := change.Doc.ChangeHistory(); err != nil && historyErr == nil {
+			historyErr = err
+		}
+	}
 	if applyError != nil {
 		state.notice = applyError.Error()
+		if historyErr != nil {
+			state.notice += "; " + historyErr.Error()
+		}
 		return
 	}
-	state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
-	state.fileResults, state.resultQuery, state.resultOffset, state.resultSelected = searchfiles.Result{}, "", 0, -1
-	state.clearResultFocus()
+	state.discardFileResults()
 	state.marks = searchMarkCache{}
 	state.notice = fmt.Sprintf("Unsaved: %d matches replaced in %d open tabs", plan.Replacements, len(plan.Changes))
+	if historyErr != nil {
+		state.notice += "; " + historyErr.Error()
+	}
 }

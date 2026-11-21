@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
-	"github.com/vivaui/viva/ui"
 	"vivapad/internal/document"
 )
 
@@ -16,7 +16,7 @@ func (state *model) openColumnDialog() {
 	state.columnBase, state.columnUppercase, state.columnLeading, state.columnError = 10, false, document.ColumnLeadingNone, ""
 }
 
-func (state *model) columnField(id ui.ID) bool {
+func (state *model) columnField(id gfx.ID) bool {
 	return id == columnTextID || id == columnInitialID || id == columnIncrementID || id == columnRepeatID
 }
 

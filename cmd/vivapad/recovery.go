@@ -24,18 +24,19 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 		return
 	}
 	var recoveredActive *document.Document
+	var historyErr error
 	for index, tab := range stored.Tabs {
 		var doc *document.Document
 		if tab.Path != "" {
-			var err error
+			encoding := document.UTF8
 			if tab.DiskEncoding.IsLegacy() {
-				err = state.space.OpenWithEncoding(tab.Path, tab.DiskEncoding)
-			} else {
-				err = state.space.Open(tab.Path)
+				encoding = tab.DiskEncoding
 			}
-			if err == nil {
+			if err := state.space.OpenRecorded(tab.Path, encoding); err == nil {
 				candidate := state.space.Current()
-				if candidate.DiskDigest() == tab.DiskDigest {
+				// Matching bytes can decode differently in a tab already open.
+				if candidate.Path == tab.Path && !candidate.Dirty() &&
+					candidate.DiskDigest() == tab.DiskDigest && candidate.SavedEncoding() == tab.DiskEncoding {
 					doc = candidate
 				}
 			}
@@ -51,16 +52,15 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 		doc.Editor.SetSelection(text.Range{Start: 0, End: doc.Editor.RuneCount()})
 		doc.Editor.Insert(tab.Content)
 		doc.Editor.SetSelection(text.Range{Start: tab.SelectionStart, End: tab.SelectionEnd})
+		// A caret already at the end does not separate recovery from the next keystroke.
+		doc.Editor.BreakUndoGroup()
 		doc.SetEncoding(tab.Encoding)
-		doc.SetLineEnding(tab.LineEnding)
+		if err := doc.RestoreLineEndings(tab.LineEnding, tab.LineEndings); err != nil {
+			state.notice = "Recovery EOL unavailable: " + err.Error()
+		}
 		if tab.LanguageSelected {
 			state.languages[doc] = tab.Language
 			state.configureCode(doc)
-		}
-		if tab.LineEndings != "" {
-			if err := doc.RestoreEOLSequence(tab.LineEndings); err != nil {
-				state.notice = "Recovery EOL unavailable: " + err.Error()
-			}
 		}
 		doc.MarkRecovered()
 		if err := state.applyFoldHeaders(doc, tab.FoldedHeaders); err != nil {
@@ -72,12 +72,21 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 			state.tabColors[doc] = tab.TabColor
 		}
 		state.paneOwner[doc] = tab.Pane
+		// The restore edits are real undoable edits on the document's bound
+		// source; consume them once and keep the explicit unavailable error.
+		if _, err := doc.ChangeHistory(); err != nil && historyErr == nil {
+			historyErr = err
+		}
 		if index == stored.Active {
 			recoveredActive = doc
 		}
 	}
 	if stored.Split {
 		state.splitEnabled, state.activePane, state.splitRatio = true, stored.ActivePane, stored.Divider
+		if explicitActive != nil && state.paneDocs[0] == explicitActive && state.paneOwner[explicitActive] == 1 {
+			// Startup placed the argument on the left before recovery found its owner.
+			state.paneDocs[0] = nil
+		}
 		if recoveredActive != nil {
 			state.paneDocs[stored.Tabs[stored.Active].Pane] = recoveredActive
 		}
@@ -92,19 +101,34 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 				}
 			}
 			if state.documentIndex(state.paneDocs[pane]) < 0 {
-				state.paneDocs[pane] = state.space.Current()
+				if recoveredActive == nil {
+					state.paneDocs[pane] = state.space.Current()
+					continue
+				}
+				// The recovered tab may have replaced the startup blank tab.
+				// Keep the missing pane independent of the other pane's draft.
+				blank := state.space.NewDocument()
+				state.paneOwner[blank], state.paneDocs[pane] = pane, blank
 			}
 		}
 	} else if recoveredActive != nil {
 		state.splitEnabled, state.activePane = false, 0
 		state.paneDocs = [2]*document.Document{recoveredActive}
+		if explicitActive == nil {
+			state.focusViewRequested, state.focusViewArmed = true, true
+		}
 	}
 	selected := recoveredActive
 	if stored.Split {
 		selected = state.paneDocs[state.activePane]
 	}
 	if explicitActive != nil {
-		state.activePane, state.paneDocs[0] = 0, explicitActive
+		pane := 0
+		if state.splitEnabled {
+			pane = state.paneOwner[explicitActive]
+			state.focusViewRequested, state.focusViewArmed = true, true
+		}
+		state.activePane, state.paneDocs[pane] = pane, explicitActive
 		selected = explicitActive
 	}
 	if index := state.documentIndex(selected); index >= 0 {
@@ -112,6 +136,24 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 	}
 	if len(stored.Tabs) != 0 {
 		state.notice = fmt.Sprintf("Recovered %d unsaved document(s)", len(stored.Tabs))
+	}
+	if historyErr != nil {
+		state.notice += "; " + historyErr.Error()
+	}
+}
+
+func (state *model) recoveryTab(doc *document.Document) recovery.Tab {
+	selection := doc.Editor.Selection()
+	if doc.Editor.Caret() == selection.Start {
+		selection.Start, selection.End = selection.End, selection.Start
+	}
+	mode, selected := state.languages[doc]
+	return recovery.Tab{
+		Path: doc.Path, Name: doc.Name, Content: doc.Editor.String(),
+		Language: mode, LanguageSelected: selected, FoldedHeaders: state.foldHeaders(doc),
+		Encoding: doc.Encoding(), DiskEncoding: doc.SavedEncoding(), LineEnding: doc.LineEnding(), LineEndings: doc.EOLSequence(), DiskDigest: doc.DiskDigest(),
+		SelectionStart: selection.Start, SelectionEnd: selection.End,
+		Pane: state.paneOwner[doc], ReadOnly: state.readOnly[doc], Pinned: state.isPinned(doc), TabColor: state.tabColors[doc],
 	}
 }
 
@@ -121,23 +163,42 @@ func (state *model) currentRecovery() recovery.State {
 		result.Split, result.ActivePane, result.Divider = true, state.activePane, state.splitRatio
 	}
 	for _, doc := range state.space.Documents {
-		if !doc.Dirty() {
-			continue
-		}
-		selection := doc.Editor.Selection()
-		mode, selected := state.languages[doc]
-		result.Tabs = append(result.Tabs, recovery.Tab{
-			Path: doc.Path, Name: doc.Name, Content: doc.Editor.String(),
-			Language: mode, LanguageSelected: selected, FoldedHeaders: state.foldHeaders(doc),
-			Encoding: doc.Encoding(), DiskEncoding: doc.SavedEncoding(), LineEnding: doc.LineEnding(), LineEndings: doc.EOLSequence(), DiskDigest: doc.DiskDigest(),
-			SelectionStart: selection.Start, SelectionEnd: selection.End,
-			Pane: state.paneOwner[doc], ReadOnly: state.isReadOnly(doc), Pinned: state.isPinned(doc), TabColor: state.tabColors[doc],
-		})
-		if result.Active == -1 || doc == state.space.Current() {
-			result.Active = len(result.Tabs) - 1
+		if tab, ok := state.recoverySnapshot(doc); ok {
+			if !result.Split {
+				// The live owner still determines where this tab goes if split view returns.
+				tab.Pane = 0
+			}
+			result.Tabs = append(result.Tabs, tab)
+			if result.Active == -1 || doc == state.space.Current() {
+				result.Active = len(result.Tabs) - 1
+			}
 		}
 	}
 	return result
+}
+
+func (state *model) recoverySnapshot(doc *document.Document) (recovery.Tab, bool) {
+	// Text, selection and EOL labels must all come from the same side of preedit.
+	if state.provisional.doc == doc {
+		if tab := state.provisional.recoveryTab; tab != nil {
+			return *tab, true
+		}
+		return recovery.Tab{}, false
+	}
+	if tab, tracked := state.legacyRecovery[doc]; tracked {
+		if _, composing := doc.Editor.Composition(); composing {
+			if tab != nil {
+				return *tab, true
+			}
+			return recovery.Tab{}, false
+		}
+		// Editor commands can settle a legacy mark outside the native event handler.
+		delete(state.legacyRecovery, doc)
+	}
+	if !doc.Dirty() {
+		return recovery.Tab{}, false
+	}
+	return state.recoveryTab(doc), true
 }
 
 func recoveryEqual(first, second recovery.State) bool {
@@ -158,27 +219,33 @@ func recoveryEqual(first, second recovery.State) bool {
 }
 
 func (state *model) snapshotRecovery() {
+	state.queueRecovery(false)
+}
+
+func (state *model) queueRecovery(retry bool) {
 	if state.recoveryWriter == nil || state.closingAccepted {
 		return
 	}
 	current := state.currentRecovery()
 	if recoveryEqual(current, state.lastRecovery) {
+		if retry {
+			state.recoveryWriter.RetryFailed()
+		}
 		return
 	}
 	state.lastRecovery = current
-	if err := state.recoveryWriter.Submit(current); err != nil {
-		state.notice = "Recovery failed: " + err.Error()
-		state.invalidator.Invalidate()
-	}
+	state.recoveryWriter.Submit(current)
 }
 
 func (state *model) observeRecoveryError() {
 	if state.recoveryWriter == nil {
 		return
 	}
-	if err := state.recoveryWriter.LastError(); err != nil {
+	err, finished := state.recoveryWriter.Status()
+	if err != nil {
 		state.notice = "Recovery failed: " + err.Error()
-	} else if strings.HasPrefix(state.notice, "Recovery failed: ") {
+	} else if finished && (strings.HasPrefix(state.notice, "Recovery failed: ") ||
+		strings.HasPrefix(state.notice, "Recovery unavailable: ")) {
 		state.notice = ""
 	}
 }

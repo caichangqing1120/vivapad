@@ -1,6 +1,11 @@
 package document
 
-import "testing"
+import (
+	"reflect"
+	"regexp"
+	"strings"
+	"testing"
+)
 
 func TestReplaceAllReportsOriginalByteEditsWithRegexCaptures(t *testing.T) {
 	doc := New("new 1")
@@ -93,5 +98,109 @@ func TestMatchesWithReturnsByteSpansWithoutChangingSelection(t *testing.T) {
 	}
 	if doc.Editor.Selection() != before {
 		t.Fatal("highlight query moved the selection")
+	}
+}
+
+func TestMatchesWithLimitKeepsMatchSemantics(t *testing.T) {
+	tests := []struct {
+		name, value, query string
+		options            SearchOptions
+	}{
+		{"unicode whole word", "猫 猫咪 猫", "猫", SearchOptions{WholeWord: true}},
+		{"unicode case fold", "k K K", "k", SearchOptions{WholeWord: true}},
+		{"regex multiline anchors", "a\na\na", `(?m)^a`, SearchOptions{Regex: true}},
+		{"regex zero width", "cat dog", `\b|cat`, SearchOptions{Regex: true}},
+		{"regex captures", "a1 a2 a3", `a(\d)`, SearchOptions{Regex: true}},
+		{"regex whole word", "cat_cat cat cats cat", `cat`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex whole word capture", "cat_dog cat dog DOG", `(cat|dog)`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex whole word anchored", "cat\ncat\ncat", `(?m)^cat`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex whole word boundary", "cat_cat cat", `\bcat`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex absolute start", "cat cat dog", `\Acat|dog`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex absolute end", "cat dog cat", `cat\z|dog`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex non-boundary", "猫cat xcat cat", `\Bcat|cat\z`, SearchOptions{Regex: true, WholeWord: true}},
+		{"regex empty moves by rune", "猫a猫aa", `a?|\z`, SearchOptions{Regex: true}},
+		{"regex empty alternative priority", "cat 猫cat cat", `\b|cat`, SearchOptions{Regex: true}},
+		{"regex with trailing quoted text", "cat cat ", `\b\Qcat`, SearchOptions{Regex: true, WholeWord: true}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			doc := New("new 1")
+			doc.Editor.Insert(test.value)
+			all, err := doc.MatchesWith(test.query, test.options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for limit := 0; limit <= len(all)+1; limit++ {
+				spans, truncated, err := doc.MatchesWithLimit(test.query, test.options, limit)
+				if err != nil || truncated != (len(all) > limit) || !reflect.DeepEqual(spans, all[:min(limit, len(all))]) {
+					t.Fatalf("limit %d: spans=%+v truncated=%v err=%v; all=%+v", limit, spans, truncated, err, all)
+				}
+			}
+		})
+	}
+}
+
+func FuzzLimitedRegexAgreesWithFullSearch(f *testing.F) {
+	f.Add(`(?m)^cat\b`, "cat_\ncat\ncat", uint8(2), true)
+	f.Add(`\b|cat`, "cat \u732bcat cat", uint8(1), false)
+	f.Add(`\Acat|cat\z`, "cat cat cat", uint8(3), true)
+	f.Add(`a?|\z`, "\u732ba\u732baa", uint8(1), false)
+	f.Fuzz(func(t *testing.T, pattern, value string, capHint uint8, wholeWord bool) {
+		if len(pattern) > 128 || len(value) > 256 {
+			return
+		}
+		options := SearchOptions{Regex: true, WholeWord: wholeWord}
+		expression, err := compileSearch(pattern, options)
+		if err != nil || expression == nil {
+			return
+		}
+		limit := int(capHint % 8)
+		all := searchSpans(value, expression, options)
+		spans, truncated, err := MatchesInTextWithLimit(t.Context(), value, pattern, options, limit)
+		if err != nil || truncated != (len(all) > limit) || !reflect.DeepEqual(spans, all[:min(limit, len(all))]) {
+			t.Fatalf("limit %d: spans=%+v truncated=%v err=%v; all=%+v", limit, spans, truncated, err, all)
+		}
+	})
+}
+
+func TestRegexWidthAndSuffixSafetyProofs(t *testing.T) {
+	tests := []struct {
+		pattern    string
+		consumes   bool
+		suffixSafe bool
+	}{
+		{`(?i)a+?`, true, true},
+		{`(?m)^a`, true, false},
+		{`(?:a|b)+`, true, true},
+		{`\bcat`, true, false},
+		{`a|\b`, false, false},
+		{`a?`, false, false},
+		{`(?m)^`, false, false},
+		{`cat$`, true, false},
+	}
+	for _, test := range tests {
+		expression := regexp.MustCompile(test.pattern)
+		if got := regexAlwaysConsumes(expression); got != test.consumes {
+			t.Errorf("width proof for %q = %v, want %v", test.pattern, got, test.consumes)
+		}
+		if got := regexCanResumeOnSuffix(expression); got != test.suffixSafe {
+			t.Errorf("suffix proof for %q = %v, want %v", test.pattern, got, test.suffixSafe)
+		}
+	}
+}
+
+func TestRegexWholeWordBatchBoundariesKeepAcceptedOrder(t *testing.T) {
+	doc := New("new 1")
+	doc.Editor.Insert(strings.Repeat("cat_", 255) + " cat " + strings.Repeat("cat_", 256) + " cat " + strings.Repeat("cat_", 257) + " cat")
+	options := SearchOptions{Regex: true, WholeWord: true}
+	all, err := doc.MatchesWith("cat", options)
+	if err != nil || len(all) != 3 {
+		t.Fatalf("reference matches=%d err=%v", len(all), err)
+	}
+	for limit := 0; limit <= len(all); limit++ {
+		spans, truncated, err := doc.MatchesWithLimit("cat", options, limit)
+		if err != nil || truncated != (limit < len(all)) || !reflect.DeepEqual(spans, all[:limit]) {
+			t.Fatalf("limit %d: spans=%+v truncated=%v err=%v, want %+v", limit, spans, truncated, err, all[:limit])
+		}
 	}
 }

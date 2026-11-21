@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"os"
 	"time"
@@ -27,6 +25,10 @@ func (state *model) toggleMonitoring() {
 	}
 	if len(state.monitors) >= 64 {
 		state.notice = "Too many monitored documents"
+		return
+	}
+	if err := doc.CheckDiskPath(); err != nil {
+		state.notice = "Monitoring unavailable: " + err.Error()
 		return
 	}
 	watcher, err := newFileMonitor(doc.Path, state.invalidator.Invalidate, 250*time.Millisecond)
@@ -55,6 +57,20 @@ func (state *model) stopAllMonitors() {
 	}
 }
 
+// monitoringUpdatedNotice composes the file-monitor success notice from the
+// reload observation. historyErr is the error the reload already reported for
+// the replacement's change-history source; it is carried verbatim so a caller
+// cannot overwrite it with a bare success message. It deliberately does not
+// query the document again: the consumer is stateful and a second ChangeHistory
+// call would be a new sync, not the same lifecycle observation.
+func monitoringUpdatedNotice(name string, historyErr error) string {
+	notice := "Monitoring updated " + name
+	if historyErr != nil {
+		notice += "; " + historyErr.Error()
+	}
+	return notice
+}
+
 func (state *model) consumeMonitorChanges() {
 	for doc, watcher := range state.monitors {
 		changed, missing, err := watcher.Consume()
@@ -77,7 +93,15 @@ func (state *model) consumeMonitorChanges() {
 			state.invalidator.Invalidate()
 			continue
 		}
-		data, err := os.ReadFile(doc.Path)
+		if err := doc.CheckDiskPath(); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				state.stopMonitor(doc)
+				state.notice = "Monitoring stopped: " + err.Error()
+				state.invalidator.Invalidate()
+			}
+			continue
+		}
+		unchanged, err := doc.DiskMatchesSaved()
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
@@ -86,8 +110,7 @@ func (state *model) consumeMonitorChanges() {
 			state.invalidator.Invalidate()
 			continue
 		}
-		digest := sha256.Sum256(data)
-		if hex.EncodeToString(digest[:]) == doc.DiskDigest() {
+		if unchanged {
 			continue
 		}
 		index := state.documentIndex(doc)
@@ -95,7 +118,7 @@ func (state *model) consumeMonitorChanges() {
 			state.stopMonitor(doc)
 			continue
 		}
-		updated := state.reloadDocument(index, false)
+		updated, historyErr := state.reloadDocumentWithHistory(index, false)
 		if updated == nil {
 			state.invalidator.Invalidate()
 			continue
@@ -106,7 +129,10 @@ func (state *model) consumeMonitorChanges() {
 				state.codeEditorForPane(pane).Reveal(updated.Editor.ByteOffset(updated.Editor.Caret()))
 			}
 		}
-		state.notice = "Monitoring updated " + updated.Name
+		// Carry the reload's change-history observation into this notice; do not
+		// call ChangeHistory again (the consumer is stateful and a second sync is
+		// not the same observation).
+		state.notice = monitoringUpdatedNotice(updated.Name, historyErr)
 		state.invalidator.Invalidate()
 	}
 }
