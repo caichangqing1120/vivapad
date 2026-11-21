@@ -101,6 +101,7 @@ var languages = [...]Language{
 	{"txt2tags", ".t2t", "txt2tags", "IDM_LANG_TXT2TAGS", "txt2tags", "", ""},
 	{"Hollywood", ".hws", "hollywood", "IDM_LANG_HOLLYWOOD", "Hollywood", ";", ""},
 	{"Visual Prolog", ".pro", "visualprolog", "IDM_LANG_VISUALPROLOG", "Visual Prolog", "%", ""},
+	{"ESCRIPT", ".src", "escript", "IDM_LANG_ESCRIPT", "ESCRIPT", "", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
@@ -147,6 +148,8 @@ func LanguageByMode(mode string) (Language, bool) {
 		mode = ".tab"
 	case ".cl", ".i", ".pack", ".ph":
 		mode = ".pro"
+	case ".em":
+		mode = ".src"
 	}
 	for _, spec := range languages {
 		if spec.Mode == mode {
