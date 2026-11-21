@@ -176,6 +176,69 @@ func TestLoadNPPSharedAliasUsesActiveViewsSelection(t *testing.T) {
 	}
 }
 
+func TestLoadNPPDoesNotBindRedirectedOpenAliasToNewFile(t *testing.T) {
+	root := t.TempDir()
+	oldPath := filepath.Join(root, "shared.txt")
+	newPath := filepath.Join(root, "\u017fhared.txt")
+	if err := os.WriteFile(oldPath, []byte("old disk\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(newPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if os.IsExist(err) {
+		t.Skip("temporary filesystem treats these spellings as one entry")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	const newDisk = "new disk\r\n"
+	if err := os.WriteFile(newPath, []byte(newDisk), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state, driver := startDriver(t)
+	if err := state.space.Open(oldPath); err != nil {
+		t.Fatal(err)
+	}
+	draft := state.space.Current()
+	state.showInActivePane(draft)
+	draft.Editor.Insert("draft ")
+	draft.Editor.SetSelection(text.Range{Start: 0, End: 5})
+	value, selection := draft.Editor.String(), draft.Editor.Selection()
+	undo := draft.Editor.CanUndo()
+	if err := os.Remove(oldPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(newPath, oldPath); err != nil {
+		t.Skipf("cannot create a redirected path: %v", err)
+	}
+	xmlPath := filepath.Join(root, "session.xml")
+	if err := session.SaveNPP(xmlPath, session.NPPState{Main: []session.NPPFile{
+		{Path: newPath, Encoding: -1, ReadOnly: true, StartPos: 2, EndPos: 3},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.QueueOpenFiles([]string{xmlPath}, nil); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(0))
+	clickID(t, driver, menuItemScope.At(13))
+	clickID(t, driver, sessionScope.At(0))
+	imported := state.space.Current()
+	if imported == draft || imported.Editor.String() != "new disk\n" || !state.isReadOnly(imported) {
+		t.Errorf("session did not open the independent target: same draft=%t, text=%q, notice=%q",
+			imported == draft, imported.Editor.String(), state.notice)
+	}
+	if state.isReadOnly(draft) || draft.Editor.String() != value || draft.Editor.Selection() != selection ||
+		draft.Editor.CanUndo() != undo || !draft.Dirty() {
+		t.Error("session metadata changed the redirected draft")
+	}
+	if data, err := os.ReadFile(newPath); err != nil || string(data) != newDisk {
+		t.Fatalf("session changed the incoming file: %q, %v", data, err)
+	}
+}
+
 func TestLoadNPPRejectsMissingAndExplicitNormalLanguageOnSharedFile(t *testing.T) {
 	root := t.TempDir()
 	first, shared := filepath.Join(root, "first.txt"), filepath.Join(root, "shared.go")

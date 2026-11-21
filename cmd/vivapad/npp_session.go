@@ -253,8 +253,8 @@ func (paths nppSessionPaths) resolve(path string) (string, error) {
 				}
 			}
 			// A matching key only suggests an alias. The filesystem may keep
-			// case or Unicode spelling variants as separate files.
-			if other, err := os.Stat(name); err != nil || !os.SameFile(info, other) {
+			// spellings distinct, and a redirected tab cannot claim a new file.
+			if other, err := os.Stat(name); err != nil || !os.SameFile(info, other) || document.CheckRecordedPath(name) != nil {
 				continue
 			}
 		}
