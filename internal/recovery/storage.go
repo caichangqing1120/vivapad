@@ -136,7 +136,7 @@ func encodedContentsFit(tabs []Tab, limit int) bool {
 }
 
 func Load(path string) (State, error) {
-	file, err := os.Open(path)
+	file, err := openRecoveryFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return State{Active: -1}, nil
 	}
@@ -147,6 +147,9 @@ func Load(path string) (State, error) {
 	info, err := file.Stat()
 	if err != nil {
 		return State{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return State{}, fmt.Errorf("recovery backup is not a regular file")
 	}
 	if info.Size() > maxBytes {
 		return State{}, fmt.Errorf("recovery backup exceeds 32 MiB")
