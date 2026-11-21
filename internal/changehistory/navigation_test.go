@@ -132,6 +132,58 @@ func TestLineMaskOwnsInsertedEOLAndDeletedEOF(t *testing.T) {
 	}
 }
 
+func TestChangedLineOffsetMatchesLineScan(t *testing.T) {
+	// Assign alternate editions to force adjacent runs to coalesce for
+	// navigation even when they would have different margin colors.
+	const value = "a\n\u00e9\n\nlast\n"
+	starts := []int{0, 2, 5, 6, len(value)}
+	for bits := 0; bits < 1<<len(starts); bits++ {
+		var runs []DecorationRun
+		var points []DeletionPoint
+		for line, start := range starts {
+			if bits&(1<<line) == 0 {
+				continue
+			}
+			if line%2 == 0 {
+				points = append(points, DeletionPoint{Position: start, Editions: 4})
+			} else {
+				// Include the LF at the end without marking the following line.
+				runs = append(runs, DecorationRun{Start: start, End: starts[line+1], Edition: 2})
+			}
+		}
+		for line, start := range starts {
+			end := len(value)
+			if line+1 < len(starts) {
+				end = starts[line+1] - 1
+			}
+			for _, caret := range []int{start, end} {
+				for _, previous := range []bool{false, true} {
+					wantLine, wantOK := ChangedLine(line, len(starts), previous, func(index int) bool { return bits&(1<<index) != 0 })
+					want := -1
+					if wantOK {
+						want = starts[wantLine]
+					}
+					if offset, ok := ChangedLineOffset(value, caret, previous, runs, points); offset != want || ok != wantOK {
+						t.Fatalf("marks=%05b caret=%d previous=%t: got (%d,%t), want (%d,%t)", bits, caret, previous, offset, ok, want, wantOK)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestChangedLineOffsetSkipsAnEditionSpanningManyLines(t *testing.T) {
+	const value = "a\nb\nc\nquiet\nlast\n"
+	runs := []DecorationRun{{Start: 1, End: 6, Edition: 3}}
+	points := []DeletionPoint{{Position: 5, Editions: 3}, {Position: len(value), Editions: 4}}
+	if offset, ok := ChangedLineOffset(value, 3, false, runs, points); !ok || offset != len(value) {
+		t.Fatalf("Next from within changed block = (%d,%t), want final empty line", offset, ok)
+	}
+	if offset, ok := ChangedLineOffset(value, len(value), true, runs, points); !ok || offset != 4 {
+		t.Fatalf("Previous from final empty line = (%d,%t), want the block's last line", offset, ok)
+	}
+}
+
 func TestLineMaskRefusesInvalidBoundsWithoutMutation(t *testing.T) {
 	tracker, err := New(4)
 	if err != nil {

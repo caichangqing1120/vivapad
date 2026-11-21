@@ -1,8 +1,6 @@
 package main
 
 import (
-	"strings"
-
 	"vivapad/internal/changehistory"
 	"vivapad/internal/document"
 )
@@ -25,66 +23,20 @@ func (state *model) navigateChange(previous bool) {
 		state.notice = err.Error()
 		return
 	}
-	editor := doc.Editor
-	value := editor.String()
-	caret := editor.ByteOffset(editor.Caret())
-	current := strings.Count(value[:caret], "\n")
-	count := current + strings.Count(value[caret:], "\n") + 1
-	line, start := current, strings.LastIndexByte(value[:caret], '\n')+1
-	// ChangedLine walks neighboring lines in order, restarting at either end on wrap.
-	seek := func(target int) {
-		if line == target {
-			return
-		}
-		switch target {
-		case 0:
-			line, start = 0, 0
-		case count - 1:
-			line, start = target, strings.LastIndexByte(value, '\n')+1
-		default:
-			for line < target {
-				start += strings.IndexByte(value[start:], '\n') + 1
-				line++
-			}
-			for line > target {
-				start = strings.LastIndexByte(value[:start-1], '\n') + 1
-				line--
-			}
-		}
-	}
-	var queryErr error
-	marked := func(line int) bool {
-		if line < 0 || line >= count {
-			return false
-		}
-		seek(line)
-		end, next := len(value), len(value)
-		if newline := strings.IndexByte(value[start:], '\n'); newline >= 0 {
-			end = start + newline
-			next = end + 1
-		}
-		mask, maskErr := consumer.LineMask(start, end, next)
-		if maskErr != nil {
-			if queryErr == nil {
-				queryErr = maskErr
-			}
-			return false
-		}
-		return mask != 0
-	}
-	target, ok := changehistory.ChangedLine(current, count, previous, marked)
-	if queryErr != nil {
-		state.notice = queryErr.Error()
+	runs, points, err := consumer.Decorations()
+	if err != nil {
+		state.notice = err.Error()
 		return
 	}
+	editor := doc.Editor
+	target, ok := changehistory.ChangedLineOffset(editor.String(), editor.ByteOffset(editor.Caret()), previous, runs, points)
 	if !ok {
 		state.notice = noChangeNavigationNotice
 		state.noChangeNoticeDoc = doc
 		state.noChangeNoticeRevision = consumer.Revision()
 		return
 	}
-	seek(target)
-	editor.MoveTo(editor.RuneIndex(start), false)
+	editor.MoveTo(editor.RuneIndex(target), false)
 	pane := state.activePane
 	state.rectangles[pane] = rectangleSelection{}
 	state.multiSelections[pane] = multiSelectionState{}
