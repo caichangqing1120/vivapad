@@ -2020,6 +2020,30 @@ func TestFindInFilesShortcutAndInvalidRegex(t *testing.T) {
 	}
 }
 
+func TestFindInFilesLeavesControlSpaceToFocusedInputMethod(t *testing.T) {
+	state := newModel()
+	state.openFilesDialog()
+	onShortcut := newConfig(state).OnShortcut
+	for _, tc := range []struct {
+		name    string
+		event   gfx.KeyEvent
+		handled bool
+	}{
+		{"normalized search field", gfx.KeyEvent{Target: queryID, Text: " ", Modifiers: gfx.ModifierControl}, false},
+		{"space key in directory field", gfx.KeyEvent{Target: filesRootID, Key: gfx.KeySpace, Modifiers: gfx.ModifierControl}, false},
+		{"hidden replacement field", gfx.KeyEvent{Target: replacementID, Text: " ", Modifiers: gfx.ModifierControl}, true},
+		{"background editor", gfx.KeyEvent{Target: editorID, Text: " ", Modifiers: gfx.ModifierControl}, true},
+		{"global shortcut", gfx.KeyEvent{Target: queryID, Text: "s", Modifiers: primary()}, true},
+		{"other space chord", gfx.KeyEvent{Target: queryID, Text: " ", Modifiers: gfx.ModifierControl | gfx.ModifierShift}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := onShortcut(tc.event).Handled; got != tc.handled {
+				t.Fatalf("shortcut handled = %v, want %v", got, tc.handled)
+			}
+		})
+	}
+}
+
 func TestFindInFilesEnterStartsSearch(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "match.txt"), []byte("needle"), 0644); err != nil {
