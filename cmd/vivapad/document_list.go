@@ -178,12 +178,16 @@ func (state *model) paintDocumentList(canvas *gfx.Canvas, bounds gfx.Rect) {
 	canvas.Unclip()
 	if activating != nil {
 		if index := state.documentIndex(activating.doc); index >= 0 {
+			changed := state.space.Current() != activating.doc || state.activePane != activating.pane
 			if state.splitEnabled {
 				state.paneDocs[activating.pane] = activating.doc
 				state.activatePane(activating.pane)
 			} else {
 				state.space.Select(index)
 				state.paneDocs[0] = activating.doc
+			}
+			if changed {
+				state.focusEditorOnTabClick(canvas)
 			}
 		}
 	}
