@@ -162,6 +162,54 @@ func TestDistractionFreeEscapeFromEditorClosesIncrementalSearchFirst(t *testing.
 	}
 }
 
+func TestDistractionFreeEscapeFromSearchBarsRestoresRightEditorFocus(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		key   rune
+		field gfx.ID
+	}{
+		{"Find", 'f', queryID},
+		{"Go to Line", 'g', goToFieldID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			state.requestFullscreen = driver.SetFullscreen
+			left := state.space.Current()
+			left.Editor.Insert("left draft")
+			right := state.space.NewDocument()
+			right.Editor.Insert("right draft")
+			state.toggleSplit()
+			state.command(distractionFreeCommand)
+			requireEditorCommandFocus(t, driver, rightEditorID)
+			if handled, err := driver.ShortcutChord(primary(), tc.key); err != nil || !handled {
+				t.Fatalf("open %s: handled=%t, err=%v", tc.name, handled, err)
+			}
+			if driver.Snapshot().Focused != tc.field {
+				t.Fatal("the bar did not receive focus")
+			}
+			if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+				t.Fatal(err)
+			}
+			if !driver.Fullscreen() || state.searchOpen || state.goToOpen || driver.Snapshot().Focused != rightEditorID {
+				t.Errorf("first Esc: fullscreen=%t find=%t go-to=%t focus=%v",
+					driver.Fullscreen(), state.searchOpen, state.goToOpen, driver.Snapshot().Focused)
+			}
+			if err := driver.Type("x"); err != nil {
+				t.Fatal(err)
+			}
+			if right.Editor.String() != "right draftx" || left.Editor.String() != "left draft" {
+				t.Errorf("first character reached the wrong target: left=%q right=%q", left.Editor.String(), right.Editor.String())
+			}
+			if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+				t.Fatal(err)
+			}
+			if driver.Fullscreen() || state.activePane != 1 || driver.Snapshot().Focused != rightEditorID {
+				t.Fatal("second Esc did not restore the right pane in the normal layout")
+			}
+		})
+	}
+}
+
 func TestDistractionFreeModeFollowsObservedFullscreenState(t *testing.T) {
 	state, driver := startDriver(t)
 	var requested []bool

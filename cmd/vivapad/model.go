@@ -1900,8 +1900,12 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.menuOpen >= 0 || state.searchOpen || state.goToOpen {
+				result := gfx.EventResult{Handled: true, Repaint: true}
+				if state.searchOpen || state.goToOpen {
+					result.Focus = state.commandEditorFocusID()
+				}
 				state.menuOpen, state.searchOpen, state.goToOpen = -1, false, false
-				return gfx.EventResult{Handled: true, Repaint: true}
+				return result
 			}
 			if state.incrementOpen {
 				state.closeIncrementalSearch()
