@@ -81,7 +81,7 @@ func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 		}
 	}
 	canvas.Unclip()
-	if chosen != nil {
-		state.activateFolderRow(*chosen)
+	if chosen != nil && state.activateFolderRow(*chosen) {
+		state.focusEditorOnTabClick(canvas)
 	}
 }

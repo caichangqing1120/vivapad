@@ -87,6 +87,66 @@ func TestFolderWorkspacePickerTreeOpenRefreshAndHide(t *testing.T) {
 	}
 }
 
+func TestFolderWorkspaceFocusesEditorOnlyAfterSuccessfulFileOpen(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		split bool
+		focus gfx.ID
+	}{{"single pane", false, editorID}, {"split pane", true, rightEditorID}} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "editable.txt")
+			const raw = "saved\r\n"
+			if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "binary.txt"), []byte{'a', 0, 'b'}, 0600); err != nil {
+				t.Fatal(err)
+			}
+			state, driver := startDriver(t)
+			draft := state.space.Current()
+			draft.Editor.Insert("keep draft")
+			if tc.split {
+				state.space.NewDocument()
+				state.toggleSplit()
+			}
+			if err := state.addFolderRoot(root); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(state.stopFolderWatching)
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, folderRowScope.At(0))
+			if got := driver.Snapshot().Focused; got.Scope() != folderRowScope {
+				t.Fatalf("expanding a folder moved focus out of the tree: %v", got)
+			}
+			previous := state.space.Current()
+			clickLabeledControl(t, driver, "Open binary.txt")
+			if got := driver.Snapshot().Focused; got.Scope() != folderRowScope || state.space.Current() != previous || !strings.Contains(state.notice, "Cannot open binary.txt") {
+				t.Fatalf("refused file open changed focus or document: focus=%v notice=%q", got, state.notice)
+			}
+			clickLabeledControl(t, driver, "Open editable.txt")
+			opened := state.space.Current()
+			if got := driver.Snapshot().Focused; got != tc.focus || opened.Name != "editable.txt" {
+				t.Fatalf("file open focused %v on %s; want %v on editable.txt", got, opened.Name, tc.focus)
+			}
+			if err := driver.Type("x"); err != nil {
+				t.Fatal(err)
+			}
+			if opened.Editor.String() != "xsaved\n" || draft.Editor.String() != "keep draft" {
+				t.Fatalf("first key routed incorrectly: opened=%q draft=%q", opened.Editor.String(), draft.Editor.String())
+			}
+			if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || opened.Editor.String() != "saved\n" || opened.Dirty() {
+				t.Fatalf("undo of first key: text=%q dirty=%v handled=%v err=%v", opened.Editor.String(), opened.Dirty(), handled, err)
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != raw {
+				t.Fatalf("file bytes changed: %q, %v", data, err)
+			}
+		})
+	}
+}
+
 func TestFolderWorkspaceRejectsNestedDuplicatesAndInvalidCurrentFile(t *testing.T) {
 	root := t.TempDir()
 	child := filepath.Join(root, "src")
