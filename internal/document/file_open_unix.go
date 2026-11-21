@@ -8,7 +8,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func openSearchFile(path string) (*os.File, error) {
-	// The file may have become a pipe since the directory walk checked it.
+func openDocumentFile(path string) (*os.File, error) {
+	// A path may name a pipe by the time we open it and check its type.
 	return os.OpenFile(path, os.O_RDONLY|unix.O_NONBLOCK, 0)
 }

@@ -130,12 +130,7 @@ func readDecodedFile(path string, selected *Encoding, maxBytes int64) (decodedFi
 	} else {
 		return decodedFile{}, err
 	}
-	var data []byte
-	if maxBytes > 0 {
-		data, err = readSearchFile(absolute, maxBytes)
-	} else {
-		data, err = os.ReadFile(absolute)
-	}
+	data, err := readDocumentFile(absolute, maxBytes)
 	if err != nil {
 		return decodedFile{}, err
 	}

@@ -1,11 +1,7 @@
 package document
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
-	"io"
-	"math"
 	"strings"
 )
 
@@ -41,37 +37,4 @@ func searchEncoding(encoding Encoding) *Encoding {
 		return &encoding
 	}
 	return nil
-}
-
-func readSearchFile(path string, maxBytes int64) ([]byte, error) {
-	file, err := openSearchFile(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%s is not a regular file", path)
-	}
-	if info.Size() > maxBytes {
-		return nil, ErrSearchFileTooLarge
-	}
-	var data bytes.Buffer
-	if info.Size() <= math.MaxInt-bytes.MinRead {
-		data.Grow(int(info.Size()) + bytes.MinRead)
-	}
-	var reader io.Reader = file
-	if maxBytes < math.MaxInt64 {
-		// Read one extra byte to detect growth after Stat without reading to EOF.
-		reader = io.LimitReader(file, maxBytes+1)
-	}
-	if count, err := data.ReadFrom(reader); err != nil {
-		return nil, err
-	} else if count > maxBytes {
-		return nil, ErrSearchFileTooLarge
-	}
-	return data.Bytes(), nil
 }
