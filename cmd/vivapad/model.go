@@ -2988,8 +2988,8 @@ func (state *model) command(command string) {
 		state.openHelp(aboutHelp)
 	case debugHelpCommand:
 		state.openHelp(debugHelp)
-	case projectPageHelpCommand:
-		state.openHelpProjectPage(app.OpenURL)
+	case projectPageHelpCommand, userGuideHelpCommand:
+		state.openHelpLink(command, app.OpenURL)
 	case "Monitoring (tail -f)":
 		state.toggleMonitoring()
 	case "Synchronize Vertical Scrolling":
