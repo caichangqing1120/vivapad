@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 type Signature struct {
@@ -92,7 +93,14 @@ func (catalog *FunctionCatalog) CallAt(source string, caret int, syntax CallSynt
 		case !syntax.TripleQuotes && ch == '/' && strings.HasPrefix(source[i:], "/*"):
 			i = endBlockComment(source, i+2, syntax.NestedBlockComments) - 1
 		case ch == '\'' || ch == '"' || ch == '`':
-			i = endQuoted(source, i, syntax.TripleQuotes) - 1
+			end := 0
+			if ch == '"' && catalog.rustNames {
+				end = endRustRawString(source, i)
+			}
+			if end == 0 {
+				end = endQuoted(source, i, syntax.TripleQuotes)
+			}
+			i = end - 1
 		case ch == '(' || ch == '[' || ch == '{':
 			if len(stack) == 2048 {
 				return CallHint{}
@@ -165,6 +173,40 @@ func (catalog *FunctionCatalog) callAtOpen(source string, open int) CallHint {
 		}
 	}
 	return CallHint{}
+}
+
+// endRustRawString recognizes r, br and cr raw delimiters at an opening quote.
+// It returns zero for an ordinary quote, or the caret for an unfinished raw string.
+func endRustRawString(source string, quote int) int {
+	hashStart := quote
+	for hashStart > 0 && source[hashStart-1] == '#' {
+		hashStart--
+		if quote-hashStart > 255 {
+			return 0
+		}
+	}
+	if hashStart == 0 || source[hashStart-1] != 'r' {
+		return 0
+	}
+	prefix := hashStart - 1
+	if prefix > 0 && (source[prefix-1] == 'b' || source[prefix-1] == 'c') {
+		prefix--
+	}
+	if before, _ := utf8.DecodeLastRuneInString(source[:prefix]); wordCharacter(before) {
+		return 0
+	}
+	hashes := source[hashStart:quote]
+	for start := quote + 1; start < len(source); {
+		next := strings.IndexByte(source[start:], '"')
+		if next < 0 {
+			break
+		}
+		start += next + 1
+		if strings.HasPrefix(source[start:], hashes) {
+			return start + len(hashes)
+		}
+	}
+	return len(source)
 }
 
 func endQuoted(source string, start int, tripleQuotes bool) int {

@@ -45,3 +45,27 @@ func TestBundledGoParameterHint(t *testing.T) {
 		t.Fatalf("bundled Go hint = %+v", hint)
 	}
 }
+
+func TestRustParameterHintIgnoresRawStringContents(t *testing.T) {
+	const data = `<NotepadPlus><AutoComplete language="Rust"><KeyWord name="demo" func="yes"><Overload><Param name="first"/><Param name="second"/></Overload></KeyWord></AutoComplete></NotepadPlus>`
+	catalog, err := ParseFunctionCatalog(strings.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		source   string
+		argument int
+	}{
+		{`demo(r#"a", ) demo(, "#, `, 1},
+		{"demo(br##\"a\"#\n, ) demo(, \"##, ", 1},
+		{`demo(cr#"a", ) demo(, "#, `, 1},
+		{`demo(r"a\", `, 1},
+		{`demo(r##"open"#, ) demo(, `, 0},
+		{`demo(r#name, "regular, )", `, 2},
+	} {
+		hint := catalog.CallAt(tc.source, len(tc.source), CallSyntax{LineComment: "//"})
+		if hint.Name != "demo" || hint.Open != 4 || hint.Argument != tc.argument {
+			t.Errorf("%q: got %+v, want outer demo argument %d", tc.source, hint, tc.argument)
+		}
+	}
+}
