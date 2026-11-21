@@ -797,6 +797,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.visualPrologHighlighters, doc)
 	}
+	if language.Mode == ".src" {
+		highlighter := state.escriptHighlighters[doc]
+		if highlighter == nil {
+			if state.escriptHighlighters == nil {
+				state.escriptHighlighters = make(map[*document.Document]*syntax.ESCRIPTHighlighter)
+			}
+			highlighter = syntax.NewESCRIPTHighlighter()
+			state.escriptHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.escriptHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)
