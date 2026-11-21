@@ -190,16 +190,12 @@ func supportedNPPEncoding(value int) bool {
 }
 
 func LoadNPP(path string) (NPPState, error) {
-	file, err := os.Open(path)
+	file, size, err := openRegularSession(path)
 	if err != nil {
 		return NPPState{}, err
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return NPPState{}, err
-	}
-	if info.Size() > maxNPPBytes {
+	if size > maxNPPBytes {
 		return NPPState{}, fmt.Errorf("NPP session exceeds 1 MiB")
 	}
 	decoder := xml.NewDecoder(io.LimitReader(file, maxNPPBytes))

@@ -112,7 +112,7 @@ func Save(path string, state State) error {
 }
 
 func Load(path string) (State, error) {
-	file, err := os.Open(path)
+	file, size, err := openRegularSession(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return State{}, nil
 	}
@@ -120,11 +120,7 @@ func Load(path string) (State, error) {
 		return State{}, err
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return State{}, err
-	}
-	if info.Size() > 1<<20 {
+	if size > 1<<20 {
 		return State{}, fmt.Errorf("session exceeds 1 MiB")
 	}
 	decoder := json.NewDecoder(io.LimitReader(file, 1<<20))
