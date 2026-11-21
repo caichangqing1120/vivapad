@@ -22,6 +22,10 @@ const (
 
 const functionCompletionCommand = "Function Completion"
 
+func isCompletionCommand(command string) bool {
+	return command == "Word Completion" || command == "Path Completion" || command == functionCompletionCommand
+}
+
 type wordCompletionState struct {
 	kind     completionKind
 	doc      *document.Document
@@ -46,7 +50,7 @@ func (state *model) startFunctionCompletion() {
 		state.notice = "Read-only document"
 		return
 	}
-	if doc.Editor.CompositionActive() || doc.Editor.Selection().Start != doc.Editor.Selection().End {
+	if !state.canCompleteAtCaret(doc) {
 		state.notice = "Place the caret within a function name to complete it"
 		return
 	}
@@ -114,7 +118,7 @@ func (state *model) startWordCompletion() {
 		state.notice = "Read-only document"
 		return
 	}
-	if _, composing := doc.Editor.Composition(); composing || doc.Editor.Selection().Start != doc.Editor.Selection().End {
+	if !state.canCompleteAtCaret(doc) {
 		state.notice = "Place the caret within a word to complete it"
 		return
 	}
@@ -144,7 +148,7 @@ func (state *model) startPathCompletion() {
 		state.notice = "Read-only document"
 		return
 	}
-	if _, composing := doc.Editor.Composition(); composing || doc.Editor.Selection().Start != doc.Editor.Selection().End {
+	if !state.canCompleteAtCaret(doc) {
 		state.notice = "Place the caret within a path to complete it"
 		return
 	}
@@ -200,6 +204,16 @@ func pathCompletionsAtCaret(editor *text.Editor, value, base string) (completion
 	return result, nil
 }
 
+func (state *model) canCompleteAtCaret(doc *document.Document) bool {
+	editor := doc.Editor
+	selection := editor.Selection()
+	if editor.CompositionActive() || editor.SelectionCount() != 1 || selection.Start != selection.End || state.hasMultipleStreamSelections(doc) {
+		return false
+	}
+	rect := state.rectangles[state.activePane]
+	return !rect.active || rect.doc != doc || rect.value != editor.String()
+}
+
 func (state *model) validWordCompletion() bool {
 	current := state.wordCompletion
 	if current == nil || state.activePane != current.pane || state.paneDocument(current.pane) != current.doc ||
@@ -207,9 +221,7 @@ func (state *model) validWordCompletion() bool {
 		current.doc.Editor.Caret() != current.caret || current.kind == completionFunction && state.languageFor(current.doc) != current.language {
 		return false
 	}
-	selection := current.doc.Editor.Selection()
-	_, composing := current.doc.Editor.Composition()
-	return !composing && selection.Start == selection.End
+	return state.canCompleteAtCaret(current.doc)
 }
 
 func (state *model) acceptWordCompletion(index int) {
@@ -248,7 +260,7 @@ func (state *model) updateWordCompletionAfterInput(doc *document.Document) {
 	if current == nil || current.doc != doc {
 		return
 	}
-	if _, composing := doc.Editor.Composition(); composing || doc.Editor.Selection().Start != doc.Editor.Selection().End {
+	if !state.canCompleteAtCaret(doc) {
 		state.wordCompletion = nil
 		return
 	}

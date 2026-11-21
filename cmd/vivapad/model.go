@@ -2759,7 +2759,7 @@ func (state *model) command(command string) {
 		historyNotice = true
 	}
 	checksComposition := command == "Replace All in Open Documents" ||
-		command == "Next Search Result" || command == "Previous Search Result" || command == functionCompletionCommand ||
+		command == "Next Search Result" || command == "Previous Search Result" || isCompletionCommand(command) ||
 		command == "Auto-Completion" || command == webSearchCommand || isCalltipCommand(command)
 	if !checksComposition {
 		state.cancelLiveComposition()
@@ -2800,7 +2800,7 @@ func (state *model) command(command string) {
 	state.eolMenuOpen = false
 	state.charsetMenuOpen = false
 	state.savedMacroMenuOpen = false
-	if command != "Word Completion" && command != "Path Completion" && command != functionCompletionCommand {
+	if !isCompletionCommand(command) {
 		state.wordCompletion = nil
 		state.wordFocusPending = false
 	}

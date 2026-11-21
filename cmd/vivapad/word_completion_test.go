@@ -1,9 +1,12 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 )
@@ -107,6 +110,80 @@ func TestWordCompletionRejectsReadOnlyIMEAndStalePopup(t *testing.T) {
 	state.command("Word Completion")
 	if state.wordCompletion != nil || doc.Editor.String() != before {
 		t.Fatal("completion interrupted active IME composition")
+	}
+}
+
+func TestCompletionCommandsPreserveTentativeComposition(t *testing.T) {
+	for _, tc := range []struct {
+		command, filename, value string
+	}{
+		{"Word Completion", "current.txt", "alphabet\nalp"},
+		{"Path Completion", "current.txt", "al"},
+		{functionCompletionCommand, "current.go", "app"},
+	} {
+		t.Run(tc.command, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, tc.filename)
+			if err := os.WriteFile(path, []byte(tc.value), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "alpha.txt"), nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			state := newModelWithFiles([]string{path})
+			doc := state.space.Current()
+			doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+			if !doc.Editor.EnableTentativeComposition() {
+				t.Fatal("tentative composition unavailable")
+			}
+			if _, err := state.macroTextInput(doc).OnEvent(app.TextEvent{Kind: app.TextSetMarked,
+				CompositionPhase: text.CompositionUpdate, Text: "x", MarkedSelection: app.TextRange{Start: 1, End: 1}}); err != nil {
+				t.Fatal(err)
+			}
+			before, selection, canUndo := doc.Editor.String(), doc.Editor.Selection(), doc.Editor.CanUndo()
+			if !doc.Editor.TentativeCompositionActive() || before != tc.value+"x" {
+				t.Fatal("invalid tentative composition fixture")
+			}
+			state.command(tc.command)
+			if state.wordCompletion != nil || !doc.Editor.TentativeCompositionActive() ||
+				doc.Editor.String() != before || doc.Editor.Selection() != selection || doc.Editor.CanUndo() != canUndo {
+				t.Fatalf("completion disturbed preedit: popup=%t active=%t text=%q selection=%+v undo=%t",
+					state.wordCompletion != nil, doc.Editor.TentativeCompositionActive(), doc.Editor.String(), doc.Editor.Selection(), doc.Editor.CanUndo())
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != tc.value {
+				t.Fatalf("completion changed the saved file: %q, %v", data, err)
+			}
+		})
+	}
+}
+
+func TestCompletionRefusesAnAdditionalCaretAtOpenAndAccept(t *testing.T) {
+	state := newModel()
+	doc := state.space.Current()
+	const value = "alpha alphabet alp"
+	doc.Editor.Insert(value)
+	doc.Editor.ClearHistory()
+	last := doc.Editor.RuneCount()
+	setCarets := func() {
+		doc.Editor.SetSelections([]text.Range{{Start: 0, End: 0}, {Start: last, End: last}}, 1)
+		if doc.Editor.SelectionCount() != 2 || doc.Editor.Caret() != last {
+			t.Fatal("invalid multiple-caret fixture")
+		}
+	}
+	setCarets()
+	state.command("Word Completion")
+	if state.wordCompletion != nil {
+		t.Error("completion opened for multiple carets")
+	}
+	doc.Editor.ClearSecondarySelections()
+	state.command("Word Completion")
+	if state.wordCompletion == nil {
+		t.Fatal("expected a popup for the single caret")
+	}
+	setCarets()
+	state.acceptWordCompletion(0)
+	if state.wordCompletion != nil || doc.Editor.String() != value || doc.Editor.SelectionCount() != 2 || doc.Editor.CanUndo() {
+		t.Fatalf("accepting a stale candidate edited the document: %q, selections=%d", doc.Editor.String(), doc.Editor.SelectionCount())
 	}
 }
 
