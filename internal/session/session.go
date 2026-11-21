@@ -15,6 +15,7 @@ import (
 )
 
 const version = 12
+const maxJSONSessionBytes = 1 << 20
 
 type FoldState struct {
 	Digest  string `json:"digest"`
@@ -75,7 +76,7 @@ func Save(path string, state State) error {
 	if err != nil {
 		return err
 	}
-	if len(data) > 1<<20 {
+	if len(data) > maxJSONSessionBytes {
 		return fmt.Errorf("session exceeds 1 MiB")
 	}
 	directory := filepath.Dir(path)
@@ -120,18 +121,30 @@ func Load(path string) (State, error) {
 		return State{}, err
 	}
 	defer file.Close()
-	if size > 1<<20 {
+	if size > maxJSONSessionBytes {
 		return State{}, fmt.Errorf("session exceeds 1 MiB")
 	}
-	decoder := json.NewDecoder(io.LimitReader(file, 1<<20))
+	return decodeSession(file)
+}
+
+func decodeSession(source io.Reader) (State, error) {
+	// Read one extra byte so reaching the limit cannot look like EOF.
+	limited := &io.LimitedReader{R: source, N: maxJSONSessionBytes + 1}
+	decoder := json.NewDecoder(limited)
 	decoder.DisallowUnknownFields()
 	var stored diskState
-	if err := decoder.Decode(&stored); err != nil {
-		return State{}, err
+	err := decoder.Decode(&stored)
+	if err == nil {
+		var extra json.RawMessage
+		if trailing := decoder.Decode(&extra); !errors.Is(trailing, io.EOF) {
+			err = fmt.Errorf("session has trailing data")
+		}
 	}
-	var extra json.RawMessage
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return State{}, fmt.Errorf("session has trailing data")
+	if limited.N == 0 {
+		return State{}, fmt.Errorf("session exceeds 1 MiB")
+	}
+	if err != nil {
+		return State{}, err
 	}
 	if stored.Version < 1 || stored.Version > version {
 		return State{}, fmt.Errorf("unsupported session version %d", stored.Version)

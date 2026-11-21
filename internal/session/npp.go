@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -198,14 +199,18 @@ func LoadNPP(path string) (NPPState, error) {
 	if size > maxNPPBytes {
 		return NPPState{}, fmt.Errorf("NPP session exceeds 1 MiB")
 	}
-	decoder := xml.NewDecoder(io.LimitReader(file, maxNPPBytes))
+	return decodeNPPSession(file)
+}
+
+func decodeNPPSession(source io.Reader) (NPPState, error) {
+	limited := &io.LimitedReader{R: source, N: maxNPPBytes + 1}
 	var stored nppXMLRoot
-	if err := decoder.Decode(&stored); err != nil {
-		return NPPState{}, err
+	err := decodeNPPDocument(xml.NewDecoder(limited), &stored)
+	if limited.N == 0 {
+		return NPPState{}, fmt.Errorf("NPP session exceeds 1 MiB")
 	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return NPPState{}, fmt.Errorf("NPP session has trailing data")
+	if err != nil {
+		return NPPState{}, err
 	}
 	if stored.Session == nil {
 		return NPPState{}, fmt.Errorf("NPP session element is missing")
@@ -280,6 +285,51 @@ func LoadNPP(path string) (NPPState, error) {
 		return NPPState{}, err
 	}
 	return result, nil
+}
+
+// Decode skips character data while looking for an element. Check the
+// surrounding tokens explicitly so arbitrary text cannot pass as XML trivia.
+func decodeNPPDocument(decoder *xml.Decoder, root *nppXMLRoot) error {
+	seenRoot, first := false, true
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) && seenRoot {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		switch token := token.(type) {
+		case xml.StartElement:
+			if seenRoot {
+				return fmt.Errorf("NPP session has trailing data")
+			}
+			if err := decoder.DecodeElement(root, &token); err != nil {
+				return err
+			}
+			seenRoot = true
+		case xml.CharData:
+			data := []byte(token)
+			if first {
+				data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
+			}
+			if len(bytes.Trim(data, " \t\r\n")) != 0 {
+				return fmt.Errorf("NPP session has text outside the root element")
+			}
+		case xml.Comment:
+		case xml.ProcInst:
+			if seenRoot && strings.EqualFold(token.Target, "xml") {
+				return fmt.Errorf("NPP session has trailing data")
+			}
+		case xml.Directive:
+			if seenRoot {
+				return fmt.Errorf("NPP session has trailing data")
+			}
+		default:
+			return fmt.Errorf("invalid NPP session document")
+		}
+		first = false
+	}
 }
 
 func nppReadOnly(value string) (bool, error) {
