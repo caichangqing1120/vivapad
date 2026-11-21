@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -73,6 +74,9 @@ func TestRecordedFileOperationsRefuseRedirectedParent(t *testing.T) {
 					redirect = moved
 				}
 				if err := os.Rename(original, moved); err != nil {
+					if runtime.GOOS == "windows" && pending && op.name == "trash" && errors.Is(err, os.ErrPermission) {
+						t.Skipf("Windows refused to move the parent of the held trash source: %v", err)
+					}
 					t.Fatal(err)
 				}
 				if err := os.Symlink(redirect, original); err != nil {
