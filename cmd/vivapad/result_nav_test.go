@@ -201,6 +201,38 @@ func TestSearchResultMenuFocusesTheMatchedEditor(t *testing.T) {
 	}
 }
 
+func TestSearchResultMenuRefusalReturnsFocusToDraft(t *testing.T) {
+	for _, command := range []string{"Next Search Result", "Previous Search Result"} {
+		t.Run(command, func(t *testing.T) {
+			state, driver := startDriver(t)
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			doc.Editor.Insert("cat")
+			state.query.Insert("cat")
+			state.findAllCurrent()
+			doc.Editor.Insert(" draft")
+			const draft = "cat draft"
+			doc.Editor.MoveTo(len(draft), false)
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuScope.At(2))
+			revealSearchMenuItem(t, driver, searchCommandIndex(t, command))
+			clickID(t, driver, searchCommandID(t, command))
+			if state.resultSelected != -1 || state.space.Current() != doc || doc.Editor.Caret() != len(draft) || state.notice != staleSearchResultNotice {
+				t.Fatalf("refusal changed the draft or selected result: caret=%d result=%d notice=%q", doc.Editor.Caret(), state.resultSelected, state.notice)
+			}
+			requireEditorCommandFocus(t, driver, editorID)
+			if err := driver.Type("x"); err != nil || doc.Editor.String() != draft+"x" {
+				t.Fatalf("first key did not reach the original caret: %q, %v", doc.Editor.String(), err)
+			}
+		})
+	}
+}
+
 func TestStaleResultNavigationLeavesSelectionAndIndexUntouched(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()

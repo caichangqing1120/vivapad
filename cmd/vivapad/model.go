@@ -3521,7 +3521,8 @@ func (state *model) command(command string) {
 	case "Find (Volatile) Previous":
 		state.selectedFind(true, true)
 	case "Next Search Result", "Previous Search Result":
-		if state.navigateFileResult(command == "Previous Search Result") && fromSearchMenu {
+		state.navigateFileResult(command == "Previous Search Result")
+		if fromSearchMenu {
 			state.resultFocusMode = false
 			state.requestNativeChooserFocus()
 		}
