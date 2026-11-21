@@ -92,3 +92,27 @@ func TestRustParameterHintDistinguishesLifetimesAndCharacterLiterals(t *testing.
 		}
 	}
 }
+
+func TestRustParameterHintTracksExplicitTypeArguments(t *testing.T) {
+	const data = `<NotepadPlus><AutoComplete language="Rust"><KeyWord name="demo" func="yes"><Overload><Param name="first"/><Param name="second"/></Overload></KeyWord><KeyWord name="api::inner" func="yes"><Overload><Param name="a"/><Param name="b"/></Overload></KeyWord></AutoComplete></NotepadPlus>`
+	catalog, err := ParseFunctionCatalog(strings.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		source, name string
+		open         string
+		argument     int
+	}{
+		{`demo(api::inner::<Result<u8, u16>, bool>(1), `, "demo", "(api", 1},
+		{`demo(api::inner::<Result<u8, u16>, bool>(x, `, "api::inner", "(x", 1},
+		{"demo(api::inner:: <fn() -> Result<u8, u16>,\n { 8 >> 1 }> (x, ", "api::inner", "(x", 1},
+		{`demo(api::inner::<Result<u8, u16>, `, "demo", "(api", 0},
+		{`demo(low < high, x >> 1, `, "demo", "(low", 2},
+	} {
+		hint := catalog.CallAt(tc.source, len(tc.source), CallSyntax{LineComment: "//", NestedBlockComments: true})
+		if hint.Name != tc.name || hint.Argument != tc.argument || hint.Open != strings.Index(tc.source, tc.open) {
+			t.Errorf("%q: got %+v, want %s argument %d", tc.source, hint, tc.name, tc.argument)
+		}
+	}
+}

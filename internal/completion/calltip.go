@@ -61,8 +61,9 @@ func catalogDelimiters(open, close, separator string) callDelimiters {
 }
 
 type callFrame struct {
-	call   CallHint
-	closer byte
+	call        CallHint
+	closer      byte
+	rustNameEnd int
 }
 
 // CallAt returns the innermost open call with a known signature. Caret and
@@ -80,6 +81,7 @@ func (catalog *FunctionCatalog) CallAt(source string, caret int, syntax CallSynt
 	}
 	source = source[:caret]
 	var stack []callFrame
+	var rustArgsEnd, rustNameEnd int
 	for i := 0; i < len(source); i++ {
 		ch := source[i]
 		switch {
@@ -106,6 +108,23 @@ func (catalog *FunctionCatalog) CallAt(source string, caret int, syntax CallSynt
 				end = endQuoted(source, i, syntax.TripleQuotes)
 			}
 			i = end - 1
+		case catalog.rustNames && ch == '<':
+			left := strings.TrimRight(source[:i], " \t\n\r")
+			var nameEnd int
+			if strings.HasSuffix(left, "::") {
+				nameEnd = len(strings.TrimRight(left[:len(left)-2], " \t\n\r"))
+			} else if len(stack) == 0 || stack[len(stack)-1].closer != '>' {
+				continue
+			}
+			if len(stack) == 2048 {
+				return CallHint{}
+			}
+			stack = append(stack, callFrame{closer: '>', rustNameEnd: nameEnd})
+		case catalog.rustNames && ch == '>' && len(stack) != 0 && stack[len(stack)-1].closer == '>' && source[i-1] != '-':
+			if end := stack[len(stack)-1].rustNameEnd; end != 0 {
+				rustNameEnd, rustArgsEnd = end, i+1
+			}
+			stack = stack[:len(stack)-1]
 		case ch == '(' || ch == '[' || ch == '{':
 			if len(stack) == 2048 {
 				return CallHint{}
@@ -115,7 +134,11 @@ func (catalog *FunctionCatalog) CallAt(source string, caret int, syntax CallSynt
 				frame.closer = ')'
 			}
 			if ch == marks.open {
-				frame.call = catalog.callAtOpen(source, i)
+				end := len(strings.TrimRight(source[:i], " \t\n\r"))
+				if rustArgsEnd != 0 && end == rustArgsEnd {
+					end = rustNameEnd
+				}
+				frame.call = catalog.callAtOpen(source, i, end)
 			}
 			stack = append(stack, frame)
 		case ch == ')' || ch == ']' || ch == '}':
@@ -164,8 +187,7 @@ func endBlockComment(source string, start int, nested bool) int {
 	return len(source)
 }
 
-func (catalog *FunctionCatalog) callAtOpen(source string, open int) CallHint {
-	end := len(strings.TrimRight(source[:open], " \t\n\r"))
+func (catalog *FunctionCatalog) callAtOpen(source string, open, end int) CallHint {
 	start := catalog.nameStart(source, end)
 	if start == end || end-start > maxAPINameBytes {
 		return CallHint{}
