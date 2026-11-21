@@ -158,7 +158,7 @@ func ParseFunctionCatalog(reader io.Reader) (*FunctionCatalog, error) {
 	}
 	block := root.Blocks[0]
 	additional := block.Environment.Additional
-	if strings.Trim(additional, ".$:-!?%") != "" {
+	if strings.Trim(additional, ".$:-!?%@") != "" {
 		return nil, errors.New("unsupported API identifier characters")
 	}
 	var names []string
@@ -173,7 +173,8 @@ func ParseFunctionCatalog(reader io.Reader) (*FunctionCatalog, error) {
 		}
 		names = append(names, keyword.Name)
 	}
-	catalog := indexFunctions(names, strings.EqualFold(block.Environment.IgnoreCase, "yes"), additional)
+	// Notepad++ only disables case folding when the XML opts out.
+	catalog := indexFunctions(names, !strings.EqualFold(block.Environment.IgnoreCase, "no"), additional)
 	catalog.delimiters = catalogDelimiters(block.Environment.Open, block.Environment.Close, block.Environment.Separator)
 	catalog.signatures = make(map[string][]Signature)
 	for _, keyword := range block.Keywords {
