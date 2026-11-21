@@ -18,8 +18,9 @@ const (
 )
 
 const (
-	aboutHelpCommand = "About VivaPad"
-	debugHelpCommand = "Debug Info..."
+	aboutHelpCommand       = "About VivaPad"
+	debugHelpCommand       = "Debug Info..."
+	projectPageHelpCommand = "Project Page"
 )
 
 var buildVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.+-]{1,64})?$`)
@@ -96,6 +97,12 @@ func (state *model) openHelp(mode uint8) {
 func (state *model) closeHelp() {
 	state.helpMode, state.helpCopyStatus = noHelp, ""
 	state.requestEditorCommandFocus()
+}
+
+func (state *model) openHelpProjectPage(openURL func(string) error) {
+	if err := openURL("https://github.com/caichangqing1120/vivapad"); err != nil {
+		state.notice = "Could not open the project page"
+	}
 }
 
 func (state *model) paintHelp(canvas *gfx.Canvas, size gfx.Size) {

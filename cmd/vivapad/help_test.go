@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"testing"
 
@@ -81,5 +83,56 @@ func TestHelpDialogsCopyExplicitlyAndRestoreFocus(t *testing.T) {
 				t.Fatal("help dialog changed the document")
 			}
 		})
+	}
+}
+
+func TestHelpProjectPageOpensOnlyTheOfficialRepository(t *testing.T) {
+	const target = "https://github.com/caichangqing1120/vivapad"
+	for _, layout := range []struct {
+		name          string
+		width, height int
+		overflow      bool
+	}{{"desktop", 1280, 800, false}, {"compact", 640, 400, true}} {
+		t.Run(layout.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			doc.Editor.Insert("private draft")
+			contents, selection, canUndo := doc.Editor.String(), doc.Editor.Selection(), doc.Editor.CanUndo()
+			driver.SetClipboard("private clipboard")
+			if err := driver.Resize(layout.width, layout.height); err != nil {
+				t.Fatal(err)
+			}
+			index := slices.Index(menuCommands[12], "Project Page")
+			if index < 0 {
+				t.Fatal("Help menu does not offer Project Page")
+			}
+			if layout.overflow {
+				clickID(t, driver, menuOverflowID)
+				clickID(t, driver, hiddenMenuScope.At(12))
+			} else {
+				clickID(t, driver, menuScope.At(12))
+			}
+			if _, opened := driver.LastOpenedURL(); opened {
+				t.Fatal("opening the menu launched a URL")
+			}
+			clickID(t, driver, menuItemScope.At(index))
+			if got, opened := driver.LastOpenedURL(); !opened || got != target {
+				t.Fatalf("opened URL = %q, %t; want %q", got, opened, target)
+			}
+			if state.space.Current() != doc || doc.Editor.String() != contents || doc.Editor.Selection() != selection || doc.Editor.CanUndo() != canUndo || !doc.Dirty() {
+				t.Fatal("opening Project Page changed the editor")
+			}
+			if driver.Clipboard() != "private clipboard" {
+				t.Fatal("opening Project Page changed the clipboard")
+			}
+		})
+	}
+}
+
+func TestHelpProjectPageReportsBrowserFailure(t *testing.T) {
+	state, _ := startDriver(t)
+	state.openHelpProjectPage(func(string) error { return errors.New("no default browser") })
+	if state.notice != "Could not open the project page" {
+		t.Fatalf("project page failure notice = %q", state.notice)
 	}
 }
