@@ -50,7 +50,7 @@ func (state *model) startFunctionCompletion() {
 		state.notice = "Read-only document"
 		return
 	}
-	if !state.canCompleteAtCaret(doc) {
+	if !state.hasSingleIdleCaret(doc) {
 		state.notice = "Place the caret within a function name to complete it"
 		return
 	}
@@ -118,7 +118,7 @@ func (state *model) startWordCompletion() {
 		state.notice = "Read-only document"
 		return
 	}
-	if !state.canCompleteAtCaret(doc) {
+	if !state.hasSingleIdleCaret(doc) {
 		state.notice = "Place the caret within a word to complete it"
 		return
 	}
@@ -148,7 +148,7 @@ func (state *model) startPathCompletion() {
 		state.notice = "Read-only document"
 		return
 	}
-	if !state.canCompleteAtCaret(doc) {
+	if !state.hasSingleIdleCaret(doc) {
 		state.notice = "Place the caret within a path to complete it"
 		return
 	}
@@ -204,7 +204,7 @@ func pathCompletionsAtCaret(editor *text.Editor, value, base string) (completion
 	return result, nil
 }
 
-func (state *model) canCompleteAtCaret(doc *document.Document) bool {
+func (state *model) hasSingleIdleCaret(doc *document.Document) bool {
 	editor := doc.Editor
 	selection := editor.Selection()
 	if editor.CompositionActive() || editor.SelectionCount() != 1 || selection.Start != selection.End || state.hasMultipleStreamSelections(doc) {
@@ -221,7 +221,7 @@ func (state *model) validWordCompletion() bool {
 		current.doc.Editor.Caret() != current.caret || current.kind == completionFunction && state.languageFor(current.doc) != current.language {
 		return false
 	}
-	return state.canCompleteAtCaret(current.doc)
+	return state.hasSingleIdleCaret(current.doc)
 }
 
 func (state *model) acceptWordCompletion(index int) {
@@ -260,7 +260,7 @@ func (state *model) updateWordCompletionAfterInput(doc *document.Document) {
 	if current == nil || current.doc != doc {
 		return
 	}
-	if !state.canCompleteAtCaret(doc) {
+	if !state.hasSingleIdleCaret(doc) {
 		state.wordCompletion = nil
 		return
 	}

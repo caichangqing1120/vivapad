@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/text"
 )
 
 func TestParameterHintShowsAndCyclesWithoutEditing(t *testing.T) {
@@ -68,6 +69,48 @@ func TestParameterHintShowsAndCyclesWithoutEditing(t *testing.T) {
 	requireEditorCommandFocus(t, driver, editorID)
 	if err := driver.Type(")"); err != nil || state.calltip != nil || doc.Editor.String() != original+")" {
 		t.Fatalf("closing parenthesis left hint %v or lost typing: %q, %v", state.calltip, doc.Editor.String(), err)
+	}
+}
+
+func TestParameterHintRefusesAndDismissesMultipleCarets(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	state.languages[doc] = ".go"
+	const source = "append([]int{1}, "
+	doc.Editor.Insert(source)
+	doc.Editor.ClearHistory()
+	last := doc.Editor.RuneCount()
+	addCaret := func() {
+		doc.Editor.SetSelections([]text.Range{{Start: 0, End: 0}, {Start: last, End: last}}, 1)
+		if doc.Editor.SelectionCount() != 2 || doc.Editor.Caret() != last {
+			t.Fatal("invalid test setup: primary and secondary carets were not set")
+		}
+	}
+	addCaret()
+	state.command(parameterHintCommand)
+	if state.calltip != nil {
+		t.Error("parameter hint opened for two carets")
+	}
+	doc.Editor.ClearSecondarySelections()
+	state.command(parameterHintCommand)
+	if hint := state.calltip; hint == nil || hint.call.Name != "append" || hint.call.Argument != 1 {
+		t.Fatalf("expected the second argument of append at a single caret, got %+v", hint)
+	}
+	addCaret()
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if state.calltip != nil {
+		t.Error("parameter hint survived adding a second caret without changing the primary")
+	}
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.ID == calltipLabelID || hit.ID == calltipArgumentID {
+			t.Fatal("a stale hint remains in the rendered view")
+		}
+	}
+	if doc.Editor.String() != source || doc.Editor.SelectionCount() != 2 || doc.Editor.CanUndo() {
+		t.Fatal("parameter hint altered the buffer, selections or undo history")
 	}
 }
 

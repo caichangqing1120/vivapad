@@ -34,7 +34,7 @@ type calltipState struct {
 func (state *model) startCalltip() {
 	state.calltip = nil
 	doc := state.paneDocument(state.activePane)
-	if doc.Editor.CompositionActive() || doc.Editor.Selection().Start != doc.Editor.Selection().End {
+	if !state.hasSingleIdleCaret(doc) {
 		return
 	}
 	language := state.languageFor(doc)
@@ -59,9 +59,8 @@ func (state *model) refreshCalltip() *calltipState {
 		return nil
 	}
 	editor := hint.doc.Editor
-	selection := editor.Selection()
 	if hint.pane != state.activePane || state.paneDocument(hint.pane) != hint.doc ||
-		state.languageFor(hint.doc) != hint.language || editor.CompositionActive() || selection.Start != selection.End {
+		state.languageFor(hint.doc) != hint.language || !state.hasSingleIdleCaret(hint.doc) {
 		state.calltip = nil
 		return nil
 	}
