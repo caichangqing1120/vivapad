@@ -9,10 +9,9 @@ func (state *model) queueSystemDocument(path string) {
 }
 
 func (state *model) consumeSystemDocuments() {
-	// A document event can arrive while an in-app dialog owns focus or a
-	// close decision still refers to the current workspace.
+	// Let a pending dialog or line jump finish on the current document first.
 	if len(state.pendingSystemDocuments) == 0 || state.closingAccepted || state.batchActive ||
-		state.editorCommandFocusBlocked() || state.markDialogOpen || state.byteRangeOpen {
+		state.editorCommandFocusBlocked() || state.goToOpen || state.markDialogOpen || state.byteRangeOpen {
 		return
 	}
 	paths := state.pendingSystemDocuments

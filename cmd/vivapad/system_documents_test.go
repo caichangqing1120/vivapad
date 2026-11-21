@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestSystemDocumentsOpenInActivePaneAndReuseDirtyTab(t *testing.T) {
@@ -66,6 +68,62 @@ func TestSystemDocumentsWaitForDirtyCloseDecision(t *testing.T) {
 	}
 	if len(state.space.Documents) != 2 || state.space.Current().Editor.String() != "opened" || draft.Editor.String() != "keep this draft" {
 		t.Fatal("canceling Close did not preserve the draft and open the queued document")
+	}
+}
+
+func TestSystemDocumentsWaitForGoToLine(t *testing.T) {
+	for _, confirm := range []bool{true, false} {
+		name := "cancel"
+		if confirm {
+			name = "confirm"
+		}
+		t.Run(name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			draft := state.space.Current()
+			const text = "first\nsecond\nthird"
+			draft.Editor.Insert(text)
+			draft.Editor.MoveTo(0, false)
+			path := filepath.Join(t.TempDir(), "incoming.txt")
+			if err := os.WriteFile(path, []byte("opened\r\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, editorID)
+			if handled, err := driver.ShortcutChord(primary(), 'g'); err != nil || !handled {
+				t.Fatalf("Go to Line shortcut: handled=%t err=%v", handled, err)
+			}
+			if err := driver.Type("3"); err != nil {
+				t.Fatal(err)
+			}
+			originalCaret := draft.Editor.Caret()
+			state.queueSystemDocument(path)
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			if !state.goToOpen || state.goToField.String() != "3" || state.space.Current() != draft ||
+				len(state.pendingSystemDocuments) != 1 || len(state.space.Documents) != 1 {
+				t.Fatalf("system open interrupted Go to Line: open=%t field=%q current=%q pending=%d",
+					state.goToOpen, state.goToField.String(), state.space.Current().Path, len(state.pendingSystemDocuments))
+			}
+			wantCaret := originalCaret
+			if confirm {
+				clickID(t, driver, goToButtonID)
+				wantCaret = len("first\nsecond\n")
+			} else if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+				t.Fatal(err)
+			}
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			if state.goToOpen || len(state.pendingSystemDocuments) != 0 || len(state.space.Documents) != 2 ||
+				state.space.Current().Editor.String() != "opened\n" || draft.Editor.Caret() != wantCaret || draft.Editor.String() != text {
+				t.Fatalf("dismissal: open=%t pending=%d current=%q original caret=%d", state.goToOpen,
+					len(state.pendingSystemDocuments), state.space.Current().Editor.String(), draft.Editor.Caret())
+			}
+			requireEditorCommandFocus(t, driver, editorID)
+			if data, err := os.ReadFile(path); err != nil || string(data) != "opened\r\n" {
+				t.Fatalf("incoming source changed: %q, %v", data, err)
+			}
+		})
 	}
 }
 
