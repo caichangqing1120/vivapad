@@ -47,6 +47,7 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 	rows := gfx.Rect{X: x + 4, Y: y + 4 + controls/2, Width: width - 8, Height: float32(visible) * rowHeight}
 	canvas.Clip(rows)
 	chosen := ""
+	browserY := rows.Y
 	for row := 0; row < visible; row++ {
 		index := state.viewMenuOffset + row
 		command := commands[index]
@@ -60,8 +61,11 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 6, Y: item.Y + (rowHeight-14)/2, Width: 14, Height: 14}, palette.blue)
 		}
 		switch command {
-		case "Show Symbol", "Tab", "Fold Level", "Unfold Level":
+		case "Show Symbol", "Tab", "Fold Level", "Unfold Level", namedBrowserMenuCommand:
 			canvas.DrawIcon(rightIcon, gfx.Rect{X: item.X + item.Width - 20, Y: item.Y + (rowHeight-14)/2, Width: 14, Height: 14}, palette.muted)
+		}
+		if command == namedBrowserMenuCommand {
+			browserY = item.Y
 		}
 		label := canvas.FitLine(command, 11, gfx.WeightRegular, item.Width-35)
 		smallLabel(canvas, label, gfx.Rect{X: item.X + 27, Y: item.Y, Width: item.Width - 34, Height: item.Height}, palette.text, 11)
@@ -85,6 +89,9 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 		}
 		if state.foldMenuOpen {
 			state.paintFoldLevelMenu(canvas, size, x+width)
+		}
+		if state.namedBrowserMenuOpen {
+			state.paintNamedBrowserMenu(canvas, size, x+width, browserY)
 		}
 	}
 }

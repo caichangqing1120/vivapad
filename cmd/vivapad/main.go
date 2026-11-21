@@ -36,6 +36,7 @@ func main() {
 		state.closeWindow = func() { config.OnCloseRequest(window.Close) }
 		state.requestFullscreen = window.SetFullscreen
 		state.requestAlwaysOnTop = window.SetAlwaysOnTop
+		state.postBrowserResult = application.Post
 		state.saveSessionPicker = app.SaveFileWithCheckbox
 		state.printJob = func(job printing.Job) (int, error) {
 			doc := state.paneDocument(state.activePane)

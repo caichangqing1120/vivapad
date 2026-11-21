@@ -222,6 +222,7 @@ var (
 	eolScope                   = tree.Sub(page, tree.Name("eol-conversion"))
 	symbolScope                = tree.Sub(page, tree.Name("show-symbol"))
 	viewTabScope               = tree.Sub(page, tree.Name("view-tab-commands"))
+	namedBrowserScope          = tree.Sub(page, tree.Name("named-browser-commands"))
 	viewTabPanelID             = tree.ID(page, "view-tab-panel")
 	viewTabPreviousID          = tree.ID(page, "view-tab-previous")
 	viewTabNextID              = tree.ID(page, "view-tab-next")
@@ -564,6 +565,10 @@ type model struct {
 	hashMenuOpen                  bool
 	symbolMenuOpen                bool
 	viewTabMenuOpen               bool
+	namedBrowserMenuOpen          bool
+	openNamedBrowser              func(external.NamedBrowser, string) error
+	postBrowserResult             func(func())
+	namedBrowserRequest           uint64
 	foldMenuOpen                  bool
 	foldMenuUnfold                bool
 	viewTabOffset                 int
@@ -799,6 +804,7 @@ func newModel() *model {
 		functionSymbols: make(map[*document.Document]functionSymbolCache),
 		functionFilter:  text.NewEditor(""), functionSelected: -1,
 		revealPath:         external.Reveal,
+		openNamedBrowser:   external.OpenFileInNamedBrowser,
 		openConsole:        openConsole,
 		launchSelectedFile: external.LaunchEditor,
 		revealSelectedPath: external.RevealSelection,
@@ -1812,6 +1818,10 @@ func newConfig(state *model) app.Config {
 				state.viewTabMenuOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
+			if state.namedBrowserMenuOpen {
+				state.namedBrowserMenuOpen = false
+				return gfx.EventResult{Handled: true, Repaint: true}
+			}
 			if state.foldMenuOpen {
 				state.foldMenuOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
@@ -2773,6 +2783,7 @@ func (state *model) command(command string) {
 	state.hashMenuOpen = false
 	state.symbolMenuOpen = false
 	state.viewTabMenuOpen = false
+	state.namedBrowserMenuOpen = false
 	state.foldMenuOpen = false
 	state.windowSortMenuOpen = false
 	state.commentMenuOpen = false
@@ -3152,6 +3163,8 @@ func (state *model) command(command string) {
 		state.menuOpen, state.symbolMenuOpen = 3, true
 	case "Tab":
 		state.menuOpen, state.viewTabMenuOpen, state.viewTabOffset = 3, true, 0
+	case namedBrowserMenuCommand:
+		state.menuOpen, state.namedBrowserMenuOpen = 3, true
 	case "Apply Color 1", "Apply Color 2", "Apply Color 3", "Apply Color 4", "Apply Color 5", "Remove Color":
 		state.setTabColor(command)
 	case "1st Tab", "2nd Tab", "3rd Tab", "4th Tab", "5th Tab", "6th Tab", "7th Tab", "8th Tab", "9th Tab":
