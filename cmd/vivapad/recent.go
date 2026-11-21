@@ -95,6 +95,7 @@ func (state *model) paintRecentMenu(canvas *gfx.Canvas, size gfx.Size, parentRig
 		smallLabel(canvas, "No recent files", gfx.Rect{X: x + 14, Y: y + 4, Width: width - 28, Height: 27}, palette.muted, 11)
 		row++
 	}
+	restore := false
 	if len(state.closedHistory) != 0 {
 		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(row)*27, Width: width - 8, Height: 27}
 		if canvas.Hovered() == recentRestoreID {
@@ -102,9 +103,7 @@ func (state *model) paintRecentMenu(canvas *gfx.Canvas, size gfx.Size, parentRig
 		}
 		smallLabel(canvas, "Restore Recent Closed File", gfx.Rect{X: item.X + 9, Y: item.Y, Width: item.Width - 18, Height: 27}, palette.text, 11)
 		canvas.HitWithOptions(recentRestoreID, item, "Restore Recent Closed File", gfx.HitOptions{Role: gfx.RoleMenuItem})
-		if canvas.Clicked(recentRestoreID) {
-			state.restoreClosed()
-		}
+		restore = canvas.Clicked(recentRestoreID)
 		row++
 	}
 	if len(state.recentEntries) != 0 || len(state.closedHistory) != 0 {
@@ -118,8 +117,12 @@ func (state *model) paintRecentMenu(canvas *gfx.Canvas, size gfx.Size, parentRig
 		}
 	}
 	canvas.PopLayer()
-	if selected >= 0 {
+	if restore {
+		state.restoreClosed()
+	} else if selected >= 0 {
 		state.openRecent(selected)
-		state.focusEditorOnTabClick(canvas)
+	} else {
+		return
 	}
+	state.focusEditorOnTabClick(canvas)
 }
