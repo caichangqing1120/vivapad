@@ -823,6 +823,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.baanHighlighters, doc)
 	}
+	if language.Mode == ".asp" || language.Mode == ".jsp" {
+		highlighter := state.serverPageHighlighters[doc]
+		if highlighter == nil {
+			if state.serverPageHighlighters == nil {
+				state.serverPageHighlighters = make(map[*document.Document]*syntax.ServerPageHighlighter)
+			}
+			highlighter = new(syntax.ServerPageHighlighter)
+			state.serverPageHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(language.Mode, value)
+	} else {
+		delete(state.serverPageHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)
