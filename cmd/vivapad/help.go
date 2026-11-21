@@ -21,6 +21,9 @@ const (
 	aboutHelpCommand       = "About VivaPad"
 	debugHelpCommand       = "Debug Info..."
 	projectPageHelpCommand = "Project Page"
+	userGuideHelpCommand   = "User Guide"
+	projectPageURL         = "https://github.com/caichangqing1120/vivapad"
+	userGuideURL           = projectPageURL + "/blob/main/README.md#current-behavior"
 )
 
 var buildVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.+-]{1,64})?$`)
@@ -99,9 +102,18 @@ func (state *model) closeHelp() {
 	state.requestEditorCommandFocus()
 }
 
-func (state *model) openHelpProjectPage(openURL func(string) error) {
-	if err := openURL("https://github.com/caichangqing1120/vivapad"); err != nil {
-		state.notice = "Could not open the project page"
+func (state *model) openHelpLink(command string, openURL func(string) error) {
+	var target, failure string
+	switch command {
+	case projectPageHelpCommand:
+		target, failure = projectPageURL, "Could not open the project page"
+	case userGuideHelpCommand:
+		target, failure = userGuideURL, "Could not open the user guide"
+	default:
+		return
+	}
+	if err := openURL(target); err != nil {
+		state.notice = failure
 	}
 }
 
