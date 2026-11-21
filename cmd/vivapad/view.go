@@ -31,7 +31,7 @@ var menuLabels = [...]string{"File", "Edit", "Search", "View", "Encoding", "Lang
 
 var menuCommands = [...][]string{
 	{"New", "Open...", "Save", "Save As...", "Save a Copy As...", "Save All", "Close", "Open as GB18030...", "Open as Windows-1252...", "Reload from Disk", "Recent Files", "Close All", "Close Other Tabs", "Sessions", "Rename...", "Close Multiple Documents", "Open Folder as Workspace...", "Open in Default Viewer", "Open Containing Folder", "Open as Encoding...", "Move to Recycle Bin", "Print...", "Print Now", "Exit"},
-	{"Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Line Operations", "Convert Case", "Blank Operations", "Copy to Clipboard", "Delete", "Begin/End Select", "Read-Only in Notepad++", fileReadOnlyLabel(), "Auto-Completion", "Comment/Uncomment", "Insert", "EOL Conversion", "Column Editor...", "Begin/End Select in Column Mode", "On Selection", "Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select", characterPanelCommand},
+	{"Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Line Operations", "Convert Case", "Blank Operations", "Copy to Clipboard", "Delete", "Begin/End Select", "Read-Only in Notepad++", fileReadOnlyLabel(), "Auto-Completion", "Comment/Uncomment", "Insert", "EOL Conversion", "Column Editor...", "Begin/End Select in Column Mode", "On Selection", "Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select", pasteSpecialCommand, characterPanelCommand},
 	{
 		"Find...", "Find in Files...", "Find Next", "Find Previous", "Selected Text Search",
 		"Replace...", "Incremental Search", "Search Results Window", "Next Search Result", "Previous Search Result",
@@ -314,6 +314,7 @@ func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 		if enabled {
 			canvas.HitWithOptions(menuScope.At(index), item, label, gfx.HitOptions{Role: gfx.RoleButton})
 			if canvas.Clicked(menuScope.At(index)) {
+				state.pasteSpecialOpen = false
 				state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.changeHistoryMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
 				state.markJumpMenuOpen = false
 				state.styleMenuMode = ""
@@ -1298,6 +1299,7 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(1)
 	canvas.HitWithOptions(menuDismissID, gfx.Rect{Y: menuHeight, Width: size.Width, Height: size.Height - menuHeight}, "Close menu", gfx.HitOptions{Role: gfx.RoleButton})
 	if canvas.Clicked(menuDismissID) {
+		state.pasteSpecialOpen = false
 		state.menuOpen, state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.changeHistoryMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = -1, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
 		state.insertDateOpen = false
 		state.markJumpMenuOpen = false
@@ -1469,7 +1471,7 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 		if checked {
 			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 6, Y: iconY, Width: iconSize, Height: iconSize}, palette.blue)
 		}
-		if state.menuOpen == 7 || command == "Recent Files" || command == "Line Operations" || command == "Insert" || command == "Convert Case" || command == "Comment/Uncomment" || command == "EOL Conversion" || command == "Show Symbol" || command == "Tab" || command == "Fold Level" || command == "Unfold Level" || command == "Sort By" || command == "Blank Operations" || command == "Copy to Clipboard" || command == "On Selection" || command == "Multi-select All" || command == "Multi-select Next" || command == "Read-Only in Notepad++" || command == "Auto-Completion" || command == "Sessions" || command == "Bookmark" || command == "Change History" || command == "Jump Up" || command == "Jump Down" || command == "Style All Occurrences of Token" || command == "Style One Token" || command == "Clear Style" || command == "Copy Styled Text" || command == "Close Multiple Documents" || command == "Open Containing Folder" || command == "Selected Text Search" || command == "Character sets" || command == "Open as Encoding..." || command == "Saved Macros" {
+		if state.menuOpen == 7 || command == "Recent Files" || command == "Line Operations" || command == "Insert" || command == "Convert Case" || command == "Comment/Uncomment" || command == "EOL Conversion" || command == "Show Symbol" || command == "Tab" || command == "Fold Level" || command == "Unfold Level" || command == "Sort By" || command == "Blank Operations" || command == "Copy to Clipboard" || command == "On Selection" || command == "Multi-select All" || command == "Multi-select Next" || command == "Read-Only in Notepad++" || command == "Auto-Completion" || command == "Sessions" || command == "Bookmark" || command == "Change History" || command == "Jump Up" || command == "Jump Down" || command == "Style All Occurrences of Token" || command == "Style One Token" || command == "Clear Style" || command == "Copy Styled Text" || command == "Close Multiple Documents" || command == "Open Containing Folder" || command == "Selected Text Search" || command == "Character sets" || command == "Open as Encoding..." || command == "Saved Macros" || command == pasteSpecialCommand {
 			canvas.DrawIcon(rightIcon, gfx.Rect{X: item.X + item.Width - 21, Y: iconY, Width: iconSize, Height: iconSize}, palette.muted)
 		}
 		fontSize := float32(12)
@@ -1536,6 +1538,10 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 	}
 	if state.copyPathsMenuOpen && state.menuOpen == 1 {
 		state.paintCopyPathsMenu(canvas, size, x+width)
+	}
+	if state.pasteSpecialOpen && state.menuOpen == 1 {
+		index := slices.Index(commands, pasteSpecialCommand) - state.editMenuOffset
+		state.paintPasteSpecial(canvas, size, x+width, rows.Y+float32(index)*rowHeight)
 	}
 	if state.onSelectionMenuOpen && state.menuOpen == 1 {
 		state.paintOnSelectionMenu(canvas, size, x+width)
