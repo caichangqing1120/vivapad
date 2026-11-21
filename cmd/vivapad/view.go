@@ -784,6 +784,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.hollywoodHighlighters, doc)
 	}
+	if language.Mode == ".pro" {
+		highlighter := state.visualPrologHighlighters[doc]
+		if highlighter == nil {
+			if state.visualPrologHighlighters == nil {
+				state.visualPrologHighlighters = make(map[*document.Document]*syntax.VisualPrologHighlighter)
+			}
+			highlighter = syntax.NewVisualPrologHighlighter()
+			state.visualPrologHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.visualPrologHighlighters, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)
