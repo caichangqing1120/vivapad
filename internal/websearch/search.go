@@ -40,7 +40,8 @@ func (c Config) Validate() error {
 }
 
 func (c Config) URL(query string) (string, error) {
-	if len(query) > 1024*utf8.UTFMax || strings.ContainsAny(query, "\x00\r\n") || !utf8.ValidString(query) || utf8.RuneCountInString(query) > 1024 || strings.TrimSpace(query) == "" {
+	const lineSeparators = "\r\n\v\f\u0085\u2028\u2029"
+	if len(query) > 1024*utf8.UTFMax || strings.ContainsAny(query, "\x00"+lineSeparators) || !utf8.ValidString(query) || utf8.RuneCountInString(query) > 1024 || strings.TrimSpace(query) == "" {
 		return "", errors.New("select a single nonempty query of at most 1024 characters")
 	}
 	parsed, values, key, err := c.target()

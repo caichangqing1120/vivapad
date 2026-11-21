@@ -105,6 +105,22 @@ func TestInternetSearchRefusesNativeMultipleSelections(t *testing.T) {
 	}
 }
 
+func TestInternetSearchRefusesUnicodeLineSeparator(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	const source = "alpha\u2028beta"
+	doc.Editor.Insert(source)
+	selection := text.Range{Start: 0, End: doc.Editor.RuneCount()}
+	doc.Editor.SetSelection(selection)
+	state.command(webSearchCommand)
+	if target, ok := driver.LastOpenedURL(); ok || !strings.Contains(state.notice, "single") {
+		t.Fatalf("multiline search was not refused: target=%q status=%q", target, state.notice)
+	}
+	if doc.Editor.String() != source || doc.Editor.Selection() != selection {
+		t.Fatal("refusal changed the editor or selection")
+	}
+}
+
 func TestInternetSearchRefusesLiveCompositionWithoutCancelingIt(t *testing.T) {
 	for _, tentative := range []bool{false, true} {
 		name := "legacy"

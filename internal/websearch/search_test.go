@@ -30,6 +30,23 @@ func TestSearchURLKeepsQueryInOneValue(t *testing.T) {
 	}
 }
 
+func TestSearchURLRejectsLineSeparators(t *testing.T) {
+	for _, separator := range []rune{'\r', '\n', '\v', '\f', '\u0085', '\u2028', '\u2029'} {
+		if target, err := (Config{}).URL("alpha" + string(separator) + "beta"); err == nil || target != "" {
+			t.Errorf("U+%04X unexpectedly built a search URL: %q, %v", separator, target, err)
+		}
+	}
+	const horizontal = "alpha\u00a0beta\tgamma"
+	target, err := (Config{}).URL(horizontal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := url.Parse(target)
+	if err != nil || parsed.Query().Get("q") != horizontal {
+		t.Fatalf("horizontal whitespace changed: %q, %v", target, err)
+	}
+}
+
 func TestSearchTemplateRejectsAmbiguousOrUnsafeTarget(t *testing.T) {
 	for _, template := range []string{
 		`http://example.test/?q=$(CURRENT_WORD)`, `https://user@example.test/?q=$(CURRENT_WORD)`,
