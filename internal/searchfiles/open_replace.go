@@ -3,6 +3,8 @@ package searchfiles
 import (
 	"fmt"
 	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
@@ -53,9 +55,7 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", doc.Name, err)
 		}
-		if !slices.ContainsFunc(edits, func(edit document.ReplacementEdit) bool {
-			return before[edit.Start:edit.End] != edit.Text
-		}) {
+		if replacementLeavesTextUnchanged(before, edits) {
 			continue
 		}
 		ending := doc.LineEnding()
@@ -98,6 +98,25 @@ func PreviewOpenReplace(docs []*document.Document, query, replacement string, op
 		plan.Replacements += len(edits)
 	}
 	return plan, nil
+}
+
+// Compare the replacement stream to the original without building a draft.
+// A regex can grow one target and shrink another without changing the result.
+func replacementLeavesTextUnchanged(value string, edits []document.ReplacementEdit) bool {
+	remaining, sourceEnd := value, 0
+	for _, edit := range edits {
+		var equal bool
+		remaining, equal = strings.CutPrefix(remaining, value[sourceEnd:edit.Start])
+		if !equal {
+			return false
+		}
+		remaining, equal = strings.CutPrefix(remaining, edit.Text)
+		if !equal || !utf8.ValidString(edit.Text) {
+			return false
+		}
+		sourceEnd = edit.End
+	}
+	return remaining == value[sourceEnd:]
 }
 
 func (plan *OpenReplacePlan) Apply(open []*document.Document) error {
