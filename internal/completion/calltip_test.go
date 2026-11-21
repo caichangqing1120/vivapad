@@ -23,12 +23,12 @@ func TestParameterHintTracksNestedMultilineCall(t *testing.T) {
 		{"# API.Copy(", "", 0},
 		{"API.Copy(1, 2)\n", "", 0},
 	} {
-		hint := catalog.CallAt(tc.source, len(tc.source), "#", true)
+		hint := catalog.CallAt(tc.source, len(tc.source), CallSyntax{LineComment: "#", TripleQuotes: true})
 		if hint.Name != tc.name || hint.Argument != tc.parameter {
 			t.Errorf("%q: got %q argument %d, want %q argument %d", tc.source, hint.Name, hint.Argument, tc.name, tc.parameter)
 		}
 	}
-	hint := catalog.CallAt("api.Copy(", 9, "#", true)
+	hint := catalog.CallAt("api.Copy(", 9, CallSyntax{LineComment: "#", TripleQuotes: true})
 	if len(hint.Overloads) != 2 || hint.Overloads[0].Return != "int" || !slices.Equal(hint.Overloads[1].Params, []string{"source", "target"}) {
 		t.Fatalf("overload order or contents lost: %+v", hint.Overloads)
 	}
@@ -39,8 +39,8 @@ func TestBundledGoParameterHint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const source = "append([]int{1, 2}, /* ) , */ `,` , "
-	hint := catalog.CallAt(source, len(source), "//", false)
+	const source = "append([]int{1, 2}, /* ) , /* */ `,` , "
+	hint := catalog.CallAt(source, len(source), CallSyntax{LineComment: "//"})
 	if hint.Name != "append" || hint.Argument != 2 || len(hint.Overloads) != 1 || len(hint.Overloads[0].Params) != 2 {
 		t.Fatalf("bundled Go hint = %+v", hint)
 	}

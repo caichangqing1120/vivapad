@@ -70,3 +70,46 @@ func TestParameterHintShowsAndCyclesWithoutEditing(t *testing.T) {
 		t.Fatalf("closing parenthesis left hint %v or lost typing: %q, %v", state.calltip, doc.Editor.String(), err)
 	}
 }
+
+func TestParameterHintIgnoresNestedBlockComments(t *testing.T) {
+	for _, tc := range []struct {
+		mode, catalog string
+		width, height int
+	}{
+		{".rs", "rust", 640, 400},
+		{".swift", "swift", 1280, 800},
+	} {
+		t.Run(tc.catalog, func(t *testing.T) {
+			state, driver := startDriver(t)
+			root := t.TempDir()
+			state.preferencesPath = filepath.Join(root, "settings.json")
+			if err := os.Mkdir(filepath.Join(root, "apis"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			const catalog = `<NotepadPlus><AutoComplete><KeyWord name="demo" func="yes"><Overload><Param name="first"/><Param name="second"/></Overload></KeyWord></AutoComplete></NotepadPlus>`
+			if err := os.WriteFile(filepath.Join(root, "apis", tc.catalog+".xml"), []byte(catalog), 0600); err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			state.languages[doc] = tc.mode
+			if err := driver.Resize(tc.width, tc.height); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, editorID)
+			const source = "demo(first, /* outer\n /* inner */ ), demo(, */ "
+			if err := driver.Type(source); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuScope.At(1))
+			clickID(t, driver, menuItemScope.At(18))
+			clickID(t, driver, autoCompletionScope.At(2))
+			if hint := state.calltip; hint == nil || hint.call.Name != "demo" || hint.call.Open != 4 || hint.call.Argument != 1 {
+				t.Fatalf("want second parameter of outer call, got %+v (%s)", hint, state.notice)
+			}
+			if doc.Editor.String() != source {
+				t.Fatal("showing parameters modified the document")
+			}
+			requireEditorCommandFocus(t, driver, editorID)
+		})
+	}
+}

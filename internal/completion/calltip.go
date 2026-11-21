@@ -36,6 +36,12 @@ type CallHint struct {
 	Overloads []Signature
 }
 
+type CallSyntax struct {
+	LineComment         string
+	TripleQuotes        bool
+	NestedBlockComments bool
+}
+
 type callDelimiters struct{ open, separator byte }
 
 func catalogDelimiters(open, close, separator string) callDelimiters {
@@ -61,7 +67,7 @@ type callFrame struct {
 
 // CallAt returns the innermost open call with a known signature. Caret and
 // Open are UTF-8 byte offsets. Separators count only in the frame that owns them.
-func (catalog *FunctionCatalog) CallAt(source string, caret int, lineComment string, tripleQuotes bool) CallHint {
+func (catalog *FunctionCatalog) CallAt(source string, caret int, syntax CallSyntax) CallHint {
 	if catalog == nil || len(catalog.signatures) == 0 || caret <= 0 || caret > len(source) {
 		return CallHint{}
 	}
@@ -77,22 +83,17 @@ func (catalog *FunctionCatalog) CallAt(source string, caret int, lineComment str
 	for i := 0; i < len(source); i++ {
 		ch := source[i]
 		switch {
-		case lineComment != "" && strings.HasPrefix(source[i:], lineComment):
+		case syntax.LineComment != "" && strings.HasPrefix(source[i:], syntax.LineComment):
 			end := strings.IndexAny(source[i:], "\r\n")
 			if end < 0 {
 				i = len(source)
 			} else {
 				i += end
 			}
-		case !tripleQuotes && ch == '/' && strings.HasPrefix(source[i:], "/*"):
-			end := strings.Index(source[i+2:], "*/")
-			if end < 0 {
-				i = len(source)
-			} else {
-				i += end + 3
-			}
+		case !syntax.TripleQuotes && ch == '/' && strings.HasPrefix(source[i:], "/*"):
+			i = endBlockComment(source, i+2, syntax.NestedBlockComments) - 1
 		case ch == '\'' || ch == '"' || ch == '`':
-			i = endQuoted(source, i, tripleQuotes) - 1
+			i = endQuoted(source, i, syntax.TripleQuotes) - 1
 		case ch == '(' || ch == '[' || ch == '{':
 			if len(stack) == 2048 {
 				return CallHint{}
@@ -123,6 +124,32 @@ func (catalog *FunctionCatalog) CallAt(source string, caret int, lineComment str
 		}
 	}
 	return CallHint{}
+}
+
+// endBlockComment starts after the opening token and returns the first byte
+// outside the comment, or the caret when the comment is still open.
+func endBlockComment(source string, start int, nested bool) int {
+	if !nested {
+		if end := strings.Index(source[start:], "*/"); end >= 0 {
+			return start + end + 2
+		}
+		return len(source)
+	}
+	depth := 1
+	for i := start; i+1 < len(source); i++ {
+		switch source[i : i+2] {
+		case "/*":
+			depth++
+			i++
+		case "*/":
+			depth--
+			if depth == 0 {
+				return i + 2
+			}
+			i++
+		}
+	}
+	return len(source)
 }
 
 func (catalog *FunctionCatalog) callAtOpen(source string, open int) CallHint {
