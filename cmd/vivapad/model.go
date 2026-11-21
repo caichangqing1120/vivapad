@@ -1739,6 +1739,9 @@ func newConfig(state *model) app.Config {
 		if result, handled := state.changeHistoryMenuKey(event); handled {
 			return result
 		}
+		if result, handled := state.recentMenuKey(event); handled {
+			return result
+		}
 		if event.Key == gfx.KeyEscape && state.menuOpen < 0 && !state.menuOverflowOpen && state.calltip != nil {
 			state.calltip = nil
 			return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
@@ -3019,7 +3022,7 @@ func (state *model) command(command string) {
 		state.togglePinned(state.paneDocument(state.activePane), state.activePane)
 	case "Reload from Disk":
 		state.requestReload()
-	case "Recent Files":
+	case recentFilesCommand:
 		state.menuOpen, state.recentOpen = 0, true
 	case "Sessions":
 		state.menuOpen, state.sessionMenuOpen = 0, true

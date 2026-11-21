@@ -209,6 +209,52 @@ func TestRecentSubmenuClosesWithEscapeWithoutChangingDocument(t *testing.T) {
 	}
 }
 
+func TestRecentSubmenuKeyboardNavigationRestoresFile(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "closed.txt")
+	if err := os.WriteFile(path, []byte("closed text"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state, driver := startDriver(t)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	state.recentEntries = recent.Add(nil, recent.Entry{Path: filepath.Join(root, "recent.txt")})
+	state.closedHistory = recent.Add(nil, recent.Entry{Path: path})
+	original := state.space.Current()
+	parent := menuItemScope.At(10)
+	press := func(key gfx.Key, want gfx.ID) {
+		t.Helper()
+		if err := driver.Key(key, 0); err != nil {
+			t.Fatal(err)
+		}
+		if got := driver.Snapshot().Focused; got != want {
+			t.Fatalf("after key %v focus = %v, want %v", key, got, want)
+		}
+	}
+	clickID(t, driver, menuScope.At(0))
+	clickID(t, driver, parent)
+	press(gfx.KeyDown, recentScope.At(0))
+	press(gfx.KeyUp, recentClearID)
+	press(gfx.KeyEscape, parent)
+	if state.recentOpen || state.space.Current() != original || len(state.closedHistory) != 1 {
+		t.Fatal("Escape did not return to the parent without changing state")
+	}
+	press(gfx.KeyRight, recentScope.At(0))
+	press(gfx.KeyEnd, recentClearID)
+	press(gfx.KeyUp, recentRestoreID)
+	press(gfx.KeyEnter, editorID)
+	if state.recentOpen || state.space.Current().Path != path || len(state.closedHistory) != 0 {
+		t.Fatal("Enter did not restore the selected closed file")
+	}
+	if err := driver.Type("x"); err != nil || state.space.Current().Editor.String() != "xclosed text" {
+		t.Fatalf("first key did not reach the restored editor: %v", err)
+	}
+}
+
 func TestFileDropAndFindResultUpdateRecentHistory(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
