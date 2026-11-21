@@ -54,6 +54,7 @@ type FunctionCatalog struct {
 	entries    []functionCandidate
 	ignoreCase bool
 	additional string
+	rustNames  bool
 	signatures map[string][]Signature
 	delimiters callDelimiters
 }
@@ -97,7 +98,7 @@ func LoadFunctionCatalog(settingsDirectory, language string) (*FunctionCatalog, 
 			if err != nil || !os.SameFile(info, opened) {
 				return nil, errors.New("API catalog changed while opening")
 			}
-			return ParseFunctionCatalog(file)
+			return parseFunctionCatalog(file, language)
 		}
 		if !errors.Is(err, os.ErrNotExist) {
 			return nil, err
@@ -107,6 +108,10 @@ func LoadFunctionCatalog(settingsDirectory, language string) (*FunctionCatalog, 
 }
 
 func ParseFunctionCatalog(reader io.Reader) (*FunctionCatalog, error) {
+	return parseFunctionCatalog(reader, "")
+}
+
+func parseFunctionCatalog(reader io.Reader, language string) (*FunctionCatalog, error) {
 	data, err := io.ReadAll(io.LimitReader(reader, maxCatalogBytes+1))
 	if err != nil {
 		return nil, err
@@ -117,6 +122,7 @@ func ParseFunctionCatalog(reader io.Reader) (*FunctionCatalog, error) {
 	var root struct {
 		XMLName xml.Name `xml:"NotepadPlus"`
 		Blocks  []struct {
+			Language    string `xml:"language,attr"`
 			Environment struct {
 				IgnoreCase string `xml:"ignoreCase,attr"`
 				Additional string `xml:"additionalWordChar,attr"`
@@ -161,20 +167,24 @@ func ParseFunctionCatalog(reader io.Reader) (*FunctionCatalog, error) {
 	if strings.Trim(additional, ".$:-!?%@") != "" {
 		return nil, errors.New("unsupported API identifier characters")
 	}
+	if language == "" {
+		language = block.Language
+	}
+	rustNames := strings.EqualFold(language, "rust")
+	tokens := FunctionCatalog{additional: additional, rustNames: rustNames}
 	var names []string
 	for _, keyword := range block.Keywords {
 		if !strings.EqualFold(keyword.Func, "yes") {
 			continue
 		}
-		if keyword.Name == "" || len(keyword.Name) > maxAPINameBytes || strings.IndexFunc(keyword.Name, func(r rune) bool {
-			return !wordCharacter(r) && !strings.ContainsRune(additional, r)
-		}) >= 0 {
+		if keyword.Name == "" || len(keyword.Name) > maxAPINameBytes || tokens.nameEnd(keyword.Name, 0, 0) != len(keyword.Name) {
 			return nil, errors.New("invalid API function name")
 		}
 		names = append(names, keyword.Name)
 	}
 	// Notepad++ only disables case folding when the XML opts out.
 	catalog := indexFunctions(names, !strings.EqualFold(block.Environment.IgnoreCase, "no"), additional)
+	catalog.rustNames = rustNames
 	catalog.delimiters = catalogDelimiters(block.Environment.Open, block.Environment.Close, block.Environment.Separator)
 	catalog.signatures = make(map[string][]Signature)
 	for _, keyword := range block.Keywords {
@@ -193,31 +203,68 @@ func (catalog *FunctionCatalog) key(value string) string {
 	return value
 }
 
+func (catalog *FunctionCatalog) nameCharacter(r rune) bool {
+	return wordCharacter(r) || strings.ContainsRune(catalog.additional, r)
+}
+
+func (catalog *FunctionCatalog) rustMacroSuffix(line string, bang int) bool {
+	if !catalog.rustNames || bang <= 0 || line[bang] != '!' {
+		return false
+	}
+	before, _ := utf8.DecodeLastRuneInString(line[:bang])
+	after, _ := utf8.DecodeRuneInString(line[bang+1:])
+	return wordCharacter(before) && after != '=' && after != '!' && !catalog.nameCharacter(after)
+}
+
+func (catalog *FunctionCatalog) nameStart(line string, caret int) int {
+	start := caret
+	if catalog.rustMacroSuffix(line, caret-1) {
+		start--
+	}
+	for start > 0 && caret-start <= maxAPINameBytes {
+		if catalog.rustNames && start >= 2 && line[start-2:start] == "::" {
+			start -= 2
+			continue
+		}
+		r, size := utf8.DecodeLastRuneInString(line[:start])
+		if !catalog.nameCharacter(r) {
+			break
+		}
+		start -= size
+	}
+	return start
+}
+
+func (catalog *FunctionCatalog) nameEnd(line string, start, caret int) int {
+	end := caret
+	for end < len(line) && end-start <= maxAPINameBytes {
+		if catalog.rustNames && strings.HasPrefix(line[end:], "::") {
+			end += 2
+			continue
+		}
+		if end > start && catalog.rustMacroSuffix(line, end) {
+			return end + 1
+		}
+		r, size := utf8.DecodeRuneInString(line[end:])
+		if !catalog.nameCharacter(r) {
+			break
+		}
+		end += size
+	}
+	return end
+}
+
 // Complete takes a byte caret on one logical line. Result offsets are rune
 // positions relative to that line, matching the shared editor popup.
 func (catalog *FunctionCatalog) Complete(line string, caret int) Result {
 	if catalog == nil || caret <= 0 || caret > len(line) || caret < len(line) && !utf8.RuneStart(line[caret]) {
 		return Result{}
 	}
-	allowed := func(r rune) bool { return wordCharacter(r) || strings.ContainsRune(catalog.additional, r) }
-	start, end := caret, caret
-	for start > 0 && caret-start <= maxAPINameBytes {
-		r, size := utf8.DecodeLastRuneInString(line[:start])
-		if !allowed(r) {
-			break
-		}
-		start -= size
-	}
+	start := catalog.nameStart(line, caret)
 	if start == caret || caret-start > maxAPINameBytes {
 		return Result{}
 	}
-	for end < len(line) && end-start <= maxAPINameBytes {
-		r, size := utf8.DecodeRuneInString(line[end:])
-		if !allowed(r) {
-			break
-		}
-		end += size
-	}
+	end := catalog.nameEnd(line, start, caret)
 	if end-start > maxAPINameBytes {
 		return Result{}
 	}

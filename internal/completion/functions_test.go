@@ -67,6 +67,39 @@ func TestImportedAutoItCatalogAcceptsAtWordCharacter(t *testing.T) {
 	}
 }
 
+func TestImportedRustCatalogKeepsMacrosAndQualifiedNames(t *testing.T) {
+	const source = `<NotepadPlus><AutoComplete language="Rust">
+<Environment ignoreCase="no" startFunc="(" stopFunc=")" paramSeparator=","/>
+<KeyWord name="println!" func="yes"><Overload><Param name="format string (...)"/></Overload></KeyWord>
+<KeyWord name="Vec::new" func="yes"><Overload retVal="Vec"/></KeyWord>
+</AutoComplete></NotepadPlus>`
+	catalog, err := ParseFunctionCatalog(strings.NewReader(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		line, before, replaced, candidate string
+	}{
+		{"!prin argument", "!prin", "prin", "println!"},
+		{"Vec::nOld!=other", "Vec::n", "Vec::nOld", "Vec::new"},
+		{"prin!=other", "prin", "prin", "println!"},
+		{"prin!()", "prin", "prin!", "println!"},
+		{"x:Vec::nOld()", "x:Vec::n", "Vec::nOld", "Vec::new"},
+	} {
+		got := catalog.Complete(tc.line, len(tc.before))
+		if !slices.Equal(got.Candidates, []string{tc.candidate}) || got.Start < 0 || got.End > len(tc.line) ||
+			got.Start > got.End || tc.line[got.Start:got.End] != tc.replaced {
+			t.Errorf("%q at %d: got %+v, want %q replacing %q", tc.line, len(tc.before), got, tc.candidate, tc.replaced)
+		}
+	}
+	for _, name := range []string{"println!", "Vec::new"} {
+		call := catalog.CallAt(name+"(", len(name)+1, CallSyntax{})
+		if call.Name != name || len(call.Overloads) != 1 {
+			t.Errorf("%q hint = %+v", name, call)
+		}
+	}
+}
+
 func TestFunctionCatalogRejectsInvalidInput(t *testing.T) {
 	for _, input := range []string{
 		`<AutoComplete/>`, `<NotepadPlus/>`, `<NotepadPlus><AutoComplete/></NotepadPlus><other/>`,

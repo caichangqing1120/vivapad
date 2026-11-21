@@ -4,7 +4,6 @@ import (
 	"encoding/xml"
 	"sort"
 	"strings"
-	"unicode/utf8"
 )
 
 type Signature struct {
@@ -154,14 +153,7 @@ func endBlockComment(source string, start int, nested bool) int {
 
 func (catalog *FunctionCatalog) callAtOpen(source string, open int) CallHint {
 	end := len(strings.TrimRight(source[:open], " \t\n\r"))
-	start := end
-	for start > 0 && end-start <= maxAPINameBytes {
-		r, size := utf8.DecodeLastRuneInString(source[:start])
-		if !wordCharacter(r) && !strings.ContainsRune(catalog.additional, r) {
-			break
-		}
-		start -= size
-	}
+	start := catalog.nameStart(source, end)
 	if start == end || end-start > maxAPINameBytes {
 		return CallHint{}
 	}
