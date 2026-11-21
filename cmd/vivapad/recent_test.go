@@ -61,6 +61,79 @@ func TestRecentMenuRecordsSaveAndReopensLegacyFile(t *testing.T) {
 	}
 }
 
+func TestRecentMenuUsesSavedDecoderAndReturnsFocusToActivePane(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		pending, stored document.Encoding
+		wantOpen        bool
+	}{
+		{"saved decoder", document.GB18030, document.GB18030, true},
+		{"pending conversion", document.UTF8, document.GB18030, true},
+		{"only pending conversion matches", document.Windows1252, document.Windows1252, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "saved legacy.txt")
+			disk := []byte{0xd6, 0xd0, '\r', '\n'}
+			if err := os.WriteFile(path, disk, 0600); err != nil {
+				t.Fatal(err)
+			}
+			state := newModel()
+			if err := state.space.OpenWithEncoding(path, document.GB18030); err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			doc.SetEncoding(tc.pending)
+			doc.Editor.MoveTo(doc.Editor.RuneCount(), false)
+			left, right := state.space.NewDocument(), state.space.NewDocument()
+			left.Editor.Insert("left draft")
+			right.Editor.Insert("right draft")
+			state.paneOwner[left], state.paneOwner[doc], state.paneOwner[right] = 0, 1, 1
+			state.paneDocs = [2]*document.Document{left, right}
+			state.splitEnabled, state.activePane = true, 1
+			state.recentEntries = []recent.Entry{{Path: doc.Path, Encoding: tc.stored}}
+			driver, err := app.NewDriver(newConfig(state), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer driver.Close()
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, rightEditorID)
+			clickID(t, driver, menuScope.At(0))
+			clickID(t, driver, menuItemScope.At(10))
+			clickID(t, driver, recentScope.At(0))
+			want := right
+			if tc.wantOpen {
+				want = doc
+			}
+			if state.space.Current() != want || state.paneDocument(1) != want || state.paneDocument(0) != left {
+				t.Fatalf("unexpected current tab: %q, notice=%q", state.space.Current().Name, state.notice)
+			}
+			if doc.Encoding() != tc.pending || doc.SavedEncoding() != document.GB18030 || doc.Editor.String() != "\u4e2d\n" || doc.Editor.CanUndo() {
+				t.Fatal("history changed the existing buffer, its encodings, or Undo state")
+			}
+			if !tc.wantOpen && !strings.Contains(state.notice, "Cannot open recent") {
+				t.Fatalf("missing decoder mismatch notice: %q", state.notice)
+			}
+			if got := driver.Snapshot().Focused; got != rightEditorID {
+				t.Errorf("focus after recent open = %v, want the right editor", got)
+			}
+			if tc.wantOpen {
+				if err := driver.Type("x"); err != nil {
+					t.Fatal(err)
+				}
+				if doc.Editor.String() != "\u4e2d\nx" || right.Editor.String() != "right draft" || left.Editor.String() != "left draft" {
+					t.Fatal("first character after selection did not reach the reopened document")
+				}
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != string(disk) {
+				t.Fatalf("recent open changed the saved file: %x, %v", data, err)
+			}
+		})
+	}
+}
+
 func TestRecentMissingFileDoesNotMutateTabsAndCanClear(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "missing.txt")

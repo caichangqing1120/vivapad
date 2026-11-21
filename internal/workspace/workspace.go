@@ -120,8 +120,13 @@ func (space *Workspace) open(path string, encoding *document.Encoding, mode open
 	}
 	if openIndex >= 0 {
 		doc := space.Documents[openIndex]
-		if encoding != nil && doc.Encoding() != *encoding {
-			return fmt.Errorf("%s is already open as %s", doc.Name, doc.EncodingLabel())
+		if encoding != nil {
+			if mode == openRecorded && doc.SavedEncoding() != *encoding {
+				return fmt.Errorf("%s is already open with another saved encoding", doc.Name)
+			}
+			if mode != openRecorded && doc.Encoding() != *encoding {
+				return fmt.Errorf("%s is already open as %s", doc.Name, doc.EncodingLabel())
+			}
 		}
 		space.Active = openIndex
 		return nil
