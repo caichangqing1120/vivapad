@@ -396,6 +396,7 @@ type model struct {
 	hollywoodHighlighters         map[*document.Document]*syntax.HollywoodHighlighter
 	visualPrologHighlighters      map[*document.Document]*syntax.VisualPrologHighlighter
 	escriptHighlighters           map[*document.Document]*syntax.ESCRIPTHighlighter
+	baanHighlighters              map[*document.Document]*syntax.BaanCHighlighter
 	query                         *text.Editor
 	incrementQuery                *text.Editor
 	incrementOpen                 bool
@@ -2463,6 +2464,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.hollywoodHighlighters, doc)
 	delete(state.visualPrologHighlighters, doc)
 	delete(state.escriptHighlighters, doc)
+	delete(state.baanHighlighters, doc)
 	delete(state.bookmarks, doc)
 	delete(state.changeView, doc)
 	if state.noChangeNoticeDoc == doc {
