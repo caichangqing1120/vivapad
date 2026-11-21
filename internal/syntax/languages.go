@@ -103,6 +103,8 @@ var languages = [...]Language{
 	{"Visual Prolog", ".pro", "visualprolog", "IDM_LANG_VISUALPROLOG", "Visual Prolog", "%", ""},
 	{"ESCRIPT", ".src", "escript", "IDM_LANG_ESCRIPT", "ESCRIPT", "", ""},
 	{"BaanC", ".bc", "baanc", "IDM_LANG_BAANC", "BaanC", "|", ""},
+	{"ASP", ".asp", "asp", "IDM_LANG_ASP", "ASP", "'", ""},
+	{"JSP", ".jsp", "jsp", "IDM_LANG_JSP", "JSP", "//", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
@@ -153,6 +155,8 @@ func LanguageByMode(mode string) (Language, bool) {
 		mode = ".src"
 	case ".cln":
 		mode = ".bc"
+	case ".aspx":
+		mode = ".asp"
 	}
 	for _, spec := range languages {
 		if spec.Mode == mode {
