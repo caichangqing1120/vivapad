@@ -839,6 +839,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.serverPageHighlighters, doc)
 	}
+	if language.Mode == ".ans" {
+		background := state.ansiBackgrounds[doc]
+		if background == nil {
+			if state.ansiBackgrounds == nil {
+				state.ansiBackgrounds = make(map[*document.Document]*syntax.ANSIBackground)
+			}
+			background = new(syntax.ANSIBackground)
+			state.ansiBackgrounds[doc] = background
+		}
+		snapshot.MarkLayers = background.AppendLayers(value, snapshot.MarkLayers)
+	} else {
+		delete(state.ansiBackgrounds, doc)
+	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)

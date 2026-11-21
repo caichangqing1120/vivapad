@@ -106,6 +106,7 @@ var languages = [...]Language{
 	{"ASP", ".asp", "asp", "IDM_LANG_ASP", "ASP", "'", ""},
 	{"JSP", ".jsp", "jsp", "IDM_LANG_JSP", "JSP", "//", ""},
 	{"MS-DOS Style", ".nfo", "nfo", "IDM_LANG_ASCII", "", "", ""},
+	{"Escape Sequence (ANSI)", ".ans", "escseq", "IDM_LANG_ESCSEQ", "Escape Sequence (ANSI)", "#", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }

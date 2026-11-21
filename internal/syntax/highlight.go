@@ -28,6 +28,9 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	if language == "" || len(line) > components.CodeEditorMaxHighlightedLine {
 		return dst
 	}
+	if strings.EqualFold(language, ".ans") {
+		return highlightANSI(line, dst)
+	}
 	key := cacheKey{language: language, line: line, prefix: prefix}
 	if cached, ok := highlighter.lines[key]; ok {
 		return append(dst, cached...)

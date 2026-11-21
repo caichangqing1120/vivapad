@@ -388,6 +388,7 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.ASP", "ASP", "asp", "'"},
 		{"demo.ASPX", "ASP", "asp", "'"},
 		{"demo.JSP", "JSP", "jsp", "//"},
+		{"demo.ANS", "Escape Sequence (ANSI)", "escseq", "#"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)
@@ -448,6 +449,7 @@ func TestNewLanguageModesRoundTripSessionsWithoutEditing(t *testing.T) {
 		{"ASP", ".asp", "asp", "\xef\xbb\xbf<p><%= 42 %></p>\r\n"},
 		{"JSP", ".jsp", "jsp", "\xef\xbb\xbf<% return; %>\r\n"},
 		{"MS-DOS Style", ".nfo", "nfo", "\xef\xbb\xbf\u250c\u2500\u2510\r\n"},
+		{"Escape Sequence (ANSI)", ".ans", "escseq", "\xef\xbb\xbf\x1b[31mred\x1b[0m\r\n"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			checkLanguageSessionRoundTrip(t, tc.label, tc.mode, tc.nppName, tc.source)
