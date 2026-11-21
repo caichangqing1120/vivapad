@@ -237,6 +237,10 @@ var (
 	autoCompletionScope        = tree.Sub(page, tree.Name("auto-completion-menu"))
 	selectedSearchScope        = tree.Sub(page, tree.Name("selected-search-menu"))
 	wordCompletionScope        = tree.Sub(page, tree.Name("word-completion"))
+	calltipLabelID             = tree.ID(page, "calltip-label")
+	calltipArgumentID          = tree.ID(page, "calltip-argument")
+	calltipPreviousID          = tree.ID(page, "calltip-previous")
+	calltipNextID              = tree.ID(page, "calltip-next")
 	blankScope                 = tree.Sub(page, tree.Name("blank-operations"))
 	copyPathsScope             = tree.Sub(page, tree.Name("copy-paths"))
 	onSelectionScope           = tree.Sub(page, tree.Name("on-selection"))
@@ -606,6 +610,7 @@ type model struct {
 	autoMenuOpen                  bool
 	selectedSearchMenuOpen        bool
 	wordCompletion                *wordCompletionState
+	calltip                       *calltipState
 	wordFocusPending              bool
 	blankMenuOpen                 bool
 	copyPathsMenuOpen             bool
@@ -1732,6 +1737,10 @@ func newConfig(state *model) app.Config {
 		if result, handled := state.changeHistoryMenuKey(event); handled {
 			return result
 		}
+		if event.Key == gfx.KeyEscape && state.menuOpen < 0 && !state.menuOverflowOpen && state.calltip != nil {
+			state.calltip = nil
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+		}
 		if event.Key == gfx.KeyEscape {
 			if state.styleMenuMode != "" {
 				state.styleMenuMode = ""
@@ -2750,7 +2759,8 @@ func (state *model) command(command string) {
 		historyNotice = true
 	}
 	checksComposition := command == "Replace All in Open Documents" ||
-		command == "Next Search Result" || command == "Previous Search Result" || command == functionCompletionCommand
+		command == "Next Search Result" || command == "Previous Search Result" || command == functionCompletionCommand ||
+		command == "Auto-Completion" || isCalltipCommand(command)
 	if !checksComposition {
 		state.cancelLiveComposition()
 	}
@@ -2804,7 +2814,7 @@ func (state *model) command(command string) {
 		state.invalidator.Invalidate()
 		return
 	}
-	if state.macroRecording && !macroMenuSupported(command) {
+	if state.macroRecording && !macroMenuSupported(command) && !isCalltipCommand(command) {
 		state.cancelMacroUnsupported("command")
 	}
 	if language, ok := languageExtension(command); ok {
@@ -2887,6 +2897,12 @@ func (state *model) command(command string) {
 		state.startPathCompletion()
 	case functionCompletionCommand:
 		state.startFunctionCompletion()
+	case parameterHintCommand:
+		state.startCalltip()
+	case previousHintCommand:
+		state.cycleCalltip(-1)
+	case nextHintCommand:
+		state.cycleCalltip(1)
 	case "Folder as Workspace":
 		state.folderVisible = !state.folderVisible
 		if !state.folderVisible {

@@ -51,12 +51,7 @@ func (state *model) startFunctionCompletion() {
 		return
 	}
 	language := state.languageFor(doc)
-	spec, _ := syntax.LanguageByMode(language)
-	directory := ""
-	if state.preferencesPath != "" {
-		directory = filepath.Dir(state.preferencesPath)
-	}
-	catalog, err := completion.LoadFunctionCatalog(directory, spec.NPPName)
+	catalog, err := state.functionCatalog(language)
 	if err != nil {
 		state.notice = "Function completion: " + err.Error()
 		return
@@ -83,6 +78,15 @@ func (state *model) startFunctionCompletion() {
 	if result.Truncated {
 		state.notice = "Function completion limited to 2000 suggestions"
 	}
+}
+
+func (state *model) functionCatalog(language string) (*completion.FunctionCatalog, error) {
+	spec, _ := syntax.LanguageByMode(language)
+	directory := ""
+	if state.preferencesPath != "" {
+		directory = filepath.Dir(state.preferencesPath)
+	}
+	return completion.LoadFunctionCatalog(directory, spec.NPPName)
 }
 
 func functionCompletionsAtCaret(editor *text.Editor, value string, catalog *completion.FunctionCatalog) completion.Result {

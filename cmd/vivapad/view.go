@@ -181,6 +181,7 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	if state.provisional.doc == nil || state.wordCompletion == nil || state.wordCompletion.doc != state.provisional.doc {
 		state.paintWordCompletionPopup(canvas, size)
 	}
+	state.paintCalltip(canvas, size)
 	state.checkMacroSource()
 	if state.markDialogOpen {
 		state.paintMarkDialog(canvas, size)

@@ -8,8 +8,8 @@ import (
 )
 
 var autoCompletionCommands = [...]string{
-	functionCompletionCommand, "Word Completion", "Function Parameters Hint",
-	"Function Parameters Previous Hint", "Function Parameters Next Hint", "Path Completion",
+	functionCompletionCommand, "Word Completion", parameterHintCommand,
+	previousHintCommand, nextHintCommand, "Path Completion",
 }
 
 func (state *model) paintAutoCompletionMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
@@ -23,7 +23,8 @@ func (state *model) paintAutoCompletionMenu(canvas *gfx.Canvas, size gfx.Size, p
 	for index, command := range autoCompletionCommands {
 		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
 		id := autoCompletionScope.At(index)
-		disabled := index != 0 && index != 1 && index != 5
+		disabled := (command == previousHintCommand || command == nextHintCommand) &&
+			(state.calltip == nil || len(state.calltip.call.Overloads) < 2)
 		if !disabled && canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}

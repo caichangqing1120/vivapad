@@ -3,6 +3,7 @@ package completion
 import (
 	"bytes"
 	_ "embed"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -29,9 +30,22 @@ var goFunctions string
 //go:embed api_python.txt
 var pythonFunctions string
 
+//go:embed api_signatures.json
+var bundledSignatures []byte
+
 var bundledFunctions = map[string]*FunctionCatalog{
 	"go":     indexFunctions(strings.Fields(goFunctions), false, ""),
 	"python": indexFunctions(strings.Fields(pythonFunctions), false, "."),
+}
+
+func init() {
+	var data map[string]map[string][]Signature
+	if err := json.Unmarshal(bundledSignatures, &data); err != nil {
+		panic("invalid bundled API signatures: " + err.Error())
+	}
+	for language, catalog := range bundledFunctions {
+		catalog.signatures = data[language]
+	}
 }
 
 type functionCandidate struct{ key, name string }
@@ -40,6 +54,8 @@ type FunctionCatalog struct {
 	entries    []functionCandidate
 	ignoreCase bool
 	additional string
+	signatures map[string][]Signature
+	delimiters callDelimiters
 }
 
 func indexFunctions(names []string, ignoreCase bool, additional string) *FunctionCatalog {
@@ -104,10 +120,14 @@ func ParseFunctionCatalog(reader io.Reader) (*FunctionCatalog, error) {
 			Environment struct {
 				IgnoreCase string `xml:"ignoreCase,attr"`
 				Additional string `xml:"additionalWordChar,attr"`
+				Open       string `xml:"startFunc,attr"`
+				Close      string `xml:"stopFunc,attr"`
+				Separator  string `xml:"paramSeparator,attr"`
 			} `xml:"Environment"`
 			Keywords []struct {
-				Name string `xml:"name,attr"`
-				Func string `xml:"func,attr"`
+				Name      string      `xml:"name,attr"`
+				Func      string      `xml:"func,attr"`
+				Overloads []Signature `xml:"Overload"`
 			} `xml:"KeyWord"`
 		} `xml:"AutoComplete"`
 	}
@@ -153,7 +173,16 @@ func ParseFunctionCatalog(reader io.Reader) (*FunctionCatalog, error) {
 		}
 		names = append(names, keyword.Name)
 	}
-	return indexFunctions(names, strings.EqualFold(block.Environment.IgnoreCase, "yes"), additional), nil
+	catalog := indexFunctions(names, strings.EqualFold(block.Environment.IgnoreCase, "yes"), additional)
+	catalog.delimiters = catalogDelimiters(block.Environment.Open, block.Environment.Close, block.Environment.Separator)
+	catalog.signatures = make(map[string][]Signature)
+	for _, keyword := range block.Keywords {
+		if strings.EqualFold(keyword.Func, "yes") && len(keyword.Overloads) != 0 {
+			key := catalog.key(keyword.Name)
+			catalog.signatures[key] = append(catalog.signatures[key], keyword.Overloads...)
+		}
+	}
+	return catalog, nil
 }
 
 func (catalog *FunctionCatalog) key(value string) string {
