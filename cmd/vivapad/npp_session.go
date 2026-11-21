@@ -37,18 +37,34 @@ func nppBytePosition(doc *document.Document, index int) int64 {
 	return int64(physicalOffset)
 }
 
-func runeFromNPPPosition(doc *document.Document, position int64) int {
-	value := doc.Editor.String()
+func nppSelectionAt(doc *document.Document, start, end int64) text.Range {
+	lo, hi := min(start, end), max(start, end)
+	format := doc.SavedEncoding()
+	legacy := format.IsLegacy()
+	// Remember widths only for this scan. The bound keeps unusual documents
+	// with many distinct characters from growing another document-sized index.
+	var widths map[rune]int
+	if legacy {
+		widths = make(map[rune]int)
+	}
+	var selection text.Range
 	var offset int64
 	line := 0
-	for byteIndex, character := range value {
+	for _, character := range doc.Editor.String() {
 		width := utf8.RuneLen(character)
-		if doc.SavedEncoding().IsLegacy() {
-			encoded, err := doc.SavedEncoding().EncodedLength(string(character))
-			if err != nil {
-				return doc.Editor.RuneIndex(byteIndex)
+		if legacy {
+			var ok bool
+			width, ok = widths[character]
+			if !ok {
+				var err error
+				width, err = format.EncodedLength(string(character))
+				if err != nil {
+					break
+				}
+				if len(widths) < 1024 {
+					widths[character] = width
+				}
 			}
-			width = encoded
 		}
 		if character == '\n' {
 			if doc.LineEndingAt(line) == "\r\n" {
@@ -56,12 +72,19 @@ func runeFromNPPPosition(doc *document.Document, position int64) int {
 			}
 			line++
 		}
-		if offset+int64(width) > position {
-			return doc.Editor.RuneIndex(byteIndex)
-		}
 		offset += int64(width)
+		if offset > hi {
+			break
+		}
+		selection.End++
+		if offset <= lo {
+			selection.Start++
+		}
 	}
-	return doc.Editor.RuneCount()
+	if start > end {
+		selection.Start, selection.End = selection.End, selection.Start
+	}
+	return selection
 }
 
 func nppCodepage(doc *document.Document) int {
@@ -424,10 +447,7 @@ func (state *model) loadNPPSession() {
 		}
 		// A shared document has one editor selection. Restore it from the active view.
 		if item.pane == stored.ActiveView || !activeViewFiles[item.doc] {
-			item.doc.Editor.SetSelection(text.Range{
-				Start: runeFromNPPPosition(item.doc, item.file.StartPos),
-				End:   runeFromNPPPosition(item.doc, item.file.EndPos),
-			})
+			item.doc.Editor.SetSelection(nppSelectionAt(item.doc, item.file.StartPos, item.file.EndPos))
 		}
 		state.rememberRecent(item.doc)
 	}
