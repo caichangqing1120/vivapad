@@ -29,7 +29,7 @@ func (state *model) openCurrentFileInNamedBrowser(browser external.NamedBrowser)
 		if err != nil {
 			state.notice = string(browser) + ": " + err.Error()
 		} else {
-			state.notice = "Opened saved file in " + string(browser)
+			state.notice = "Open request sent to " + string(browser)
 		}
 		state.invalidator.Invalidate()
 	}

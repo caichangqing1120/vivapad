@@ -1,12 +1,35 @@
 package external
 
 import (
+	"errors"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
+
+func TestNamedBrowserReportsEarlyLauncherFailure(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("exercise the Linux browser command lookup")
+	}
+	root := t.TempDir()
+	path := filepath.Join(root, "saved draft.html")
+	if err := os.WriteFile(path, []byte("saved"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "firefox"), []byte("#!/bin/sh\nexit 23\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", root)
+	err := OpenFileInNamedBrowser(Firefox, path)
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 23 {
+		t.Fatalf("early browser failure was not reported: %v", err)
+	}
+}
 
 func TestNamedBrowserReceivesOneFileURL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test #100% & \u00e9.html")

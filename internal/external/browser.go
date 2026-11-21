@@ -64,8 +64,21 @@ func OpenFileInNamedBrowser(browser NamedBrowser, path string) error {
 		if err := command.Start(); err != nil {
 			return err
 		}
-		go func() { _ = command.Wait() }()
-		return nil
+		done := make(chan error, 1)
+		go func() { done <- command.Wait() }()
+		// A browser can hand off to an existing process or stay running. Wait
+		// briefly for startup failures without holding or killing the browser.
+		startup := time.NewTimer(500 * time.Millisecond)
+		defer startup.Stop()
+		select {
+		case err := <-done:
+			if err != nil {
+				return fmt.Errorf("browser exited during launch: %w", err)
+			}
+			return nil
+		case <-startup.C:
+			return nil
+		}
 	})
 }
 
