@@ -112,6 +112,45 @@ func TestPathCompletionMenuQuotesAndUndo(t *testing.T) {
 	}
 }
 
+func TestPathCompletionAfterClosingQuotePreservesFollowingText(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"alpha.txt", "alpha draft.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const left, token, right = `label "value"`, "al-old.txt", " keep this"
+	const original = left + token + right
+	source := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(source, []byte(original+"\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{source})
+	doc := state.space.Current()
+	doc.Editor.MoveTo(len(left)+len("al"), false)
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	clickID(t, driver, menuScope.At(1))
+	clickID(t, driver, menuItemScope.At(18))
+	clickID(t, driver, autoCompletionScope.At(5))
+	if popup := state.wordCompletion; popup == nil || len(popup.items) != 1 || popup.items[0] != "alpha.txt" {
+		t.Fatalf("expected only the bare filename, got %+v", popup)
+	}
+	clickID(t, driver, wordCompletionScope.At(0))
+	if got := doc.Editor.String(); got != left+"alpha.txt"+right+"\n" {
+		t.Fatalf("completion rewrote surrounding text: %q", got)
+	}
+	if _, err := driver.ShortcutChord(primary(), 'z'); err != nil || doc.Editor.String() != original+"\n" {
+		t.Fatalf("Undo = %q, %v", doc.Editor.String(), err)
+	}
+	if data, err := os.ReadFile(source); err != nil || string(data) != original+"\r\n" {
+		t.Fatalf("completion changed disk: %q, %v", data, err)
+	}
+}
+
 func TestPathCompletionShortcutFiltersAndAcceptsWithNativeEnter(t *testing.T) {
 	root := t.TempDir()
 	canonical, _ := filepath.EvalSymlinks(root)

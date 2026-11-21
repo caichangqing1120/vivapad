@@ -12,6 +12,9 @@ func TestPathTokenAtCaretExtendsThroughQuotedSpacesAndSuffix(t *testing.T) {
 	}{
 		{`open "folder with spaces/notes.txt" later`, "notes", "folder with spaces/notes.txt"},
 		{`open "folder [draft]/notes.txt" later`, "notes", "folder [draft]/notes.txt"},
+		{`open "notes draft.txt" later`, `open "`, "notes draft.txt"},
+		{`label "draft"notes.txt later`, "notes", "notes.txt"},
+		{`label 'draft'notes.txt later`, "notes", "notes.txt"},
 		{`open [./src/main.go] now`, "main", "./src/main.go"},
 		{`open <./src/main.go> now`, "main", "./src/main.go"},
 		{`C:\old [./src/main.go] now`, "main", "./src/main.go"},

@@ -21,7 +21,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 	if offset <= 0 {
 		return Result{}, nil
 	}
-	raw, start := pathAtCaret(value, offset, false)
+	raw, _, quote := pathAtCaret(value, offset, false)
 	if raw == "" {
 		return Result{}, nil
 	}
@@ -31,7 +31,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 	if runtime.GOOS != "windows" && len(raw) >= 3 && unicode.IsLetter(rune(raw[0])) && raw[1] == ':' && (raw[2] == '\\' || raw[2] == '/') {
 		return Result{}, fmt.Errorf("Windows path completion requires Windows")
 	}
-	end := pathTokenEnd(value, start, offset)
+	end := pathTokenEnd(value, offset, quote)
 	tail := value[offset:end]
 	result := Result{Start: caret - utf8.RuneCountInString(raw), End: caret + utf8.RuneCountInString(tail)}
 	if tail != "" {
@@ -107,7 +107,6 @@ func Paths(value string, caret int, base string) (Result, error) {
 		directory bool
 	}
 	var matches []candidate
-	quote := pathTokenQuote(value, start)
 	for _, entry := range entries {
 		name := entry.Name()
 		if name == "." || name == ".." || !pathPrefix(name, suffix) || !pathNameFitsToken(name, quote) {
@@ -239,9 +238,9 @@ func pathCaretByteOffset(value string, caret int) int {
 
 // Path token scanning uses byte offsets so a filename on a long log line
 // does not require a second copy of the line.
-func pathAtCaret(value string, caret int, allowSpacedDrive bool) (string, int) {
+func pathAtCaret(value string, caret int, allowSpacedDrive bool) (prefix string, start int, delimiter rune) {
 	if caret <= 0 {
-		return "", 0
+		return "", 0, 0
 	}
 	lineStart := strings.LastIndexAny(value[:caret], "\r\n") + 1
 	quoteStart, quote := -1, byte(0)
@@ -266,8 +265,8 @@ func pathAtCaret(value string, caret int, allowSpacedDrive bool) (string, int) {
 			quoteStart, quote = -1, 0
 		}
 	}
-	if quoteStart >= 0 && quoteStart+1 < caret {
-		return value[quoteStart+1 : caret], quoteStart + 1
+	if quoteStart >= 0 {
+		return value[quoteStart+1 : caret], quoteStart + 1, rune(quote)
 	}
 	if allowSpacedDrive {
 		for end := caret; end > lineStart; {
@@ -283,11 +282,11 @@ func pathAtCaret(value string, caret int, allowSpacedDrive bool) (string, int) {
 			}
 			before, _ := utf8.DecodeLastRuneInString(value[lineStart:index])
 			if index == lineStart || barePathBoundary(before) {
-				return value[index:caret], index
+				return value[index:caret], index, 0
 			}
 		}
 	}
-	start := caret
+	start = caret
 	for start > lineStart {
 		character, width := utf8.DecodeLastRuneInString(value[lineStart:start])
 		if barePathBoundary(character) {
@@ -296,9 +295,9 @@ func pathAtCaret(value string, caret int, allowSpacedDrive bool) (string, int) {
 		start -= width
 	}
 	if start < caret {
-		return value[start:caret], start
+		return value[start:caret], start, 0
 	}
-	return "", 0
+	return "", 0, 0
 }
 
 func PathTokenAtCaret(value string, caret int) (string, int, int) {
@@ -307,12 +306,12 @@ func PathTokenAtCaret(value string, caret int) (string, int, int) {
 		return "", 0, 0
 	}
 	// Opening an existing drive path permits spaces to the left of the caret.
-	_, start := pathAtCaret(value, offset, true)
+	_, start, quote := pathAtCaret(value, offset, true)
 	before, _ := utf8.DecodeLastRuneInString(value[:offset])
 	if offset == 0 || start == 0 && barePathBoundary(before) {
 		start = offset
 	}
-	end := pathTokenEnd(value, start, offset)
+	end := pathTokenEnd(value, offset, quote)
 	length := utf8.RuneCountInString(value[start:end])
 	if length == 0 || length > 4096 {
 		return "", 0, 0
@@ -321,21 +320,13 @@ func PathTokenAtCaret(value string, caret int) (string, int, int) {
 	return strings.Clone(value[start:end]), startRune, startRune + length
 }
 
-func pathTokenEnd(value string, start, caret int) int {
-	quote := pathTokenQuote(value, start)
+func pathTokenEnd(value string, caret int, quote rune) int {
 	for offset, character := range value[caret:] {
 		if pathTokenBoundary(character, quote) {
 			return caret + offset
 		}
 	}
 	return len(value)
-}
-
-func pathTokenQuote(value string, start int) rune {
-	if start > 0 && (value[start-1] == '"' || value[start-1] == '\'') {
-		return rune(value[start-1])
-	}
-	return 0
 }
 
 func pathNameFitsToken(name string, quote rune) bool {
