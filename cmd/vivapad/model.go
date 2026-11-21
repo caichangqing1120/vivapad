@@ -1444,8 +1444,14 @@ func newConfig(state *model) app.Config {
 			return gfx.EventResult{Handled: true}
 		}
 		if state.filesDialogOpen {
-			if state.filesDialogField(event.Target) && event.Key == gfx.KeyUnknown && event.Text != "" && event.Modifiers&^gfx.ModifierShift == 0 {
-				return gfx.EventResult{}
+			if state.filesDialogField(event.Target) {
+				plainText := event.Key == gfx.KeyUnknown && event.Text != "" && event.Modifiers&^gfx.ModifierShift == 0
+				// GTK offers the input-method toggle here before filtering it through the IME.
+				inputMethodToggle := event.Modifiers == gfx.ModifierControl &&
+					(event.Key == gfx.KeySpace || event.Key == gfx.KeyUnknown && event.Text == " ")
+				if plainText || inputMethodToggle {
+					return gfx.EventResult{}
+				}
 			}
 			return gfx.EventResult{Handled: true}
 		}
