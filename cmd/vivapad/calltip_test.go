@@ -156,3 +156,41 @@ func TestParameterHintIgnoresNestedBlockComments(t *testing.T) {
 		})
 	}
 }
+
+func TestParameterHintIgnoresMultilineStringDelimiters(t *testing.T) {
+	for _, tc := range []struct {
+		language, mode, source string
+	}{
+		{"rust", ".rs", "demo(\"one\n), demo(, \\\"quoted\\\"\nlast\", "},
+		{"swift", ".swift", "demo(\"\"\"\n), demo(, \"quoted\"\n\"\"\", "},
+	} {
+		t.Run(tc.language, func(t *testing.T) {
+			state, driver := startDriver(t)
+			root := t.TempDir()
+			state.preferencesPath = filepath.Join(root, "settings.json")
+			api := filepath.Join(root, "apis")
+			if err := os.Mkdir(api, 0700); err != nil {
+				t.Fatal(err)
+			}
+			const catalog = `<NotepadPlus><AutoComplete><KeyWord name="demo" func="yes"><Overload><Param name="first"/><Param name="second"/></Overload></KeyWord></AutoComplete></NotepadPlus>`
+			if err := os.WriteFile(filepath.Join(api, tc.language+".xml"), []byte(catalog), 0600); err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			state.languages[doc] = tc.mode
+			clickID(t, driver, editorID)
+			if err := driver.Type(tc.source); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuScope.At(1))
+			clickID(t, driver, menuItemScope.At(18))
+			clickID(t, driver, autoCompletionScope.At(2))
+			if hint := state.calltip; hint == nil || hint.call.Open != 4 || hint.call.Name != "demo" || hint.call.Argument != 1 {
+				t.Fatalf("want second parameter of the outer call, got %+v (%s)", hint, state.notice)
+			}
+			if doc.Editor.String() != tc.source || doc.Editor.Caret() != len(tc.source) {
+				t.Fatal("showing the hint changed text or moved the caret")
+			}
+		})
+	}
+}

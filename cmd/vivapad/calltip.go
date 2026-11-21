@@ -68,9 +68,10 @@ func (state *model) refreshCalltip() *calltipState {
 	if hint.caret != caret || hint.source != value {
 		language, _ := syntax.LanguageByMode(hint.language)
 		call := hint.catalog.CallAt(value, caret, completion.CallSyntax{
-			LineComment:         language.LineComment,
-			TripleQuotes:        language.NPPName == "python",
-			NestedBlockComments: language.NPPName == "rust" || language.NPPName == "swift",
+			LineComment:           language.LineComment,
+			TripleQuotes:          language.NPPName == "python",
+			NestedBlockComments:   language.NPPName == "rust" || language.NPPName == "swift",
+			SwiftMultilineStrings: language.NPPName == "swift",
 		})
 		if len(call.Overloads) == 0 || hint.call.Name != "" && (hint.call.Open != call.Open || hint.call.Name != call.Name) {
 			state.calltip = nil

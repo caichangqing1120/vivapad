@@ -37,9 +37,10 @@ type CallHint struct {
 }
 
 type CallSyntax struct {
-	LineComment         string
-	TripleQuotes        bool
-	NestedBlockComments bool
+	LineComment           string
+	TripleQuotes          bool
+	NestedBlockComments   bool
+	SwiftMultilineStrings bool
 }
 
 type callDelimiters struct{ open, separator byte }
@@ -105,7 +106,8 @@ func (catalog *FunctionCatalog) CallAt(source string, caret int, syntax CallSynt
 				}
 			}
 			if end == 0 {
-				end = endQuoted(source, i, syntax.TripleQuotes)
+				tripleQuotes := syntax.TripleQuotes || syntax.SwiftMultilineStrings && ch == '"'
+				end = endQuoted(source, i, tripleQuotes, catalog.rustNames && ch == '"')
 			}
 			i = end - 1
 		case catalog.rustNames && ch == '<':
@@ -257,7 +259,7 @@ func endRustRawString(source string, quote int) int {
 	return len(source)
 }
 
-func endQuoted(source string, start int, tripleQuotes bool) int {
+func endQuoted(source string, start int, tripleQuotes, allowNewline bool) int {
 	quote := source[start]
 	delimiter := source[start : start+1]
 	if tripleQuotes && quote != '`' && len(source)-start >= 3 && source[start+1] == quote && source[start+2] == quote {
@@ -269,7 +271,7 @@ func endQuoted(source string, start int, tripleQuotes bool) int {
 		}
 		if source[i] == '\\' && quote != '`' && i+1 < len(source) {
 			i++
-		} else if (source[i] == '\n' || source[i] == '\r') && quote != '`' && len(delimiter) == 1 {
+		} else if !allowNewline && (source[i] == '\n' || source[i] == '\r') && quote != '`' && len(delimiter) == 1 {
 			return i
 		}
 	}
