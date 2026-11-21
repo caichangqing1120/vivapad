@@ -383,6 +383,8 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.pack", "Visual Prolog", "visualprolog", "%"},
 		{"demo.SRC", "ESCRIPT", "escript", ""},
 		{"demo.EM", "ESCRIPT", "escript", ""},
+		{"demo.BC", "BaanC", "baanc", "|"},
+		{"demo.CLN", "BaanC", "baanc", "|"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)
@@ -439,6 +441,7 @@ func TestNewLanguageModesRoundTripSessionsWithoutEditing(t *testing.T) {
 		{"Hollywood", ".hws", "hollywood", "\xef\xbb\xbfFunction Demo()\r\nPrint(42)\r\nEndFunction\r\n"},
 		{"Visual Prolog", ".pro", "visualprolog", "\xef\xbb\xbfclass demo\r\npredicates\r\nend class\r\n"},
 		{"ESCRIPT", ".src", "escript", "\xef\xbb\xbfprogram demo\r\nreturn\r\nendprogram\r\n"},
+		{"BaanC", ".bc", "baanc", "\xef\xbb\xbfbefore.program:\r\nselect tccom001.name\r\nendselect\r\n"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			checkLanguageSessionRoundTrip(t, tc.label, tc.mode, tc.nppName, tc.source)

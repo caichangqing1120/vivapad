@@ -70,6 +70,7 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	_, hollywood := lexer.(*hollywoodLexer)
 	_, visualProlog := lexer.(*visualPrologLexer)
 	_, escript := lexer.(*escriptLexer)
+	_, baan := lexer.(*baanLexer)
 	for offset := 0; ; {
 		token := iterator()
 		if token == chroma.EOF {
@@ -109,6 +110,8 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 			color, ok = visualPrologTokenColor(token.Type)
 		} else if escript {
 			color, ok = escriptTokenColor(token.Type)
+		} else if baan {
+			color, ok = baanTokenColor(token.Type)
 		}
 		if ok && end > start {
 			runs = append(runs, components.CodeEditorRun{Start: start, End: end, Color: color})
