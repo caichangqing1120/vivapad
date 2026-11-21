@@ -184,6 +184,38 @@ func TestRecoveryValidationFailureRemainsVisibleUntilBackupSucceeds(t *testing.T
 	}
 }
 
+func TestRecoveryStartupWarningClearsAfterWritingReplacement(t *testing.T) {
+	root := t.TempDir()
+	sessionPath := filepath.Join(root, "session.json")
+	backup := filepath.Join(root, "recovery.json")
+	if err := os.WriteFile(backup, []byte("invalid JSON"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newStartupModel(nil, sessionPath)
+	startupNotice := state.notice
+	if !strings.HasPrefix(startupNotice, "Recovery unavailable: ") {
+		t.Fatalf("missing startup warning: %q", startupNotice)
+	}
+	state.observeRecoveryError()
+	if state.notice != startupNotice {
+		t.Fatalf("idle wake cleared startup warning before a write: %q", state.notice)
+	}
+	doc := state.space.Current()
+	doc.Editor.Insert("new draft")
+	state.snapshotRecovery()
+	if err := state.recoveryWriter.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := recovery.Load(backup)
+	if err != nil || len(stored.Tabs) != 1 || stored.Tabs[0].Content != "new draft" {
+		t.Fatalf("new backup = %+v, %v", stored, err)
+	}
+	state.observeRecoveryError()
+	if state.notice != "" {
+		t.Fatalf("valid replacement left the startup warning visible: %q", state.notice)
+	}
+}
+
 func TestRecoveryKeepsDraftsSeparateWhenSavedPathBecomesAlias(t *testing.T) {
 	root := t.TempDir()
 	firstPath, secondPath := filepath.Join(root, "first.txt"), filepath.Join(root, "second.txt")

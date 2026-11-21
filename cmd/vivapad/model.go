@@ -1025,8 +1025,10 @@ func newConfig(state *model) app.Config {
 	}
 	config.Paint = state.paint
 	config.OnActivate = func() {
-		if state.recoveryWriter != nil && state.recoveryWriter.LastError() != nil {
-			state.queueRecovery(true)
+		if state.recoveryWriter != nil {
+			if err, _ := state.recoveryWriter.Status(); err != nil {
+				state.queueRecovery(true)
+			}
 		}
 		state.invalidator.Invalidate()
 	}

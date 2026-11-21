@@ -87,10 +87,11 @@ func (writer *Writer) Wait() error {
 	return writer.lastError
 }
 
-func (writer *Writer) LastError() error {
+// Status returns the last write error and whether the latest write finished.
+func (writer *Writer) Status() (err error, finished bool) {
 	writer.mutex.Lock()
 	defer writer.mutex.Unlock()
-	return writer.lastError
+	return writer.lastError, writer.done != nil && !writer.running
 }
 
 func (writer *Writer) Clear() error {

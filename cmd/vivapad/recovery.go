@@ -232,9 +232,11 @@ func (state *model) observeRecoveryError() {
 	if state.recoveryWriter == nil {
 		return
 	}
-	if err := state.recoveryWriter.LastError(); err != nil {
+	err, finished := state.recoveryWriter.Status()
+	if err != nil {
 		state.notice = "Recovery failed: " + err.Error()
-	} else if strings.HasPrefix(state.notice, "Recovery failed: ") {
+	} else if finished && (strings.HasPrefix(state.notice, "Recovery failed: ") ||
+		strings.HasPrefix(state.notice, "Recovery unavailable: ")) {
 		state.notice = ""
 	}
 }
