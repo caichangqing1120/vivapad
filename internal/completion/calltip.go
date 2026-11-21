@@ -94,8 +94,13 @@ func (catalog *FunctionCatalog) CallAt(source string, caret int, syntax CallSynt
 			i = endBlockComment(source, i+2, syntax.NestedBlockComments) - 1
 		case ch == '\'' || ch == '"' || ch == '`':
 			end := 0
-			if ch == '"' && catalog.rustNames {
-				end = endRustRawString(source, i)
+			if catalog.rustNames {
+				switch ch {
+				case '"':
+					end = endRustRawString(source, i)
+				case '\'':
+					end = endRustLifetime(source, i)
+				}
 			}
 			if end == 0 {
 				end = endQuoted(source, i, syntax.TripleQuotes)
@@ -173,6 +178,27 @@ func (catalog *FunctionCatalog) callAtOpen(source string, open int) CallHint {
 		}
 	}
 	return CallHint{}
+}
+
+// Lifetimes and loop labels have no closing apostrophe. Leave closed character
+// literals and escape sequences to the quoted-text scanner.
+func endRustLifetime(source string, quote int) int {
+	start := quote + 1
+	if strings.HasPrefix(source[start:], "r#") {
+		start += 2
+	}
+	end := start
+	for end < len(source) {
+		r, size := utf8.DecodeRuneInString(source[end:])
+		if !wordCharacter(r) {
+			break
+		}
+		end += size
+	}
+	if end == start || end < len(source) && source[end] == '\'' {
+		return 0
+	}
+	return end
 }
 
 // endRustRawString recognizes r, br and cr raw delimiters at an opening quote.

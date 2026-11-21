@@ -69,3 +69,26 @@ func TestRustParameterHintIgnoresRawStringContents(t *testing.T) {
 		}
 	}
 }
+
+func TestRustParameterHintDistinguishesLifetimesAndCharacterLiterals(t *testing.T) {
+	const data = `<NotepadPlus><AutoComplete language="Rust"><KeyWord name="demo" func="yes"><Overload><Param name="first"/><Param name="second"/></Overload></KeyWord></AutoComplete></NotepadPlus>`
+	catalog, err := ParseFunctionCatalog(strings.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		source   string
+		argument int
+	}{
+		{`demo(core::mem::size_of::<&'static str>(), `, 1},
+		{`demo(core::mem::size_of::<&'_ str>(), `, 1},
+		{`demo(core::mem::size_of::<&'r#value str>(), `, 1},
+		{`demo({ 'scan: loop { break 'scan 1; } }, `, 1},
+		{`demo('a', ',', b')', '\u{1f600}', '\'', `, 5},
+	} {
+		hint := catalog.CallAt(tc.source, len(tc.source), CallSyntax{LineComment: "//"})
+		if hint.Name != "demo" || hint.Open != 4 || hint.Argument != tc.argument {
+			t.Errorf("%q: got %+v, want outer demo argument %d", tc.source, hint, tc.argument)
+		}
+	}
+}
