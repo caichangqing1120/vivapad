@@ -101,13 +101,33 @@ func TestImportedRustCatalogKeepsMacrosAndQualifiedNames(t *testing.T) {
 }
 
 func TestFunctionCatalogRejectsInvalidInput(t *testing.T) {
+	const valid = `<NotepadPlus><AutoComplete><KeyWord name="append" func="yes"/></AutoComplete></NotepadPlus>`
 	for _, input := range []string{
 		`<AutoComplete/>`, `<NotepadPlus/>`, `<NotepadPlus><AutoComplete/></NotepadPlus><other/>`,
 		`<NotepadPlus><AutoComplete><KeyWord name="x(" func="yes"/></AutoComplete></NotepadPlus>`,
+		"corrupt header\n" + valid,
+		"<!-- prefix -->\ncorrupt header" + valid,
+		valid + "\u00a0",
+		`<![CDATA[ ]]>` + valid,
+		`<!-- prefix --><?xml version="1.0"?>` + valid,
 		strings.Repeat(" ", (1<<20)+1),
 	} {
 		if _, err := ParseFunctionCatalog(strings.NewReader(input)); err == nil {
 			t.Fatalf("accepted invalid catalog of %d bytes", len(input))
 		}
+	}
+}
+
+func TestFunctionCatalogAcceptsXMLPrologAndComments(t *testing.T) {
+	const input = "\xef\xbb\xbf" + `<?xml version="1.0" encoding="UTF-8"?>
+<!-- API catalog -->
+<NotepadPlus><AutoComplete><KeyWord name="append" func="yes"/></AutoComplete></NotepadPlus>
+<!-- End of catalog -->`
+	catalog, err := ParseFunctionCatalog(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := catalog.Complete("app", 3); !slices.Equal(got.Candidates, []string{"append"}) {
+		t.Fatalf("completion from UTF-8 BOM catalog = %+v", got)
 	}
 }

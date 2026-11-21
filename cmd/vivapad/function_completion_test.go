@@ -107,3 +107,33 @@ func TestFunctionCompletionFiltersOverrideAndRefusesStaleOrComposingEditor(t *te
 		t.Fatal("function completion interrupted marked text")
 	}
 }
+
+func TestMalformedAPIOverrideDoesNotCompleteOrShowParameters(t *testing.T) {
+	state, driver := startDriver(t)
+	dir := t.TempDir()
+	state.preferencesPath = filepath.Join(dir, "settings.json")
+	if err := os.Mkdir(filepath.Join(dir, "apis"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	const catalog = `corrupt header
+<NotepadPlus><AutoComplete><KeyWord name="append" func="yes"><Overload><Param name="slice"/></Overload></KeyWord></AutoComplete></NotepadPlus>`
+	if err := os.WriteFile(filepath.Join(dir, "apis", "go.xml"), []byte(catalog), 0600); err != nil {
+		t.Fatal(err)
+	}
+	doc := state.space.Current()
+	state.languages[doc] = ".go"
+	clickID(t, driver, editorID)
+	if err := driver.Type("app"); err != nil {
+		t.Fatal(err)
+	}
+	state.command(functionCompletionCommand)
+	if doc.Editor.String() != "app" || state.wordCompletion != nil || !strings.Contains(state.notice, "invalid API catalog") {
+		t.Errorf("malformed override changed completion: text=%q notice=%q", doc.Editor.String(), state.notice)
+	}
+	doc.Editor.SetSelection(text.Range{Start: 0, End: doc.Editor.RuneCount()})
+	doc.Editor.Insert("append(")
+	state.command(parameterHintCommand)
+	if doc.Editor.String() != "append(" || state.calltip != nil || !strings.Contains(state.notice, "invalid API catalog") {
+		t.Fatalf("malformed override changed parameters: text=%q notice=%q", doc.Editor.String(), state.notice)
+	}
+}

@@ -137,27 +137,8 @@ func parseFunctionCatalog(reader io.Reader, language string) (*FunctionCatalog, 
 			} `xml:"KeyWord"`
 		} `xml:"AutoComplete"`
 	}
-	decoder := xml.NewDecoder(bytes.NewReader(data))
-	if err := decoder.Decode(&root); err != nil {
+	if err := decodeFunctionDocument(data, &root); err != nil {
 		return nil, fmt.Errorf("invalid API catalog: %w", err)
-	}
-	for {
-		token, err := decoder.Token()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("invalid API catalog: %w", err)
-		}
-		switch trailing := token.(type) {
-		case xml.Comment:
-			continue
-		case xml.CharData:
-			if strings.TrimSpace(string(trailing)) == "" {
-				continue
-			}
-		}
-		return nil, errors.New("unexpected data after API catalog")
 	}
 	if len(root.Blocks) != 1 || len(root.Blocks[0].Keywords) > maxFunctions {
 		return nil, errors.New("API catalog must have one AutoComplete block with at most 20,000 entries")
@@ -194,6 +175,49 @@ func parseFunctionCatalog(reader io.Reader, language string) (*FunctionCatalog, 
 		}
 	}
 	return catalog, nil
+}
+
+func decodeFunctionDocument(data []byte, root any) error {
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	seenRoot := false
+	for {
+		start := decoder.InputOffset()
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) && seenRoot {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		switch token := token.(type) {
+		case xml.StartElement:
+			if seenRoot {
+				return errors.New("unexpected data after the root element")
+			}
+			if err := decoder.DecodeElement(root, &token); err != nil {
+				return err
+			}
+			seenRoot = true
+		case xml.CharData:
+			// Outside the root, allow literal XML whitespace only. Token also
+			// represents character references and CDATA as character data.
+			if len(bytes.Trim(data[start:decoder.InputOffset()], " \t\r\n")) != 0 {
+				return errors.New("unexpected text outside the root element")
+			}
+		case xml.Comment:
+		case xml.ProcInst:
+			if strings.EqualFold(token.Target, "xml") && (token.Target != "xml" || start != 0) {
+				return errors.New("misplaced XML declaration")
+			}
+		case xml.Directive:
+			if seenRoot {
+				return errors.New("unexpected directive after the root element")
+			}
+		default:
+			return errors.New("unexpected token outside the root element")
+		}
+	}
 }
 
 func (catalog *FunctionCatalog) key(value string) string {
