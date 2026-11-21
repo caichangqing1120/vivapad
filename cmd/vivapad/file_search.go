@@ -40,6 +40,11 @@ func (state *model) openFilesDialog() {
 	}
 }
 
+func (state *model) cancelFilesDialog() {
+	state.cancelFileSearch()
+	state.filesDialogOpen = false
+}
+
 func (state *model) clearResultFocus() {
 	state.resultFocusMode, state.resultFocusRequested = false, false
 	state.resultFocusArmed, state.resultReturnToEditor = false, false

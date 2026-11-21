@@ -1106,8 +1106,8 @@ func (state *model) paintFilesDialog(canvas *gfx.Canvas, size gfx.Size) {
 		smallLabel(canvas, message, gfx.Rect{X: x + 18, Y: y + 262 + shift, Width: width - 230, Height: 26}, palette.blue, 11)
 	}
 	if button(filesCancelID, "Cancel", gfx.Rect{X: x + width - 98, Y: y + 259 + shift, Width: 80, Height: 29}) {
-		state.cancelFileSearch()
-		state.filesDialogOpen = false
+		state.cancelFilesDialog()
+		canvas.RequestFocus(state.commandEditorFocusID())
 	}
 	canvas.PopLayer()
 	canvas.PopLayer()

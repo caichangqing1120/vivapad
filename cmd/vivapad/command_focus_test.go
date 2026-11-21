@@ -109,6 +109,51 @@ func TestPrintDialogCancelReturnsFocusWithoutChangingSelection(t *testing.T) {
 	}
 }
 
+func TestFilesDialogCancelRestoresActiveEditorFocus(t *testing.T) {
+	for _, command := range []string{"Find in Files...", "Replace in Files..."} {
+		for _, method := range []string{"Escape", "Cancel button"} {
+			t.Run(command+"/"+method, func(t *testing.T) {
+				state, driver := startDriver(t)
+				if err := driver.Resize(640, 400); err != nil {
+					t.Fatal(err)
+				}
+				left := state.space.Current()
+				left.Editor.Insert("left draft")
+				right := state.space.NewDocument()
+				right.Editor.Insert("right draft")
+				state.toggleSplit()
+				state.invalidator.Invalidate()
+				if err := driver.Pump(); err != nil {
+					t.Fatal(err)
+				}
+				clickID(t, driver, rightEditorID)
+				right.Editor.MoveTo(right.Editor.RuneCount(), false)
+				clickID(t, driver, menuScope.At(2))
+				revealSearchMenuItem(t, driver, searchCommandIndex(t, command))
+				clickID(t, driver, searchCommandID(t, command))
+				clickID(t, driver, queryID)
+				if err := driver.Type("leaving this dialog"); err != nil {
+					t.Fatal(err)
+				}
+				if method == "Escape" {
+					if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					clickID(t, driver, filesCancelID)
+				}
+				if state.filesDialogOpen || state.activePane != 1 || state.space.Current() != right {
+					t.Fatal("cancel did not dismiss the dialog on the active pane")
+				}
+				requireEditorCommandFocus(t, driver, rightEditorID)
+				if err := driver.Type("x"); err != nil || right.Editor.String() != "right draftx" || left.Editor.String() != "left draft" {
+					t.Fatalf("first key after cancel: left=%q right=%q err=%v", left.Editor.String(), right.Editor.String(), err)
+				}
+			})
+		}
+	}
+}
+
 func TestEditorCommandFamiliesReturnFocusWithoutChangingTheirSelectionAgain(t *testing.T) {
 	for _, command := range []string{
 		"Single Line Comment", "UPPERCASE", "Indent Lines", "Duplicate Line",

@@ -1780,9 +1780,8 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.filesDialogOpen {
-				state.cancelFileSearch()
-				state.filesDialogOpen = false
-				return gfx.EventResult{Handled: true, Repaint: true}
+				state.cancelFilesDialog()
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
 			}
 			if state.selectedSearchMenuOpen {
 				state.selectedSearchMenuOpen = false
