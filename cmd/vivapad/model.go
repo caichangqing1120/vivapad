@@ -243,6 +243,7 @@ var (
 	calltipNextID              = tree.ID(page, "calltip-next")
 	blankScope                 = tree.Sub(page, tree.Name("blank-operations"))
 	copyPathsScope             = tree.Sub(page, tree.Name("copy-paths"))
+	pasteSpecialScope          = tree.Sub(page, tree.Name("paste-special"))
 	onSelectionScope           = tree.Sub(page, tree.Name("on-selection"))
 	webSearchEngineScope       = tree.Sub(page, tree.Name("web-search-engines"))
 	webSearchDialogID          = tree.ID(page, "web-search-dialog")
@@ -614,6 +615,7 @@ type model struct {
 	wordFocusPending              bool
 	blankMenuOpen                 bool
 	copyPathsMenuOpen             bool
+	pasteSpecialOpen              bool
 	onSelectionMenuOpen           bool
 	multiAllMenuOpen              bool
 	multiNextMenuOpen             bool
@@ -1897,6 +1899,10 @@ func newConfig(state *model) app.Config {
 				state.copyPathsMenuOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
+			if state.pasteSpecialOpen {
+				state.pasteSpecialOpen = false
+				return gfx.EventResult{Handled: true, Repaint: true}
+			}
 			if state.onSelectionMenuOpen {
 				state.onSelectionMenuOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
@@ -2774,13 +2780,14 @@ func (state *model) command(command string) {
 	}
 	checksComposition := command == "Replace All in Open Documents" ||
 		command == "Next Search Result" || command == "Previous Search Result" || isCompletionCommand(command) ||
-		command == "Auto-Completion" || command == webSearchCommand || isCalltipCommand(command)
+		command == "Auto-Completion" || command == webSearchCommand || isCalltipCommand(command) ||
+		command == pasteSpecialCommand || isPasteSourceCommand(command)
 	if !checksComposition {
 		state.cancelLiveComposition()
 	}
 	// Batch replacement and result navigation validate composition before acting.
 	// Do not map bookmarks or selection anchors against a provisional buffer.
-	trackActiveSource := !checksComposition || !doc.Editor.CompositionActive()
+	trackActiveSource := !isPasteSourceCommand(command) && (!checksComposition || !doc.Editor.CompositionActive())
 	if trackActiveSource {
 		state.bookmarkLines(doc)
 	}
@@ -2802,6 +2809,7 @@ func (state *model) command(command string) {
 	state.menuOpen = -1
 	state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.changeHistoryMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
 	state.insertDateOpen = false
+	state.pasteSpecialOpen = false
 	state.markJumpMenuOpen = false
 	state.styleMenuMode = ""
 	state.hashMenuOpen = false
@@ -3076,6 +3084,10 @@ func (state *model) command(command string) {
 				state.recordMacro(doc, macro.Step{Kind: macro.TextStep, TextKind: app.TextCommandEvent, Command: app.TextDeleteForward})
 			}
 		}
+	case pasteSpecialCommand:
+		state.menuOpen, state.pasteSpecialOpen = 1, true
+	case pasteHTMLCommand, pasteRTFCommand:
+		state.pasteClipboardSource(command)
 	case "Paste":
 		value, rectangular, err := app.ClipboardTextWithFormat()
 		if err != nil {

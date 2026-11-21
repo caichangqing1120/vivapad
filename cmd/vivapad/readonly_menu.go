@@ -48,6 +48,8 @@ func (state *model) textMutation(command string) bool {
 		return true
 	}
 	switch command {
+	case pasteHTMLCommand, pasteRTFCommand:
+		return true
 	case "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE":
 		return true
 	case "Undo", "Redo", "Cut", "Paste", "Delete", "Redact Selection", "Redact Selection with Bullets", "Word Completion", "Path Completion", "Column Editor...", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines",
