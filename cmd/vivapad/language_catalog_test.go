@@ -31,7 +31,7 @@ func clickLanguage(t *testing.T, driver *app.Driver, label string) {
 
 func TestRegisteredLanguageEditingOptionsUseCatalog(t *testing.T) {
 	for _, spec := range syntax.Languages() {
-		if spec.Mode == "" {
+		if spec.Lexer == "" {
 			continue
 		}
 		options, known := codeOptions(spec.Mode)
@@ -447,6 +447,7 @@ func TestNewLanguageModesRoundTripSessionsWithoutEditing(t *testing.T) {
 		{"BaanC", ".bc", "baanc", "\xef\xbb\xbfbefore.program:\r\nselect tccom001.name\r\nendselect\r\n"},
 		{"ASP", ".asp", "asp", "\xef\xbb\xbf<p><%= 42 %></p>\r\n"},
 		{"JSP", ".jsp", "jsp", "\xef\xbb\xbf<% return; %>\r\n"},
+		{"MS-DOS Style", ".nfo", "nfo", "\xef\xbb\xbf\u250c\u2500\u2510\r\n"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			checkLanguageSessionRoundTrip(t, tc.label, tc.mode, tc.nppName, tc.source)

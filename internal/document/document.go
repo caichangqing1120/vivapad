@@ -137,7 +137,7 @@ func readDecodedFile(path string, selected *Encoding, maxBytes int64) (decodedFi
 	var value string
 	var encoding Encoding
 	if selected == nil {
-		value, encoding, err = decodeText(data)
+		value, encoding, err = decodeTextWithNFOFallback(data, strings.EqualFold(filepath.Ext(absolute), ".nfo"))
 	} else {
 		value, encoding, err = decodeLegacy(data, *selected)
 	}
