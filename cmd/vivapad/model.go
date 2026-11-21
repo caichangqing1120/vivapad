@@ -2760,7 +2760,7 @@ func (state *model) command(command string) {
 	}
 	checksComposition := command == "Replace All in Open Documents" ||
 		command == "Next Search Result" || command == "Previous Search Result" || command == functionCompletionCommand ||
-		command == "Auto-Completion" || isCalltipCommand(command)
+		command == "Auto-Completion" || command == webSearchCommand || isCalltipCommand(command)
 	if !checksComposition {
 		state.cancelLiveComposition()
 	}

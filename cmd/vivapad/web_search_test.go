@@ -87,6 +87,63 @@ func TestInternetSearchUsesActivePaneAndRejectsMultiline(t *testing.T) {
 	}
 }
 
+func TestInternetSearchRefusesNativeMultipleSelections(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	const source = "alpha beta"
+	doc.Editor.Insert(source)
+	doc.Editor.SetSelections([]text.Range{{Start: 0, End: 5}, {Start: 6, End: 10}}, 0)
+	if doc.Editor.SelectionCount() != 2 {
+		t.Fatal("native selections were not established")
+	}
+	state.command(webSearchCommand)
+	if target, ok := driver.LastOpenedURL(); ok || !strings.Contains(state.notice, "single text range") {
+		t.Fatalf("multiple selections: opened=%t, target=%q, notice=%q", ok, target, state.notice)
+	}
+	if doc.Editor.String() != source || doc.Editor.SelectionCount() != 2 {
+		t.Fatal("refusing the search changed the editor")
+	}
+}
+
+func TestInternetSearchRefusesLiveCompositionWithoutCancelingIt(t *testing.T) {
+	for _, tentative := range []bool{false, true} {
+		name := "legacy"
+		if tentative {
+			name = "tentative"
+		}
+		t.Run(name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			doc.Editor.Insert("original")
+			doc.Editor.SetSelection(text.Range{Start: 0, End: 8})
+			if tentative {
+				if !doc.Editor.TentativeCompositionEnabled() && !doc.Editor.EnableTentativeComposition() {
+					t.Fatal("tentative composition was not enabled")
+				}
+				input := state.macroTextInput(doc)
+				if _, err := input.OnEvent(app.TextEvent{Kind: app.TextSetMarked, CompositionPhase: text.CompositionUpdate,
+					Text: "preview", MarkedSelection: app.TextRange{Start: 7, End: 7}}); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				doc.Editor.DisableTentativeComposition()
+				doc.Editor.SetMarkedText("preview", text.Range{Start: 7, End: 7})
+			}
+			if !doc.Editor.CompositionActive() || doc.Editor.String() != "preview" {
+				t.Fatal("composition fixture was not established")
+			}
+			selection := doc.Editor.Selection()
+			state.command(webSearchCommand)
+			if target, ok := driver.LastOpenedURL(); ok || !strings.Contains(state.notice, "composition") {
+				t.Fatalf("live composition: opened=%t, target=%q, notice=%q", ok, target, state.notice)
+			}
+			if !doc.Editor.CompositionActive() || doc.Editor.String() != "preview" || doc.Editor.Selection() != selection {
+				t.Fatal("refusing the search changed the composition")
+			}
+		})
+	}
+}
+
 func TestInternetSearchCustomSettingsSaveFailureDoesNotChangeEngine(t *testing.T) {
 	state, driver := startDriver(t)
 	state.command(webSearchSettingsCommand)

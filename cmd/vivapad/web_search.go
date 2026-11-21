@@ -20,7 +20,16 @@ var webSearchEngines = websearch.Engines()
 func (state *model) searchActiveEditorOnInternet() {
 	pane := state.activePane
 	doc := state.paneDocument(pane)
-	value := doc.Editor.String()
+	editor := doc.Editor
+	if editor.CompositionActive() {
+		state.notice = "Finish input method composition before searching"
+		return
+	}
+	if editor.SelectionCount() != 1 {
+		state.notice = "Select a single text range to search"
+		return
+	}
+	value := editor.String()
 	if rect := state.rectangles[pane]; rect.active && rect.doc == doc && rect.value == value {
 		state.notice = "Select a single text range to search"
 		return
@@ -29,10 +38,10 @@ func (state *model) searchActiveEditorOnInternet() {
 		state.notice = "Select a single text range to search"
 		return
 	}
-	selection := doc.Editor.Selection()
-	query := value[doc.Editor.ByteOffset(selection.Start):doc.Editor.ByteOffset(selection.End)]
+	selection := editor.Selection()
+	query := value[editor.ByteOffset(selection.Start):editor.ByteOffset(selection.End)]
 	if selection.Start == selection.End {
-		query = webSearchWordAt(value, doc.Editor.ByteOffset(doc.Editor.Caret()))
+		query = webSearchWordAt(value, editor.ByteOffset(editor.Caret()))
 	}
 	target, err := state.webSearch.URL(query)
 	if err == nil {
