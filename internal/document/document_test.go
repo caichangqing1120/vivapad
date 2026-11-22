@@ -239,6 +239,39 @@ func TestPositionHandlesUnicodeWithoutAllocatingPerPaint(t *testing.T) {
 	}
 }
 
+func TestPositionAtMixedEndingAndUnicodeBoundaries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "positions.txt")
+	if err := os.WriteFile(path, []byte("a\t\u4e2d\r\n\nx\u0301\U0001f600\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][2]int{{1, 1}, {1, 2}, {1, 3}, {1, 4}, {2, 1}, {3, 1}, {3, 2}, {3, 3}, {3, 4}, {4, 1}}
+	for caret, position := range want {
+		doc.Editor.MoveTo(caret, false)
+		if line, column := doc.Position(); [2]int{line, column} != position {
+			t.Errorf("caret %d: got %d:%d, want %d:%d", caret, line, column, position[0], position[1])
+		}
+	}
+}
+
+func BenchmarkPositionNearEnd(b *testing.B) {
+	const lines = 160_000
+	doc := New("large.txt")
+	doc.Editor.Insert(strings.Repeat("sample text \u4e2d\U0001f600 and a line break\n", lines) + "e\u0301\U0001f600")
+	value := doc.Editor.String()
+	doc.Editor.MoveTo(doc.Editor.RuneCount()-1, false)
+	b.SetBytes(int64(len(value)))
+	b.ReportAllocs()
+	for b.Loop() {
+		if line, column := doc.Position(); line != lines+1 || column != 3 {
+			b.Fatalf("position = %d:%d", line, column)
+		}
+	}
+}
+
 func TestRecoveredUntitledEmptyBufferRemainsDirtyUntilSaved(t *testing.T) {
 	doc := New("Recovered example.txt")
 	doc.MarkRecovered()
