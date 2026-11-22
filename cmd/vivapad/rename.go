@@ -93,6 +93,7 @@ func (state *model) applyRenamePlan(plan *document.RenamePlan, replace bool) {
 	state.recentEntries = entries
 	state.configureCode(doc)
 	state.notice = "Renamed to " + doc.Name
+	state.stopMonitorAfterPathChange(doc)
 	state.rememberRecent(doc)
 	if replace {
 		state.requestNativeChooserFocus()
