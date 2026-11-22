@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -241,7 +242,7 @@ func (space *Workspace) Close(index int, discard bool) error {
 	if space.Documents[index].Dirty() && !discard {
 		return ErrDirty
 	}
-	space.Documents = append(space.Documents[:index], space.Documents[index+1:]...)
+	space.Documents = slices.Delete(space.Documents, index, index+1)
 	if len(space.Documents) == 0 {
 		space.NewDocument()
 	} else if space.Active > index {

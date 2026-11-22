@@ -2456,6 +2456,14 @@ func (state *model) closeTab(index int) {
 func (state *model) releaseDocument(doc *document.Document) {
 	state.releaseDocumentComposition(doc)
 	state.stopMonitor(doc)
+	// A tab strip may not paint again while its view is hidden. Rebuild its
+	// scratch list on demand instead of keeping a closed document alive.
+	state.paneTabScratch = [2][]*document.Document{}
+	for pane, anchor := range state.paneTabAnchor {
+		if anchor == doc {
+			state.paneTabAnchor[pane] = nil
+		}
+	}
 	delete(state.editors, doc)
 	delete(state.secondEditors, doc)
 	delete(state.paneOwner, doc)

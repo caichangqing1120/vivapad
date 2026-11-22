@@ -63,6 +63,28 @@ func TestNewSwitchAndCloseTabs(t *testing.T) {
 	}
 }
 
+func TestCloseClearsUnusedDocumentSlot(t *testing.T) {
+	for _, index := range []int{2, 1} {
+		space := New()
+		first := space.Current()
+		second, third := space.NewDocument(), space.NewDocument()
+		storage := space.Documents
+		if err := space.Close(index, false); err != nil {
+			t.Fatal(err)
+		}
+		want := second
+		if index == 1 {
+			want = third
+		}
+		if len(space.Documents) != 2 || space.Documents[0] != first || space.Current() != want {
+			t.Fatalf("close at %d changed surviving tabs or selection", index)
+		}
+		if storage[2] != nil {
+			t.Fatalf("close at %d kept %q in an unused slot", index, storage[2].Name)
+		}
+	}
+}
+
 func TestOpenSamePathSelectsExistingTab(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "file.txt")
 	if err := os.WriteFile(path, []byte("hello"), 0644); err != nil {

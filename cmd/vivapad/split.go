@@ -14,6 +14,8 @@ func (state *model) toggleSplit() {
 		state.splitEnabled = false
 		state.activePane = 0
 		state.paneDocs[0], state.paneDocs[1] = state.space.Current(), nil
+		state.paneTabScratch = [2][]*document.Document{}
+		state.paneTabAnchor = [2]*document.Document{}
 		return
 	}
 	current := state.space.Current()
