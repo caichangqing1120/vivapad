@@ -69,6 +69,7 @@ func TestHashToolsMenuCoversFourAlgorithmsAndSelectionClipboard(t *testing.T) {
 			}
 		}
 		clickID(t, driver, hashScope.At(2))
+		requireEditorCommandFocus(t, driver, editorID)
 		if got := driver.Clipboard(); got != test.want || doc.Editor.String() != "abc" || doc.Dirty() != wasDirty || doc.Editor.CanUndo() {
 			t.Fatalf("algorithm %d clipboard=%q text=%q dirty=%v", index, got, doc.Editor.String(), doc.Dirty())
 		}
@@ -159,6 +160,47 @@ func TestSelectionHashUsesActiveSplitPaneOnly(t *testing.T) {
 	if state.activePane != 1 || driver.Clipboard() != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" ||
 		left.Editor.String() != "left" || right.Editor.String() != "abc" {
 		t.Fatalf("split hash pane=%d clipboard=%q left=%q right=%q", state.activePane, driver.Clipboard(), left.Editor.String(), right.Editor.String())
+	}
+}
+
+const unicodeSelectionSHA256 = "b29ddc48ddc4f651c1c0648bfbf2f5324822bde0c7b7b3765bfef01006f28b84"
+
+func TestSelectionHashUsesExactUTF8Boundaries(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	value := "\u00e9\u6c34\U0001f680\n\u03b2"
+	doc.Editor.Insert(value)
+	selection := text.Range{Start: 1, End: 4}
+	doc.Editor.SetSelection(selection)
+	wasDirty, couldUndo := doc.Dirty(), doc.Editor.CanUndo()
+	state.hashAlgorithm = hashops.SHA256
+	state.command("Generate from selection into clipboard")
+	if got := driver.Clipboard(); got != unicodeSelectionSHA256 {
+		t.Fatalf("UTF-8 selection hash = %q, want %q", got, unicodeSelectionSHA256)
+	}
+	if doc.Editor.Selection() != selection || doc.Editor.String() != value || doc.Dirty() != wasDirty || doc.Editor.CanUndo() != couldUndo {
+		t.Fatal("selection hashing changed the editor state")
+	}
+}
+
+func BenchmarkHashShortSelection(b *testing.B) {
+	state := newModel()
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(driver.Close)
+	doc := state.space.Current()
+	doc.Editor = text.NewEditor(strings.Repeat("\u6c34\U0001f680\n", 1<<18))
+	end := doc.Editor.RuneCount()
+	doc.Editor.SetSelection(text.Range{Start: end - 3, End: end})
+	state.hashAlgorithm = hashops.SHA256
+	b.ReportAllocs()
+	for b.Loop() {
+		state.hashSelectionToClipboard(doc)
+	}
+	if got := driver.Clipboard(); got != unicodeSelectionSHA256 {
+		b.Fatalf("UTF-8 selection hash = %q, want %q", got, unicodeSelectionSHA256)
 	}
 }
 
