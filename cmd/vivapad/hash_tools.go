@@ -40,8 +40,9 @@ func (state *model) hashSelectionToClipboard(doc *document.Document) {
 		state.notice = "Select text to hash"
 		return
 	}
-	value := []rune(doc.Editor.String())[selection.Start:selection.End]
-	result, err := hashops.Digest(state.hashAlgorithm, []byte(string(value)))
+	start, end := doc.Editor.ByteOffset(selection.Start), doc.Editor.ByteOffset(selection.End)
+	value := doc.Editor.String()[start:end]
+	result, err := hashops.Digest(state.hashAlgorithm, []byte(value))
 	if err == nil {
 		err = app.SetClipboardText(result)
 	}
