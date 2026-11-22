@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 )
 
@@ -24,6 +25,24 @@ func TestWindowNaturalSortMatchesOriginalNumericAndASCIICaseRules(t *testing.T) 
 	} {
 		if got := windowNaturalCompare(test.first, test.second); got != test.want {
 			t.Fatalf("compare(%q,%q) = %d, want %d", test.first, test.second, got, test.want)
+		}
+	}
+}
+
+func BenchmarkWindowKeyAfterEdit(b *testing.B) {
+	state := newModel()
+	doc := state.space.Current()
+	doc.Editor = text.NewEditor(strings.Repeat("\u6c34\U0001f680\n", 1<<18))
+	b.ReportAllocs()
+	for b.Loop() {
+		b.StopTimer()
+		start := text.Range{Start: 0, End: 1}
+		doc.Editor.ReplaceRange(start, "\u706b")
+		doc.Editor.ReplaceRange(start, "\u6c34")
+		b.StartTimer()
+		key, err := state.windowKey(doc, false)
+		if err != nil || key.length != 2<<20 {
+			b.Fatalf("window key length = %d, %v", key.length, err)
 		}
 	}
 }

@@ -240,7 +240,7 @@ func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 				modified = info.ModTime().Format("01/02 15:04")
 			}
 		}
-		cells := [5]string{doc.Name, path, state.languageLabel(doc), strconv.Itoa(len(doc.Editor.String())), modified}
+		cells := [5]string{doc.Name, path, state.languageLabel(doc), strconv.Itoa(windowContentLength(doc)), modified}
 		cellX := item.X
 		for column, content := range cells {
 			indent := float32(3)

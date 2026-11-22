@@ -89,12 +89,17 @@ type windowSortKey struct {
 	modified         time.Time
 }
 
+func windowContentLength(doc *document.Document) int {
+	// At the end of the editor, ByteOffset reads the store's UTF-8 byte total.
+	return doc.Editor.ByteOffset(doc.Editor.RuneCount())
+}
+
 func (state *model) windowKey(doc *document.Document, needsTime bool) (windowSortKey, error) {
 	path := doc.Path
 	if path == "" {
 		path = doc.Name
 	}
-	key := windowSortKey{name: doc.Name, path: path, kind: state.languageLabel(doc), length: len(doc.Editor.String())}
+	key := windowSortKey{name: doc.Name, path: path, kind: state.languageLabel(doc), length: windowContentLength(doc)}
 	if needsTime && doc.Path != "" {
 		info, err := os.Stat(doc.Path)
 		if err != nil {
