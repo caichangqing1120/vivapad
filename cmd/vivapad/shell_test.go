@@ -1102,6 +1102,35 @@ func TestSplitViewRoutesEditingToSelectedDocument(t *testing.T) {
 	}
 }
 
+func TestStatusPositionFollowsActiveEditor(t *testing.T) {
+	state, driver := startDriver(t)
+	assertPosition := func(want string) {
+		t.Helper()
+		for _, label := range driver.Snapshot().Texts {
+			if label.Value == want {
+				return
+			}
+		}
+		t.Fatalf("status does not show %q for pane %d", want, state.activePane)
+	}
+	clickID(t, driver, editorID)
+	if err := driver.Type("first\n\u732b\U0001f600"); err != nil {
+		t.Fatal(err)
+	}
+	assertPosition("Ln: 2  Col: 3")
+	clickID(t, driver, newID)
+	clickID(t, driver, editorID)
+	if err := driver.Type("a\n\nb"); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(3))
+	clickID(t, driver, menuItemScope.At(5))
+	clickID(t, driver, rightEditorID)
+	assertPosition("Ln: 3  Col: 2")
+	clickID(t, driver, leftPaneID)
+	assertPosition("Ln: 2  Col: 3")
+}
+
 func TestSplitDividerClampsAtMinimumWidthAndMovesByKey(t *testing.T) {
 	state, driver := startDriver(t)
 	clickID(t, driver, menuScope.At(3))
