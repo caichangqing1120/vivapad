@@ -39,7 +39,7 @@ func (state *model) openRecent(index int) {
 		state.notice = "Cannot open recent " + filepath.Base(entry.Path) + ": " + err.Error()
 		return
 	}
-	state.showInActivePane(state.space.Current())
+	state.activateOpenedDocument(state.space.Current())
 	state.rememberRecent(state.space.Current())
 }
 

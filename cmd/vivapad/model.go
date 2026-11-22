@@ -1385,7 +1385,9 @@ func newConfig(state *model) app.Config {
 			if pane := paneForTarget(event.Target); pane >= 0 {
 				state.activatePane(pane)
 			}
-			state.openDocumentPaths(event.Paths)
+			if state.openDocumentPaths(event.Paths) {
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+			}
 		}
 		return gfx.EventResult{Handled: true, Repaint: event.Phase == gfx.FileDropDrop}
 	}
@@ -2313,15 +2315,26 @@ func (state *model) openFiles() {
 	state.openDocumentPaths(paths)
 }
 
-func (state *model) openDocumentPaths(paths []string) (opened bool) {
+func (state *model) openDocumentPaths(paths []string) bool {
+	return state.openDocumentBatch(paths, state.space.OpenInteractive)
+}
+
+func (state *model) openDocumentBatch(paths []string, open func(string) error) (opened bool) {
 	for _, path := range paths {
-		if err := state.space.OpenInteractive(path); err != nil {
+		if err := open(path); err != nil {
 			state.notice = err.Error()
 		} else {
-			state.showInActivePane(state.space.Current())
-			state.rememberRecent(state.space.Current())
+			doc := state.space.Current()
+			// Keep new tabs in the initiating pane until the batch is complete.
+			if _, owned := state.paneOwner[doc]; !owned {
+				state.showInActivePane(doc)
+			}
+			state.rememberRecent(doc)
 			opened = true
 		}
+	}
+	if opened {
+		state.activateOpenedDocument(state.space.Current())
 	}
 	return opened
 }
@@ -2338,14 +2351,9 @@ func (state *model) openFilesWithEncoding(encoding document.Encoding) {
 		}
 		return
 	}
-	for _, path := range paths {
-		if err := state.space.OpenInteractiveWithEncoding(path, encoding); err != nil {
-			state.notice = err.Error()
-		} else {
-			state.showInActivePane(state.space.Current())
-			state.rememberRecent(state.space.Current())
-		}
-	}
+	state.openDocumentBatch(paths, func(path string) error {
+		return state.space.OpenInteractiveWithEncoding(path, encoding)
+	})
 }
 
 func (state *model) save(index int, saveAs bool) bool {
