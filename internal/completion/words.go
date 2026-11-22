@@ -4,7 +4,10 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
+
+const maxWordBytes = 255
 
 type Result struct {
 	Start      int
@@ -14,47 +17,50 @@ type Result struct {
 }
 
 func Words(value string, caret int, ignoreCase bool) Result {
-	characters := []rune(value)
-	if caret <= 0 || caret > len(characters) || !wordCharacter(characters[caret-1]) {
+	offset := caretByteOffset(value, caret)
+	if offset <= 0 {
 		return Result{}
 	}
-	start := caret - 1
-	for start > 0 && wordCharacter(characters[start-1]) {
-		start--
+	start, startCharacter := offset, caret
+	for start > 0 {
+		character, width := utf8.DecodeLastRuneInString(value[:start])
+		if !wordCharacter(character) {
+			break
+		}
+		start -= width
+		startCharacter--
+		if offset-start > maxWordBytes {
+			return Result{}
+		}
 	}
-	prefix := string(characters[start:caret])
-	if len(prefix) >= 256 {
+	if start == offset {
 		return Result{}
 	}
-	endOfCurrent := caret
-	for endOfCurrent < len(characters) && wordCharacter(characters[endOfCurrent]) {
-		endOfCurrent++
+	prefix := value[start:offset]
+	endOfCurrent := offset
+	for endOfCurrent < len(value) && endOfCurrent-start <= maxWordBytes {
+		character, width := utf8.DecodeRuneInString(value[endOfCurrent:])
+		if !wordCharacter(character) {
+			break
+		}
+		endOfCurrent += width
 	}
-	current := string(characters[start:endOfCurrent])
-	result := Result{Start: start, End: caret}
-	seen := make(map[string]bool)
-	for position := 0; position < len(characters); {
-		if !wordCharacter(characters[position]) {
-			position++
+	current := value[start:endOfCurrent]
+	result := Result{Start: startCharacter, End: caret}
+	seen := make(map[string]struct{})
+	for candidate := range strings.FieldsFuncSeq(value, func(character rune) bool { return !wordCharacter(character) }) {
+		if len(candidate) > maxWordBytes || candidate == current {
 			continue
 		}
-		wordStart := position
-		for position < len(characters) && wordCharacter(characters[position]) {
-			position++
-		}
-		candidate := string(characters[wordStart:position])
-		if candidate == current || len(candidate) >= 256 || seen[candidate] {
+		if _, duplicate := seen[candidate]; duplicate {
 			continue
 		}
-		candidateRunes := []rune(candidate)
-		if len(candidateRunes) < caret-start {
+		if ignoreCase && !equalFoldPrefix(candidate, prefix) || !ignoreCase && !strings.HasPrefix(candidate, prefix) {
 			continue
 		}
-		candidatePrefix := string(candidateRunes[:caret-start])
-		if ignoreCase && !strings.EqualFold(candidatePrefix, prefix) || !ignoreCase && candidatePrefix != prefix {
-			continue
-		}
-		seen[candidate] = true
+		// A returned completion should not keep the full document snapshot alive.
+		candidate = strings.Clone(candidate)
+		seen[candidate] = struct{}{}
 		result.Candidates = append(result.Candidates, candidate)
 	}
 	if ignoreCase {

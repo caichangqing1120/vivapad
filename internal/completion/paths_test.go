@@ -368,13 +368,13 @@ func TestPathPrefixMatchesCaseFoldWithoutAllocating(t *testing.T) {
 		{"\u00e9.txt", "e\u0301", false},
 		{"no", "none", false},
 	} {
-		if got := pathPrefix(tc.name, tc.prefix); got != tc.want {
-			t.Errorf("pathPrefix(%q, %q) = %v, want %v", tc.name, tc.prefix, got, tc.want)
+		if got := equalFoldPrefix(tc.name, tc.prefix); got != tc.want {
+			t.Errorf("equalFoldPrefix(%q, %q) = %v, want %v", tc.name, tc.prefix, got, tc.want)
 		}
 	}
 	name, prefix := strings.Repeat("Quarter", 25)+".txt", strings.Repeat("quarter", 20)
 	if allocs := testing.AllocsPerRun(100, func() {
-		if !pathPrefix(name, prefix) {
+		if !equalFoldPrefix(name, prefix) {
 			t.Fatal("long mixed-case prefix did not match")
 		}
 	}); allocs != 0 {

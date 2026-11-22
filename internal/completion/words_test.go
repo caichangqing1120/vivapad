@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestWordsExcludesCurrentTokenAndSortsCaseSensitiveCandidates(t *testing.T) {
@@ -36,4 +37,53 @@ func TestWordsHandlesUnicodeAndLanguageCaseMode(t *testing.T) {
 	if got := Words(strings.Repeat("a", 256)+" alphabet", 256, true); len(got.Candidates) != 0 {
 		t.Fatalf("oversized prefix was accepted: %+v", got)
 	}
+}
+
+func TestWordsKeepsCharacterOffsetsAcrossDifferentFoldWidths(t *testing.T) {
+	value := "\U0001f9ea Keep kEpt Kestrel \u212aettle \u212aept \u212aept-tail"
+	caret := utf8.RuneCountInString(value) - len("pt-tail")
+	got := Words(value, caret, true)
+	if want := (Result{Start: caret - 2, End: caret, Candidates: []string{"Keep", "kEpt", "Kestrel", "\u212aettle"}}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("folded results = %+v, want %+v", got, want)
+	}
+}
+
+func TestWordsAppliesByteLimitToUnicodePrefixAndCandidates(t *testing.T) {
+	prefix := strings.Repeat("\u4e2d", 84) + "ab"
+	short := prefix + "c"
+	long := prefix + "cd"
+	value := short + " " + long + " " + prefix
+	caret := utf8.RuneCountInString(value)
+	if got := Words(value, caret, false); got.Start != caret-86 || got.End != caret || !reflect.DeepEqual(got.Candidates, []string{short}) {
+		t.Fatalf("255-byte boundary: start=%d end=%d candidates=%d", got.Start, got.End, len(got.Candidates))
+	}
+	if got := Words(value+"cd", caret+2, false); !reflect.DeepEqual(got, Result{}) {
+		t.Fatalf("256-byte prefix was accepted: %+v", got)
+	}
+}
+
+func TestWordsAllocationsStayBoundedWithUnmatchedTokens(t *testing.T) {
+	value, caret := largeWordCompletionFixture()
+	var got Result
+	allocations := testing.AllocsPerRun(3, func() { got = Words(value, caret, false) })
+	if !reflect.DeepEqual(got.Candidates, []string{"\u00c9clair", "\u00c9cole"}) {
+		t.Fatalf("large document candidates: %v", got.Candidates)
+	}
+	if allocations > 12 {
+		t.Fatalf("lookup allocated %.0f times with just two matches", allocations)
+	}
+}
+
+func BenchmarkWordsLargeDocument(b *testing.B) {
+	value, caret := largeWordCompletionFixture()
+	b.SetBytes(int64(len(value)))
+	b.ReportAllocs()
+	for b.Loop() {
+		Words(value, caret, false)
+	}
+}
+
+func largeWordCompletionFixture() (string, int) {
+	value := strings.Repeat("logger timestamp failed trace status \n", 48000) + "\u00c9clair \u00c9cole \u00c9c"
+	return value, utf8.RuneCountInString(value)
 }
