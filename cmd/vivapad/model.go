@@ -2321,7 +2321,7 @@ func (state *model) openDocumentPaths(paths []string) bool {
 
 func (state *model) openDocumentBatch(paths []string, open func(string) error) (opened bool) {
 	for _, path := range paths {
-		if err := open(path); err != nil {
+		if err := state.openIntoWorkspace(func() error { return open(path) }); err != nil {
 			state.notice = err.Error()
 		} else {
 			doc := state.space.Current()

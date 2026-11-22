@@ -35,7 +35,7 @@ func (state *model) openRecent(index int) {
 		return
 	}
 	entry := state.recentEntries[index]
-	if err := state.space.OpenRecorded(entry.Path, entry.Encoding); err != nil {
+	if err := state.openIntoWorkspace(func() error { return state.space.OpenRecorded(entry.Path, entry.Encoding) }); err != nil {
 		state.notice = "Cannot open recent " + filepath.Base(entry.Path) + ": " + err.Error()
 		return
 	}
