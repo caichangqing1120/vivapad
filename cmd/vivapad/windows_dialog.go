@@ -74,14 +74,15 @@ func (state *model) sortWindowsDialogBy(column int) {
 
 func (state *model) activateWindowsDialogDocument() bool {
 	doc := state.windowsFocused
-	if doc == nil || state.documentIndex(doc) < 0 {
+	index := state.documentIndex(doc)
+	if doc == nil || index < 0 {
 		state.windowsMessage = "Select a window to activate"
 		return false
 	}
 	state.closeWindowsDialog()
 	state.activePane = state.windowsDialogPane
-	state.showInActivePane(doc)
-	state.space.Select(state.documentIndex(doc))
+	state.paneDocs[state.activePane] = doc
+	state.space.Select(index)
 	return true
 }
 
@@ -151,7 +152,9 @@ func (state *model) windowsDialogKey(event gfx.KeyEvent) gfx.EventResult {
 	case gfx.KeyEscape:
 		state.closeWindowsDialog()
 	case gfx.KeyEnter:
-		state.activateWindowsDialogDocument()
+		if state.activateWindowsDialogDocument() {
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+		}
 	case gfx.KeyDown, gfx.KeyUp:
 		index := slices.Index(state.windowsRows, state.windowsFocused)
 		if event.Key == gfx.KeyDown {
@@ -297,11 +300,7 @@ func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 			switch button.id {
 			case windowsActivateID:
 				if state.activateWindowsDialogDocument() {
-					focus := editorID
-					if state.splitEnabled && state.activePane == 1 {
-						focus = rightEditorID
-					}
-					canvas.RequestFocus(focus)
+					canvas.RequestFocus(state.commandEditorFocusID())
 				}
 			case windowsSaveID:
 				state.saveWindowsDialogSelection()

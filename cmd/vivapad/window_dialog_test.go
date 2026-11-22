@@ -42,6 +42,63 @@ func TestWindowsDialogActivatesAndSortsCurrentView(t *testing.T) {
 	clickID(t, driver, windowsOKID)
 }
 
+func TestWindowsDialogActivationKeepsFocusAndTabOwnership(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		clone, button bool
+	}{{name: "single view Enter"}, {name: "shared clone Enter", clone: true}, {name: "shared clone Activate", clone: true, button: true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			peer := state.space.Current()
+			peer.Name = "peer.txt"
+			peer.Editor.Insert("peer")
+			target := state.space.NewDocument()
+			target.Name = "target.txt"
+			target.Editor.Insert("target")
+			target.Editor.BreakUndoGroup()
+			focus := editorID
+			if tc.clone {
+				state.splitEnabled, state.activePane = true, 1
+				state.paneDocs = [2]*document.Document{peer, target}
+				state.paneOwner[peer], state.paneOwner[target] = 0, 0
+				focus = rightEditorID
+			} else {
+				state.space.Select(state.documentIndex(peer))
+			}
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuOverflowID)
+			clickID(t, driver, hiddenMenuScope.At(11))
+			clickID(t, driver, menuItemScope.At(1))
+			clickLabeledControl(t, driver, "Select target.txt")
+			if tc.button {
+				clickID(t, driver, windowsActivateID)
+			} else if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+				t.Fatal(err)
+			}
+			if state.windowsDialogOpen || state.space.Current() != target {
+				t.Fatal("activation did not select the target and close the dialog")
+			}
+			if tc.clone && (state.paneOwner[target] != 0 || state.paneDocs[0] != peer || state.paneDocs[1] != target || state.activePane != 1) {
+				t.Errorf("activation changed clone ownership or pane: owner=%d active=%d", state.paneOwner[target], state.activePane)
+			}
+			if got := driver.Snapshot().Focused; got != focus {
+				t.Fatalf("activation focused %v; want %v", got, focus)
+			}
+			if err := driver.Type("x"); err != nil {
+				t.Fatal(err)
+			}
+			if target.Editor.String() != "targetx" || peer.Editor.String() != "peer" {
+				t.Fatalf("first key: target=%q peer=%q", target.Editor.String(), peer.Editor.String())
+			}
+			if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || target.Editor.String() != "target" || peer.Editor.String() != "peer" {
+				t.Fatalf("undo after activation: target=%q peer=%q handled=%v err=%v", target.Editor.String(), peer.Editor.String(), handled, err)
+			}
+		})
+	}
+}
+
 func TestWindowsDialogSaveCancelAndDirtyCloseGate(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()
