@@ -152,7 +152,7 @@ func (state *model) activateFolderRow(row folderRow) bool {
 	}
 	err := foldertree.CheckCanonicalPath(row.path)
 	if err == nil {
-		err = state.space.Open(row.path)
+		err = state.openIntoWorkspace(func() error { return state.space.Open(row.path) })
 	}
 	if err != nil {
 		state.notice = "Cannot open " + row.name + ": " + err.Error()

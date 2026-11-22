@@ -54,7 +54,7 @@ func (state *model) restoreClosed() {
 		return
 	}
 	entry := state.closedHistory[0]
-	if err := state.space.OpenRecorded(entry.Path, entry.Encoding); err != nil {
+	if err := state.openIntoWorkspace(func() error { return state.space.OpenRecorded(entry.Path, entry.Encoding) }); err != nil {
 		state.notice = "Cannot restore " + filepath.Base(entry.Path) + ": " + err.Error()
 		return
 	}
