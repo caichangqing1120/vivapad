@@ -17,7 +17,7 @@ import (
 const pathPunctuation = "\"'()[]<>"
 
 func Paths(value string, caret int, base string) (Result, error) {
-	offset := pathCaretByteOffset(value, caret)
+	offset := caretByteOffset(value, caret)
 	if offset <= 0 {
 		return Result{}, nil
 	}
@@ -109,7 +109,7 @@ func Paths(value string, caret int, base string) (Result, error) {
 	var matches []candidate
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == "." || name == ".." || !pathPrefix(name, suffix) || !pathNameFitsToken(name, quote) {
+		if name == "." || name == ".." || !equalFoldPrefix(name, suffix) || !pathNameFitsToken(name, quote) {
 			continue
 		}
 		mode := entry.Type()
@@ -204,7 +204,7 @@ func joinLookupPath(dir, tail string) string {
 	return dir + string(filepath.Separator) + tail
 }
 
-func pathPrefix(name, prefix string) bool {
+func equalFoldPrefix(name, prefix string) bool {
 	if strings.HasPrefix(name, prefix) {
 		return true
 	}
@@ -220,7 +220,7 @@ func pathPrefix(name, prefix string) bool {
 	return strings.EqualFold(name[:end], prefix)
 }
 
-func pathCaretByteOffset(value string, caret int) int {
+func caretByteOffset(value string, caret int) int {
 	if caret < 0 || caret > len(value) {
 		return -1
 	}
@@ -301,7 +301,7 @@ func pathAtCaret(value string, caret int, allowSpacedDrive bool) (prefix string,
 }
 
 func PathTokenAtCaret(value string, caret int) (string, int, int) {
-	offset := pathCaretByteOffset(value, caret)
+	offset := caretByteOffset(value, caret)
 	if offset < 0 {
 		return "", 0, 0
 	}
