@@ -1606,7 +1606,7 @@ func newConfig(state *model) app.Config {
 			state.zoom("Restore Default Zoom")
 		case "w":
 			state.cancelMacroForCommand()
-			state.closeTab(state.space.Active)
+			state.closePaneTab(state.activePane, state.paneDocument(state.activePane))
 		default:
 			return gfx.EventResult{}
 		}
@@ -3029,7 +3029,7 @@ func (state *model) command(command string) {
 			}
 		}
 	case "Close":
-		state.closeTab(state.space.Active)
+		state.closePaneTab(state.activePane, state.paneDocument(state.activePane))
 	case "Close All":
 		state.startBatchClose(nil)
 	case "Close Other Tabs":
