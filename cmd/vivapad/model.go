@@ -2392,6 +2392,7 @@ func (state *model) save(index int, saveAs bool) bool {
 		return false
 	}
 	state.notice = "Saved " + filepath.Base(doc.Path)
+	state.stopMonitorAfterPathChange(doc)
 	state.rememberRecent(doc)
 	return true
 }
