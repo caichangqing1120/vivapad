@@ -1755,6 +1755,9 @@ func newConfig(state *model) app.Config {
 		if result, handled := state.changeHistoryMenuKey(event); handled {
 			return result
 		}
+		if result, handled := state.bookmarkMenuKey(event); handled {
+			return result
+		}
 		if result, handled := state.recentMenuKey(event); handled {
 			return result
 		}
