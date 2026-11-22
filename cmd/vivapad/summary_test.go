@@ -40,6 +40,48 @@ func TestDocumentSummaryCountsUnicodeSelectionAndLogicalLines(t *testing.T) {
 	}
 }
 
+func TestDocumentSummaryCountsMixedLineEndingsAndUnicodeWords(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mixed.txt")
+	if err := os.WriteFile(path, []byte("é_２\r\n猫🙂\nZ\rx\u0301y"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := document.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.Editor.SetSelection(text.Range{Start: 2, End: 7})
+	summary := summaryFor(doc)
+	if summary.characters != 9 || summary.words != 5 || summary.lines != 4 || summary.bytes != 22 || summary.selectedCharacters != 5 || summary.selectedBytes != 13 {
+		t.Fatalf("mixed summary = %+v", summary)
+	}
+}
+
+func BenchmarkDocumentSummary(b *testing.B) {
+	for _, sample := range []struct{ name, text string }{
+		{"ASCII", "alpha beta forty_two 40\n"},
+		{"MixedEOL", "alpha βeta ４０\r\n猫🙂 42\nZ\rx\u0301y\n"},
+	} {
+		b.Run(sample.name, func(b *testing.B) {
+			value := strings.Repeat(sample.text, (2<<20)/len(sample.text))
+			path := filepath.Join(b.TempDir(), "large.txt")
+			if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+				b.Fatal(err)
+			}
+			doc, err := document.Open(path)
+			if err != nil {
+				b.Fatal(err)
+			}
+			doc.Editor.SetSelection(text.Range{Start: 10, End: doc.Editor.RuneCount() / 2})
+			summaryFor(doc)
+			b.SetBytes(int64(len(value)))
+			b.ReportAllocs()
+			for b.Loop() {
+				summaryFor(doc)
+			}
+		})
+	}
+}
+
 func TestSummaryModalUsesActiveSplitViewAndPreservesEditingState(t *testing.T) {
 	state, driver := startDriver(t)
 	left := state.space.Current()
