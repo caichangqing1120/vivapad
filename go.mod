@@ -17,7 +17,7 @@ require (
 	golang.org/x/text v0.44.0
 )
 
-replace github.com/vivaui/viva => github.com/caichangqing1120/viva v0.6.1-0.20261122035503-7e21958af8d3
+replace github.com/vivaui/viva => github.com/caichangqing1120/viva v0.6.1-0.20261122051626-254de14fd049
 
 require (
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
