@@ -42,6 +42,41 @@ func TestWindowsDialogActivatesAndSortsCurrentView(t *testing.T) {
 	clickID(t, driver, windowsOKID)
 }
 
+func TestWindowLengthsUseLiveUTF8BytesAndFollowUndo(t *testing.T) {
+	state, driver := startDriver(t)
+	unicode := state.space.Current()
+	unicode.Editor.Insert("\u6c34\U0001f680")
+	ascii := state.space.NewDocument()
+	ascii.Editor.Insert("letters123")
+	showLength := func(want int) {
+		t.Helper()
+		clickID(t, driver, menuScope.At(11))
+		clickID(t, driver, menuItemScope.At(1))
+		found := false
+		for _, label := range driver.Snapshot().Texts {
+			found = found || label.Value == strconv.Itoa(want)
+		}
+		if !found {
+			t.Fatalf("Windows dialog did not show length %d", want)
+		}
+		clickID(t, driver, windowsOKID)
+	}
+	showLength(7)
+	unicode.Editor.BreakUndoGroup()
+	unicode.Editor.Insert("\U0001f680")
+	showLength(11)
+	if err := state.sortWindowTabs(windowSortCommand{column: 3}); err != nil || state.space.Documents[0] != ascii {
+		t.Fatal("length sort did not use the 11-byte edited value")
+	}
+	if !unicode.Editor.Undo() {
+		t.Fatal("could not undo the edit")
+	}
+	showLength(7)
+	if err := state.sortWindowTabs(windowSortCommand{column: 3}); err != nil || state.space.Documents[0] != unicode {
+		t.Fatal("length sort did not use the 7-byte value after undo")
+	}
+}
+
 func TestWindowsDialogActivationKeepsFocusAndTabOwnership(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
