@@ -20,6 +20,12 @@ const (
 
 var hashCommands = [...]string{"Generate...", "Generate from files...", "Generate from selection into clipboard"}
 
+type hashTextKey struct {
+	input     string
+	algorithm hashops.Algorithm
+	eachLine  bool
+}
+
 func hashAlgorithmForName(name string) hashops.Algorithm {
 	switch name {
 	case "MD5":
@@ -62,11 +68,23 @@ func (state *model) openHashDialog(mode hashDialogMode) {
 	state.hashInput = text.NewEditor("")
 	state.hashInputLayout, state.hashResultLayout = components.TextareaLayout{}, components.TextareaLayout{}
 	state.hashResult, state.hashError = "", ""
+	state.hashTextKey = hashTextKey{}
 	state.hashEachLine, state.hashFocus = false, mode == hashFromText
 }
 
 func (state *model) closeHashDialog() {
 	state.hashDialogOpen, state.hashInput, state.hashResult, state.hashError, state.hashFocus = false, nil, "", "", false
+	state.hashTextKey = hashTextKey{}
+	state.hashInputLayout, state.hashResultLayout = components.TextareaLayout{}, components.TextareaLayout{}
+}
+
+func (state *model) refreshTextHash(input string) {
+	key := hashTextKey{input: input, algorithm: state.hashAlgorithm, eachLine: state.hashEachLine}
+	if key == state.hashTextKey {
+		return
+	}
+	state.hashResult, _ = hashops.Text(key.algorithm, key.input, key.eachLine)
+	state.hashTextKey = key
 }
 
 func (state *model) chooseHashFiles() {
@@ -126,9 +144,6 @@ func (state *model) paintHashMenu(canvas *gfx.Canvas, size gfx.Size, parentLeft,
 }
 
 func (state *model) paintHashDialog(canvas *gfx.Canvas, size gfx.Size) {
-	if state.hashMode == hashFromText {
-		state.hashResult, _ = hashops.Text(state.hashAlgorithm, state.hashInput.String(), state.hashEachLine)
-	}
 	canvas.SetEscapeTarget(hashCloseID)
 	canvas.PushLayer(3)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
@@ -155,6 +170,9 @@ func (state *model) paintHashDialog(canvas *gfx.Canvas, size gfx.Size) {
 			state.hashFocus = false
 		}
 		checkbox := gfx.Rect{X: x + 20, Y: y + 135, Width: width - 40, Height: 23}
+		if canvas.Clicked(hashEachLineID) {
+			state.hashEachLine = !state.hashEachLine
+		}
 		box := gfx.Rect{X: checkbox.X, Y: checkbox.Y + 3, Width: 17, Height: 17}
 		canvas.Border(box, 1, palette.border, palette.white)
 		if state.hashEachLine {
@@ -162,10 +180,7 @@ func (state *model) paintHashDialog(canvas *gfx.Canvas, size gfx.Size) {
 		}
 		smallLabel(canvas, "Hash each line", gfx.Rect{X: checkbox.X + 26, Y: checkbox.Y, Width: checkbox.Width - 26, Height: 23}, palette.text, 11)
 		canvas.HitWithOptions(hashEachLineID, checkbox, "Hash each line", gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: state.hashEachLine})
-		if canvas.Clicked(hashEachLineID) {
-			state.hashEachLine = !state.hashEachLine
-			state.hashResult, _ = hashops.Text(state.hashAlgorithm, input, state.hashEachLine)
-		}
+		state.refreshTextHash(input)
 	} else {
 		choose := gfx.Rect{X: x + 20, Y: y + 52, Width: 146, Height: 28}
 		canvas.Border(choose, 1, palette.border, palette.toolbar)

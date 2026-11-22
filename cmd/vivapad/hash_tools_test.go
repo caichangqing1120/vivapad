@@ -101,6 +101,15 @@ func TestHashTextDialogUpdatesPerLineAndCopiesWithoutEditing(t *testing.T) {
 	if got := state.hashResult; !strings.Contains(got, "\r\n\r\n") || strings.Count(got, "\r\n") != 3 {
 		t.Fatalf("per-line hash result = %q", got)
 	}
+	clickID(t, driver, hashInputID)
+	state.hashInput.SetSelection(text.Range{Start: 0, End: 1})
+	if err := driver.Type("c"); err != nil {
+		t.Fatal(err)
+	}
+	want, err := hashops.Text(hashops.MD5, "c\n\nb", true)
+	if err != nil || state.hashResult != want {
+		t.Fatalf("per-line digest after same-length edit = %q, want %q (%v)", state.hashResult, want, err)
+	}
 	clickID(t, driver, hashCopyID)
 	if driver.Clipboard() != state.hashResult || state.space.Current().Editor.String() != "" {
 		t.Fatalf("copy hash result = %q editor=%q", driver.Clipboard(), state.space.Current().Editor.String())
@@ -108,6 +117,48 @@ func TestHashTextDialogUpdatesPerLineAndCopiesWithoutEditing(t *testing.T) {
 	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.hashDialogOpen {
 		t.Fatalf("Escape did not close text hash dialog: %v", err)
 	}
+	state.hashAlgorithm = hashops.SHA256
+	state.command("Generate...")
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil || state.hashResult != "" || state.hashInput.String() != "" || state.hashEachLine {
+		t.Fatalf("reopened hash dialog did not start empty: %v", err)
+	}
+}
+
+func TestHashDialogRepaintDoesNotReallocatePerLineDigests(t *testing.T) {
+	state, repaint := warmHashDialog()
+	want := state.hashResult
+	allocations := testing.AllocsPerRun(5, repaint)
+	if state.hashResult != want || want == "" {
+		t.Fatal("unchanged repaint lost the digest")
+	}
+	// Repeatedly digesting 16,000 lines allocates at least once per line.
+	if allocations >= 16_000 {
+		t.Fatalf("unchanged repaint allocated %.0f times", allocations)
+	}
+}
+
+func BenchmarkPaintUnchangedHashDialog(b *testing.B) {
+	_, repaint := warmHashDialog()
+	b.ReportAllocs()
+	for b.Loop() {
+		repaint()
+	}
+}
+
+func warmHashDialog() (*model, func()) {
+	state := newModel()
+	state.hashAlgorithm = hashops.SHA256
+	state.openHashDialog(hashFromText)
+	state.hashInput.Insert(strings.Repeat("Unicode text \u6c34\U0001f680 with a line break\r\n", 16_000))
+	state.hashEachLine = true
+	var canvas gfx.Canvas
+	repaint := func() {
+		canvas.Reset()
+		state.paintHashDialog(&canvas, gfx.Size{Width: 640, Height: 400})
+	}
+	repaint()
+	return state, repaint
 }
 
 func TestHashFilesDialogCancelAndBinaryReport(t *testing.T) {

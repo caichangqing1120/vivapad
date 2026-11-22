@@ -597,6 +597,7 @@ type model struct {
 	hashInputLayout               components.TextareaLayout
 	hashResultLayout              components.TextareaLayout
 	hashResult                    string
+	hashTextKey                   hashTextKey
 	hashError                     string
 	hashEachLine                  bool
 	hashFocus                     bool
