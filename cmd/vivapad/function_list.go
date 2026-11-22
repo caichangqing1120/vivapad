@@ -297,6 +297,8 @@ func (state *model) paintFunctionPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 	state.functionPaintDoc, state.functionPaintValue, state.functionPaintMode, state.functionLastQuery = doc, cached.value, cached.mode, query
 	if selected >= 0 && !stale {
 		state.functionSelected = selected
-		state.goToFunction(doc, cached.symbols[state.functionMatches[selected]])
+		if state.goToFunction(doc, cached.symbols[state.functionMatches[selected]]) {
+			state.focusEditorOnTabClick(canvas)
+		}
 	}
 }

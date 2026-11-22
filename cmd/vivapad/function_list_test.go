@@ -37,6 +37,15 @@ func TestFunctionListFilterAndNavigationKeepCleanSourceUntouched(t *testing.T) {
 	if doc.Editor.Caret() != doc.Editor.RuneIndex(strings.Index(value, "ServeHTTP")) || doc.Editor.String() != value || doc.Dirty() || doc.Editor.CanUndo() {
 		t.Fatalf("function navigation changed source: caret=%d text=%q", doc.Editor.Caret(), doc.Editor.String())
 	}
+	if err := driver.Type("X"); err != nil {
+		t.Fatal(err)
+	}
+	if got := doc.Editor.String(); got != strings.Replace(value, "ServeHTTP", "XServeHTTP", 1) {
+		t.Fatalf("first key after symbol click did not reach the editor: %q", got)
+	}
+	if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || doc.Editor.String() != value || doc.Dirty() {
+		t.Fatalf("undo after function activation: text=%q dirty=%v handled=%v err=%v", doc.Editor.String(), doc.Dirty(), handled, err)
+	}
 	clickID(t, driver, functionFilterID)
 	if err := driver.Type("main"); err != nil {
 		t.Fatal(err)
@@ -103,6 +112,16 @@ func TestFunctionListSharesDockWithWorkspaceAndMapAtCompactSize(t *testing.T) {
 	clickLabeledControl(t, driver, "right")
 	if right.Editor.Caret() != right.Editor.RuneIndex(strings.Index(right.Editor.String(), "right")) || left.Editor.Caret() != left.Editor.RuneCount() {
 		t.Fatalf("function navigation reached wrong split pane: left=%d right=%d", left.Editor.Caret(), right.Editor.Caret())
+	}
+	leftBefore, rightBefore := left.Editor.String(), right.Editor.String()
+	if err := driver.Type("X"); err != nil {
+		t.Fatal(err)
+	}
+	if left.Editor.String() != leftBefore || right.Editor.String() != strings.Replace(rightBefore, "right", "Xright", 1) {
+		t.Fatalf("first key in split view: left=%q right=%q", left.Editor.String(), right.Editor.String())
+	}
+	if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || right.Editor.String() != rightBefore {
+		t.Fatalf("undo after split activation: text=%q handled=%v err=%v", right.Editor.String(), handled, err)
 	}
 	clickID(t, driver, functionCloseID)
 	if state.functionListVisible || !state.folderVisible || state.activeLeftDock != "workspace" || right.Editor.String() != "package main\nfunc right() {}" {
