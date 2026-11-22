@@ -42,6 +42,65 @@ func TestTextHashUsesUTF8AndRetainsBlankLinesInPerLineMode(t *testing.T) {
 	}
 }
 
+func TestPerLineHashesPreserveMixedNewlinesAndLoneCarriageReturns(t *testing.T) {
+	for _, test := range []struct {
+		input string
+		lines []string
+	}{
+		{"\r\n\u732b\r\n\nhello\rthere\nlast\r", []string{"", "\u732b", "", "hello\rthere", "last\r"}},
+		{"one\r\r\n\n", []string{"one\r", ""}},
+		{"\r\n\r\n", []string{"", ""}},
+	} {
+		for _, algorithm := range []Algorithm{MD5, SHA1, SHA256, SHA512} {
+			var want strings.Builder
+			for _, line := range test.lines {
+				if line != "" {
+					digest, err := Digest(algorithm, []byte(line))
+					if err != nil {
+						t.Fatal(err)
+					}
+					want.WriteString(digest)
+				}
+				want.WriteString("\r\n")
+			}
+			if got, err := Text(algorithm, test.input, true); err != nil || got != want.String() {
+				t.Fatalf("%s for %q = %q, %v; want %q", algorithm, test.input, got, err, want.String())
+			}
+		}
+	}
+	if got, err := Text(Algorithm(99), "\n\r\n", true); err != nil || got != "\r\n\r\n" {
+		t.Fatalf("blank-only input = %q, %v", got, err)
+	}
+	if got, err := Text(Algorithm(99), "\ntext", true); err == nil || got != "" {
+		t.Fatalf("invalid algorithm with nonblank input = %q, %v", got, err)
+	}
+}
+
+func TestPerLineHashAllocationsDoNotScalePerLine(t *testing.T) {
+	const lines = 16_000
+	input := strings.Repeat("Unicode text \u6c34\U0001f680 with a line break\r\n", lines)
+	allocations := testing.AllocsPerRun(3, func() {
+		got, err := Text(SHA256, input, true)
+		if err != nil || len(got) != lines*(64+2) {
+			t.Fatalf("digest report has length %d, error %v", len(got), err)
+		}
+	})
+	if allocations > 100 {
+		t.Fatalf("allocated %.0f times for %d lines, want at most 100", allocations, lines)
+	}
+}
+
+func BenchmarkPerLineHash(b *testing.B) {
+	input := strings.Repeat("Unicode text \u6c34\U0001f680 with a line break\r\n", 16_000)
+	b.SetBytes(int64(len(input)))
+	b.ReportAllocs()
+	for b.Loop() {
+		if got, err := Text(SHA256, input, true); err != nil || len(got) != 16_000*(64+2) {
+			b.Fatalf("digest report has length %d, error %v", len(got), err)
+		}
+	}
+}
+
 func TestFileHashesUseRawBytesAndDoNotReturnPartialBatch(t *testing.T) {
 	root := t.TempDir()
 	first := filepath.Join(root, "binary.dat")
