@@ -102,8 +102,9 @@ func (state *model) paintWindowMenu(canvas *gfx.Canvas, size gfx.Size, origin fl
 		chosen := tabs[selectedIndex]
 		state.cancelMacroForCommand()
 		state.menuOpen, state.windowSortMenuOpen = -1, false
-		state.showInActivePane(chosen)
+		state.paneDocs[state.activePane] = chosen
 		state.space.Select(state.documentIndex(chosen))
+		state.focusEditorOnTabClick(canvas)
 	}
 	if state.windowSortMenuOpen && state.menuOpen == 11 {
 		state.paintWindowSortMenu(canvas, size, x+width)
