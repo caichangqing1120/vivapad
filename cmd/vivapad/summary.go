@@ -2,9 +2,6 @@ package main
 
 import (
 	"os"
-	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/vivaui/viva/gfx"
 	"golang.org/x/text/language"
@@ -20,25 +17,17 @@ type documentSummary struct {
 }
 
 func summaryFor(doc *document.Document) documentSummary {
-	value := doc.Editor.String()
 	selection := doc.Editor.Selection()
-	length, selectedBytes := doc.PhysicalUTF8Bytes(selection.Start, selection.End)
+	counts := doc.SummaryCounts(selection.Start, selection.End)
 	summary := documentSummary{
 		path:               doc.Path,
-		characters:         utf8.RuneCountInString(value) - strings.Count(value, "\n") - strings.Count(value, "\r"),
-		lines:              doc.LineCount(),
-		bytes:              length,
+		characters:         counts.Characters,
+		words:              counts.Words,
+		lines:              counts.Lines,
+		bytes:              counts.Bytes,
 		selectedCharacters: selection.End - selection.Start,
-		selectedBytes:      selectedBytes,
+		selectedBytes:      counts.SelectedBytes,
 		ranges:             1,
-	}
-	insideWord := false
-	for _, character := range value {
-		wordCharacter := unicode.IsLetter(character) || unicode.IsNumber(character) || character == '_'
-		if wordCharacter && !insideWord {
-			summary.words++
-		}
-		insideWord = wordCharacter
 	}
 	if doc.Path != "" {
 		if info, err := os.Stat(doc.Path); err == nil {
