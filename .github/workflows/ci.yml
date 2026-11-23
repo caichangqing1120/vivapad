@@ -69,7 +69,7 @@ jobs:
         run: go build -o "$OUTPUT" ./cmd/vivapad
       - name: Run unit and integration tests
         run: go test ./... -count=1 -timeout=15m
-      - name: Compare RTL and multi-selection clipboard behavior with Notepad++
+      - name: Compare RTL, clipboard and multi-selection macros with Notepad++
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -91,7 +91,7 @@ jobs:
             $env:VIVAPAD_CLIPBOARD_FIXTURE_EXE = Join-Path $work 'vivapad-clipboard.test.exe'
             go test -c -o $env:VIVAPAD_CLIPBOARD_FIXTURE_EXE ./cmd/vivapad
             if ($LASTEXITCODE -ne 0) { throw 'Build Windows clipboard fixture failed' }
-            go test ./tools/windows -run '^Test(RTLDesktopMatchesNotepadPlusPlus|NotepadPlusPlus(MultiSelection(Clipboard|WordBoundaries)|FirstMultiSelectFromCaret|MultiSelect(SearchOrigin|FromCarets|AllFromMixedSelection))|VivaPadMultiSelectionClipboardRoundTrip)$' -count=1 -v -timeout=3m
+            go test ./tools/windows -run '^Test(RTLDesktopMatchesNotepadPlusPlus|NotepadPlusPlus(MultiSelection(Clipboard|WordBoundaries|Macros)|FirstMultiSelectFromCaret|MultiSelect(SearchOrigin|FromCarets|AllFromMixedSelection))|VivaPadMultiSelectionClipboardRoundTrip)$' -count=1 -v -timeout=3m
             if ($LASTEXITCODE -ne 0) { throw 'Native desktop reference checks failed' }
             $env:VIVAPAD_WINDOWS_CLIPBOARD_TEST = '1'
             go test ./cmd/vivapad -run '^TestMultiSelectionWritesWindowsClipboard$' -count=1 -v -timeout=1m
