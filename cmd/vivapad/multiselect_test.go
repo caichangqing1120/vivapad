@@ -27,6 +27,57 @@ func TestMultiSelectAllExpandsWordBeforeAddingEveryOccurrence(t *testing.T) {
 	}
 }
 
+func TestMultiSelectAllKeepsExistingRangesAndWrapOrder(t *testing.T) {
+	state := newModel()
+	doc := state.space.Current()
+	const value = "cat cat cat cat cat cat"
+	doc.Editor.Insert(value)
+	doc.Editor.ClearHistory()
+	existing := []text.Range{{Start: 16, End: 19}, {Start: 4, End: 7}, {Start: 12, End: 15}}
+	doc.Editor.SetSelection(existing[len(existing)-1])
+	state.multiSelections[0] = multiSelectionState{doc: doc, value: value, ranges: existing, active: true}
+	want := []text.Range{
+		{Start: 16, End: 19}, {Start: 4, End: 7}, {Start: 12, End: 15},
+		{Start: 20, End: 23}, {Start: 0, End: 3}, {Start: 8, End: 11},
+	}
+	for range 2 {
+		state.multiSelectAll(document.SearchOptions{WholeWord: true})
+		if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, want) || doc.Editor.Selection() != want[len(want)-1] {
+			t.Fatalf("All selected %+v, main %+v; want %+v", got, doc.Editor.Selection(), want)
+		}
+	}
+	state.undoMultiSelect()
+	if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, want[:len(want)-1]) || doc.Editor.Selection() != want[len(want)-2] {
+		t.Fatalf("Undo Latest selected %+v, main %+v", got, doc.Editor.Selection())
+	}
+	if doc.Editor.String() != value || doc.Editor.CanUndo() {
+		t.Fatal("selection changed text or created an edit Undo entry")
+	}
+}
+
+func TestMultiSelectAllAvoidsAnAllocationPerMatch(t *testing.T) {
+	state := newModel()
+	doc := state.space.Current()
+	const occurrences = 10_000
+	doc.Editor.Insert(strings.Repeat("cat ", occurrences))
+	doc.Editor.ClearHistory()
+	first := text.Range{Start: 0, End: 3}
+	last := text.Range{Start: (occurrences - 1) * 4, End: occurrences*4 - 1}
+	allocs := testing.AllocsPerRun(3, func() {
+		state.multiSelections[0] = multiSelectionState{}
+		doc.Editor.SetSelection(first)
+		state.multiSelectAll(document.SearchOptions{WholeWord: true})
+		got := state.multiSelections[0].ranges
+		if len(got) != occurrences || got[0] != first || got[len(got)-1] != last || doc.Editor.Selection() != last || doc.Editor.CanUndo() {
+			t.Fatalf("All selected %d ranges, main %+v; want %d ranges, main %+v, and no edit", len(got), doc.Editor.Selection(), occurrences, last)
+		}
+	})
+	t.Logf("allocations per Select All: %.0f", allocs)
+	if allocs > 256 {
+		t.Fatalf("All allocated %.0f times for %d matches", allocs, occurrences)
+	}
+}
+
 func TestMultiSelectNextUndoLatestSkipAndWrap(t *testing.T) {
 	state := newModel()
 	doc := state.space.Current()

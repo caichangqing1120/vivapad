@@ -1,9 +1,11 @@
 package document
 
 import (
+	"cmp"
 	"context"
 	"regexp"
 	"regexp/syntax"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -117,6 +119,48 @@ func (doc *Document) NextLiteralSelection(current text.Range, occupied []text.Ra
 		return match.Start < to
 	})
 	return found, found.End != 0
+}
+
+// AppendLiteralSelections adds unoccupied matches after the current selection,
+// then wraps to those before it. The existing selection order is preserved.
+func (doc *Document) AppendLiteralSelections(current text.Range, selections []text.Range, options SearchOptions) []text.Range {
+	value := doc.Editor.String()
+	from, to := doc.Editor.ByteOffset(current.Start), doc.Editor.ByteOffset(current.End)
+	if from >= to {
+		return selections
+	}
+	occupied := make([]text.Span, len(selections))
+	for i, selection := range selections {
+		occupied[i] = text.Span{Start: doc.Editor.ByteOffset(selection.Start), End: doc.Editor.ByteOffset(selection.End)}
+	}
+	slices.SortFunc(occupied, func(a, b text.Span) int { return cmp.Compare(a.Start, b.Start) })
+	firstNew, before := len(selections), 0
+	visitLiteralMatches(value, value[from:to], options.MatchCase, func(match text.Span) bool {
+		if match.Start < to && match.End > from ||
+			options.WholeWord && !searchWholeWord(value, match.Start, match.End) {
+			return true
+		}
+		for len(occupied) > 0 && occupied[0].End <= match.Start {
+			occupied = occupied[1:]
+		}
+		if len(occupied) > 0 && occupied[0].Start < match.End {
+			return true
+		}
+		selections = append(selections, text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
+		if match.End <= from {
+			before++
+		}
+		return true
+	})
+	// The stream arrives in document order. Move only the new wrap ranges
+	// behind the new matches after the current selection.
+	added := selections[firstNew:]
+	if before > 0 && before < len(added) {
+		slices.Reverse(added[:before])
+		slices.Reverse(added[before:])
+		slices.Reverse(added)
+	}
+	return selections
 }
 
 func byteAtRune(value string, offset int) int {
