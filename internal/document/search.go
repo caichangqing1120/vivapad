@@ -140,7 +140,7 @@ func (doc *Document) NextLiteralSelection(current text.Range, occupied []text.Ra
 	visit := func(match text.Span) literalMatchDecision {
 		candidate := text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)}
 		for _, selection := range occupied {
-			if candidate.Start < selection.End && candidate.End > selection.Start {
+			if selection.Start != selection.End && candidate.Start < selection.End && candidate.End > selection.Start {
 				return literalReject
 			}
 		}
@@ -162,9 +162,11 @@ func (doc *Document) AppendLiteralSelections(current text.Range, selections []te
 	if from >= to {
 		return selections
 	}
-	occupied := make([]text.Span, len(selections))
-	for i, selection := range selections {
-		occupied[i] = text.Span{Start: doc.Editor.ByteOffset(selection.Start), End: doc.Editor.ByteOffset(selection.End)}
+	occupied := make([]text.Span, 0, len(selections))
+	for _, selection := range selections {
+		if selection.Start != selection.End {
+			occupied = append(occupied, text.Span{Start: doc.Editor.ByteOffset(selection.Start), End: doc.Editor.ByteOffset(selection.End)})
+		}
 	}
 	slices.SortFunc(occupied, func(a, b text.Span) int { return cmp.Compare(a.Start, b.Start) })
 	query := value[from:to]

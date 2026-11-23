@@ -203,6 +203,54 @@ func TestNotepadPlusPlusMultiSelectSearchOrigin(t *testing.T) {
 	}
 }
 
+func TestNotepadPlusPlusMultiSelectFromCarets(t *testing.T) {
+	reference := os.Getenv("VIVAPAD_RTL_REFERENCE_EXE")
+	if reference == "" {
+		t.Skip("requires pinned portable Notepad++ on an isolated Windows desktop")
+	}
+	const value = "new new new."
+	path := filepath.Join(t.TempDir(), "collapsed-selection.txt")
+	if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+		t.Fatal(err)
+	}
+	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", path)
+	editor.focusText(t)
+	send := focusedScintilla(t, editor)
+	if got := send(2006, 0, 0); got != uintptr(len(value)) {
+		t.Fatalf("length = %d, want %d", got, len(value))
+	}
+	send(2563, 1, 0) // SCI_SETMULTIPLESELECTION
+	for _, tc := range []struct {
+		name    string
+		command uintptr
+		want    [][2]uintptr
+	}{
+		{"Next", 42096, [][2]uintptr{{3, 3}, {12, 12}, {4, 7}}},
+		{"All", 42092, [][2]uintptr{{12, 12}, {4, 7}, {8, 11}, {0, 3}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			send(2556, 3, 0)   // SCI_SETEMPTYSELECTION
+			send(2573, 12, 12) // SCI_ADDSELECTION, unrelated caret
+			send(2573, 7, 7)   // SCI_ADDSELECTION, main caret
+			var result uintptr
+			if ok, _, err := sendMessageTimeout.Call(editor.hwnd, 0x0111, tc.command, 0, 2, 1000, uintptr(unsafe.Pointer(&result))); ok == 0 {
+				t.Fatalf("Notepad++ menu command %d: %v", tc.command, err)
+			}
+			var got [][2]uintptr
+			for n := range send(2570, 0, 0) { // SCI_GETSELECTIONS
+				got = append(got, [2]uintptr{send(2585, n, 0), send(2587, n, 0)})
+			}
+			if main := send(2575, 0, 0); !slices.Equal(got, tc.want) || main != uintptr(len(tc.want)-1) {
+				t.Fatalf("menu selected %v, main=%d; want %v", got, main, tc.want)
+			}
+			if send(2159, 0, 0) != 0 { // SCI_GETMODIFY
+				t.Fatal("menu changed the document")
+			}
+		})
+	}
+	editor.close(t)
+}
+
 func focusedScintilla(t *testing.T, editor *desktopEditor) func(uintptr, uintptr, uintptr) uintptr {
 	t.Helper()
 	info := struct {
