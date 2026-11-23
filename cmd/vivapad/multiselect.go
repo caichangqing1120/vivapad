@@ -60,9 +60,14 @@ func (state *model) multiSelect(options document.SearchOptions, all bool) {
 		}
 	}
 	main := selected.ranges[len(selected.ranges)-1]
-	if main.Start == main.End && !slices.ContainsFunc(selected.ranges, func(r text.Range) bool { return r.Start != r.End }) {
+	if main.Start == main.End {
+		if !all && slices.ContainsFunc(selected.ranges, func(r text.Range) bool { return r.Start != r.End }) {
+			return
+		}
 		word, found := doc.MultiSelectionWordAtCaret()
-		if !found {
+		if !found || slices.ContainsFunc(selected.ranges, func(r text.Range) bool {
+			return r.Start != r.End && r.Start < word.End && word.Start < r.End
+		}) {
 			return
 		}
 		main = word

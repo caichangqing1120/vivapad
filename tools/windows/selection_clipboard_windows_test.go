@@ -251,6 +251,45 @@ func TestNotepadPlusPlusMultiSelectFromCarets(t *testing.T) {
 	editor.close(t)
 }
 
+func TestNotepadPlusPlusMultiSelectAllFromMixedSelection(t *testing.T) {
+	reference := os.Getenv("VIVAPAD_RTL_REFERENCE_EXE")
+	if reference == "" {
+		t.Skip("requires pinned portable Notepad++ on an isolated Windows desktop")
+	}
+	const value = "old new old new!"
+	path := filepath.Join(t.TempDir(), "mixed-selection.txt")
+	if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+		t.Fatal(err)
+	}
+	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", path)
+	editor.focusText(t)
+	send := focusedScintilla(t, editor)
+	if got := send(2006, 0, 0); got != uintptr(len(value)) {
+		t.Fatalf("length = %d, want %d", got, len(value))
+	}
+	send(2563, 1, 0)   // SCI_SETMULTIPLESELECTION
+	send(2572, 3, 0)   // SCI_SETSELECTION
+	send(2573, 16, 16) // SCI_ADDSELECTION, unrelated caret
+	send(2573, 6, 6)   // SCI_ADDSELECTION, main caret inside the word
+	const allWholeWord = 42092
+	var result uintptr
+	if ok, _, err := sendMessageTimeout.Call(editor.hwnd, 0x0111, allWholeWord, 0, 2, 1000, uintptr(unsafe.Pointer(&result))); ok == 0 {
+		t.Fatalf("Notepad++ All menu command: %v", err)
+	}
+	var got [][2]uintptr
+	for n := range send(2570, 0, 0) { // SCI_GETSELECTIONS
+		got = append(got, [2]uintptr{send(2585, n, 0), send(2587, n, 0)})
+	}
+	want := [][2]uintptr{{0, 3}, {16, 16}, {4, 7}, {12, 15}}
+	if main := send(2575, 0, 0); !slices.Equal(got, want) || main != uintptr(len(want)-1) {
+		t.Fatalf("menu selected %v, main=%d; want %v", got, main, want)
+	}
+	if send(2159, 0, 0) != 0 { // SCI_GETMODIFY
+		t.Fatal("menu changed the document")
+	}
+	editor.close(t)
+}
+
 func focusedScintilla(t *testing.T, editor *desktopEditor) func(uintptr, uintptr, uintptr) uintptr {
 	t.Helper()
 	info := struct {

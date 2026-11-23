@@ -128,6 +128,40 @@ func TestMultiSelectResumesFromCaretsAfterBatchEdit(t *testing.T) {
 	}
 }
 
+func TestMultiSelectFromEmptyMainInMixedSelection(t *testing.T) {
+	old := text.Range{Start: 0, End: 3}
+	partial := text.Range{Start: 4, End: 6}
+	caret := text.Range{Start: 6, End: 6}
+	unrelated := text.Range{Start: 16, End: 16}
+	for _, tc := range []struct {
+		name, value string
+		all         bool
+		initial     []text.Range
+		want        []text.Range
+	}{
+		{"expand and find matches", "old new old new!", true, []text.Range{old, unrelated, caret}, []text.Range{old, unrelated, {Start: 4, End: 7}, {Start: 12, End: 15}}},
+		{"next keeps mixed empty query", "old new old new!", false, []text.Range{old, unrelated, caret}, []text.Range{old, unrelated, caret}},
+		{"no word", "old . ", true, []text.Range{old, {Start: 5, End: 5}}, []text.Range{old, {Start: 5, End: 5}}},
+		{"word overlaps a range", "old new", true, []text.Range{partial, {Start: 7, End: 7}}, []text.Range{partial, {Start: 7, End: 7}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := newModel()
+			doc := state.space.Current()
+			doc.Editor.Insert(tc.value)
+			doc.Editor.ClearHistory()
+			doc.Editor.SetSelection(tc.initial[len(tc.initial)-1])
+			state.multiSelections[0] = multiSelectionState{doc: doc, active: true, value: tc.value, ranges: append([]text.Range(nil), tc.initial...)}
+			state.multiSelect(document.SearchOptions{WholeWord: true}, tc.all)
+			if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, tc.want) || doc.Editor.Selection() != tc.want[len(tc.want)-1] {
+				t.Fatalf("ranges = %+v, main = %+v; want %+v", got, doc.Editor.Selection(), tc.want)
+			}
+			if doc.Editor.String() != tc.value || doc.Editor.CanUndo() {
+				t.Fatal("multi-select changed text or edit history")
+			}
+		})
+	}
+}
+
 func TestMultiSelectAllAvoidsAnAllocationPerMatch(t *testing.T) {
 	state := newModel()
 	doc := state.space.Current()
