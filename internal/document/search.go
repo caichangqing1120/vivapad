@@ -70,14 +70,48 @@ func searchWholeWord(value string, start, end int) bool {
 	return !wordRune(before) && !wordRune(after)
 }
 
-func (doc *Document) WordAtCaret() (text.Range, bool) {
+type selectionCharacterClass uint8
+
+const (
+	selectionOther selectionCharacterClass = iota
+	selectionWord
+	selectionPunctuation
+)
+
+// Scintilla treats UTF-8 marks and all numeric categories as word characters.
+func multiSelectionClass(r rune) selectionCharacterClass {
+	switch {
+	case r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r) || unicode.IsMark(r):
+		return selectionWord
+	case unicode.IsPunct(r) || unicode.IsSymbol(r):
+		return selectionPunctuation
+	default:
+		return selectionOther
+	}
+}
+
+func multiSelectionWholeWord(value string, start, end int) bool {
+	match := value[start:end]
+	first, _ := utf8.DecodeRuneInString(match)
+	last, _ := utf8.DecodeLastRuneInString(match)
+	firstClass, lastClass := multiSelectionClass(first), multiSelectionClass(last)
+	if firstClass == selectionOther || lastClass == selectionOther {
+		return false
+	}
+	before, beforeWidth := utf8.DecodeLastRuneInString(value[:start])
+	after, afterWidth := utf8.DecodeRuneInString(value[end:])
+	return (beforeWidth == 0 || multiSelectionClass(before) != firstClass) &&
+		(afterWidth == 0 || multiSelectionClass(after) != lastClass)
+}
+
+func (doc *Document) MultiSelectionWordAtCaret() (text.Range, bool) {
 	value := doc.Editor.String()
 	caret := doc.Editor.Caret()
 	start, end := caret, caret
 	offset := doc.Editor.ByteOffset(caret)
 	for left := offset; left > 0; {
 		r, width := utf8.DecodeLastRuneInString(value[:left])
-		if !wordRune(r) {
+		if multiSelectionClass(r) != selectionWord {
 			break
 		}
 		left -= width
@@ -85,7 +119,7 @@ func (doc *Document) WordAtCaret() (text.Range, bool) {
 	}
 	for right := offset; right < len(value); {
 		r, width := utf8.DecodeRuneInString(value[right:])
-		if !wordRune(r) {
+		if multiSelectionClass(r) != selectionWord {
 			break
 		}
 		right += width
@@ -106,7 +140,7 @@ func (doc *Document) NextLiteralSelection(current text.Range, occupied []text.Ra
 	visitLiteralMatches(value, value[from:to], options.MatchCase, func(match text.Span) bool {
 		if match.Start < to && match.End > from ||
 			match.End <= from && found.End != 0 ||
-			options.WholeWord && !searchWholeWord(value, match.Start, match.End) {
+			options.WholeWord && !multiSelectionWholeWord(value, match.Start, match.End) {
 			return true
 		}
 		candidate := text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)}
@@ -137,7 +171,7 @@ func (doc *Document) AppendLiteralSelections(current text.Range, selections []te
 	firstNew, before := len(selections), 0
 	visitLiteralMatches(value, value[from:to], options.MatchCase, func(match text.Span) bool {
 		if match.Start < to && match.End > from ||
-			options.WholeWord && !searchWholeWord(value, match.Start, match.End) {
+			options.WholeWord && !multiSelectionWholeWord(value, match.Start, match.End) {
 			return true
 		}
 		for len(occupied) > 0 && occupied[0].End <= match.Start {

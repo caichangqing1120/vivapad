@@ -178,6 +178,44 @@ func TestMultiSelectMatchFlagsAndUnicodeWord(t *testing.T) {
 	}
 }
 
+func TestMultiSelectScintillaUTF8WordBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name, value string
+		initial     text.Range
+		want        []text.Range
+	}{
+		{"combining mark at caret", "e\u0301 x", text.Range{Start: 2, End: 2}, []text.Range{{Start: 0, End: 2}}},
+		{"number at caret", "x\u00b2 z", text.Range{Start: 2, End: 2}, []text.Range{{Start: 0, End: 2}}},
+		{"combining mark excludes partial match", "e e\u0301 e", text.Range{Start: 0, End: 1}, []text.Range{{Start: 0, End: 1}, {Start: 5, End: 6}}},
+		{"punctuation respects class edges", ": :: x:y :", text.Range{Start: 0, End: 1}, []text.Range{{Start: 0, End: 1}, {Start: 6, End: 7}, {Start: 9, End: 10}}},
+	} {
+		for _, all := range []bool{false, true} {
+			mode := "Next"
+			if all {
+				mode = "All"
+			}
+			t.Run(tc.name+"/"+mode, func(t *testing.T) {
+				state := newModel()
+				doc := state.space.Current()
+				doc.Editor.Insert(tc.value)
+				doc.Editor.ClearHistory()
+				doc.Editor.SetSelection(tc.initial)
+				state.multiSelect(document.SearchOptions{WholeWord: true}, all)
+				want := tc.want
+				if !all && len(want) > 2 {
+					want = want[:2]
+				}
+				if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, want) || doc.Editor.Selection() != want[len(want)-1] {
+					t.Fatalf("ranges = %+v, main = %+v; want %+v", got, doc.Editor.Selection(), want)
+				}
+				if doc.Editor.String() != tc.value || doc.Editor.CanUndo() {
+					t.Fatal("multi-selection changed text or edit history")
+				}
+			})
+		}
+	}
+}
+
 func TestMultiSelectNoWordAndChangedDocumentCannotKeepStaleRanges(t *testing.T) {
 	state := newModel()
 	doc := state.space.Current()

@@ -46,7 +46,7 @@ func (state *model) multiSelect(options document.SearchOptions, all bool) {
 		initial := doc.Editor.Selection()
 		if initial.Start == initial.End {
 			var found bool
-			initial, found = doc.WordAtCaret()
+			initial, found = doc.MultiSelectionWordAtCaret()
 			if !found {
 				return
 			}

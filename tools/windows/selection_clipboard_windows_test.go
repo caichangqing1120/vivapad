@@ -3,6 +3,7 @@ package windows_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"testing"
 	"unsafe"
@@ -27,29 +28,7 @@ func TestNotepadPlusPlusMultiSelectionClipboard(t *testing.T) {
 	}
 	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", path)
 	editor.focusText(t)
-	info := struct {
-		size, flags                                   uint32
-		active, focus, capture, menu, moveSize, caret uintptr
-		caretRect                                     [4]int32
-	}{}
-	info.size = uint32(unsafe.Sizeof(info))
-	thread, _, _ := windowPID.Call(editor.hwnd, 0)
-	if ok, _, _ := getGUIThreadInfo.Call(thread, uintptr(unsafe.Pointer(&info))); ok == 0 || info.focus == 0 {
-		t.Fatal("could not read focused control")
-	}
-	var name [128]uint16
-	getClassName.Call(info.focus, uintptr(unsafe.Pointer(&name[0])), uintptr(len(name)))
-	if class := syscall.UTF16ToString(name[:]); class != "Scintilla" {
-		t.Fatalf("focus = %q, want Scintilla", class)
-	}
-	send := func(message, first, second uintptr) uintptr {
-		t.Helper()
-		var result uintptr
-		if ok, _, err := sendMessageTimeout.Call(info.focus, message, first, second, 2, 1000, uintptr(unsafe.Pointer(&result))); ok == 0 {
-			t.Fatalf("Scintilla message %#x: %v", message, err)
-		}
-		return result
-	}
+	send := focusedScintilla(t, editor)
 	if got := send(2006, 0, 0); got != uintptr(len(windows.SelectionClipboardSource)) {
 		t.Fatalf("Scintilla file length = %d", got)
 	}
@@ -70,6 +49,82 @@ func TestNotepadPlusPlusMultiSelectionClipboard(t *testing.T) {
 	checkClipboardShortcut(t, editor, 'X')
 	editor.keys(t, keyLeftControl, 'Z')
 	editor.close(t)
+}
+
+func TestNotepadPlusPlusMultiSelectionWordBoundaries(t *testing.T) {
+	reference := os.Getenv("VIVAPAD_RTL_REFERENCE_EXE")
+	if reference == "" {
+		t.Skip("requires pinned portable Notepad++ on an isolated Windows desktop")
+	}
+	for _, tc := range []struct {
+		name, value string
+		initial     [2]uintptr
+		want        [][2]uintptr
+	}{
+		{"combining mark at caret", "e\u0301 x", [2]uintptr{3, 3}, [][2]uintptr{{0, 3}}},
+		{"number at caret", "x\u00b2 z", [2]uintptr{3, 3}, [][2]uintptr{{0, 3}}},
+		{"combining mark excludes partial match", "e e\u0301 e", [2]uintptr{0, 1}, [][2]uintptr{{0, 1}, {6, 7}}},
+		{"punctuation respects class edges", ": :: x:y :", [2]uintptr{0, 1}, [][2]uintptr{{0, 1}, {6, 7}, {9, 10}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "words.txt")
+			if err := os.WriteFile(path, []byte("\ufeff"+tc.value), 0600); err != nil {
+				t.Fatal(err)
+			}
+			editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", path)
+			editor.focusText(t)
+			send := focusedScintilla(t, editor)
+			if got := send(2006, 0, 0); got != uintptr(len(tc.value)) || send(2137, 0, 0) != 65001 {
+				t.Fatalf("Scintilla fixture is not UTF-8 at the expected length: %d", got)
+			}
+			send(2563, 1, 0)                                // SCI_SETMULTIPLESELECTION
+			for _, command := range []uintptr{2688, 2689} { // SCI_MULTIPLESELECTADDNEXT / ADDEACH
+				send(2572, tc.initial[1], tc.initial[0]) // SCI_SETSELECTION
+				send(2690, 0, 0)                         // SCI_TARGETWHOLEDOCUMENT
+				send(2198, 2, 0)                         // SCI_SETSEARCHFLAGS: SCFIND_WHOLEWORD
+				send(command, 0, 0)
+				var got [][2]uintptr
+				for i := range send(2570, 0, 0) { // SCI_GETSELECTIONS
+					got = append(got, [2]uintptr{send(2585, i, 0), send(2587, i, 0)}) // SCI_GETSELECTIONNSTART / END
+				}
+				want := tc.want
+				if command == 2688 && len(want) > 2 {
+					want = want[:2]
+				}
+				if !slices.Equal(got, want) {
+					t.Fatalf("Scintilla %d selected byte ranges %v, want %v", command, got, want)
+				}
+			}
+			editor.close(t)
+		})
+	}
+}
+
+func focusedScintilla(t *testing.T, editor *desktopEditor) func(uintptr, uintptr, uintptr) uintptr {
+	t.Helper()
+	info := struct {
+		size, flags                                   uint32
+		active, focus, capture, menu, moveSize, caret uintptr
+		caretRect                                     [4]int32
+	}{}
+	info.size = uint32(unsafe.Sizeof(info))
+	thread, _, _ := windowPID.Call(editor.hwnd, 0)
+	if ok, _, _ := getGUIThreadInfo.Call(thread, uintptr(unsafe.Pointer(&info))); ok == 0 || info.focus == 0 {
+		t.Fatal("could not read focused control")
+	}
+	var name [128]uint16
+	getClassName.Call(info.focus, uintptr(unsafe.Pointer(&name[0])), uintptr(len(name)))
+	if class := syscall.UTF16ToString(name[:]); class != "Scintilla" {
+		t.Fatalf("focus = %q, want Scintilla", class)
+	}
+	return func(message, first, second uintptr) uintptr {
+		t.Helper()
+		var result uintptr
+		if ok, _, err := sendMessageTimeout.Call(info.focus, message, first, second, 2, 1000, uintptr(unsafe.Pointer(&result))); ok == 0 {
+			t.Fatalf("Scintilla message %#x: %v", message, err)
+		}
+		return result
+	}
 }
 
 func TestVivaPadMultiSelectionClipboardRoundTrip(t *testing.T) {
