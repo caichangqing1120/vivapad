@@ -122,20 +122,54 @@ func (state *model) editMultiSelection(pane int, value string, kind multiEditKin
 	return true, nil
 }
 
+func (selected multiSelectionState) hasClipboardText() bool {
+	return selected.active && slices.ContainsFunc(selected.ranges, func(selection text.Range) bool {
+		return selection.Start != selection.End
+	})
+}
+
+func (selected multiSelectionState) rectangularClipboard() bool {
+	return len(selected.ranges) > 1
+}
+
 func (selected multiSelectionState) clipboardText() string {
-	if !selected.active {
+	if !selected.hasClipboardText() {
 		return ""
 	}
-	editor := selected.doc.Editor
+	doc := selected.doc
+	separator := "\n"
+	switch doc.LineEnding() {
+	case document.CRLF:
+		separator = "\r\n"
+	case document.CR:
+		separator = "\r"
+	}
 	var output strings.Builder
 	for _, selection := range selected.ranges {
-		if selection.Start == selection.End {
-			continue
+		start, end := doc.Editor.ByteOffset(selection.Start), doc.Editor.ByteOffset(selection.End)
+		span := selected.value[start:end]
+		if strings.Contains(span, "\n") {
+			if doc.MixedLineEndings() {
+				line := strings.Count(selected.value[:start], "\n")
+				for {
+					part, rest, found := strings.Cut(span, "\n")
+					output.WriteString(part)
+					if !found {
+						break
+					}
+					output.WriteString(doc.LineEndingAt(line))
+					span = rest
+					line++
+				}
+			} else {
+				output.WriteString(strings.ReplaceAll(span, "\n", separator))
+			}
+		} else {
+			output.WriteString(span)
 		}
-		if output.Len() != 0 {
-			output.WriteByte('\n')
+		if selected.rectangularClipboard() {
+			output.WriteString(separator)
 		}
-		output.WriteString(selected.value[editor.ByteOffset(selection.Start):editor.ByteOffset(selection.End)])
 	}
 	return output.String()
 }
@@ -143,11 +177,16 @@ func (selected multiSelectionState) clipboardText() string {
 func (state *model) copyMultiSelection(doc *document.Document, cut bool) {
 	pane := state.activePane
 	state.syncMultiSelection(pane, doc)
-	value := state.multiSelections[pane].clipboardText()
+	selected := state.multiSelections[pane]
+	value := selected.clipboardText()
 	if value == "" {
 		return
 	}
-	if err := app.SetClipboardText(value); err != nil {
+	writeClipboard := app.SetClipboardText
+	if selected.rectangularClipboard() {
+		writeClipboard = app.SetRectangularClipboardText
+	}
+	if err := writeClipboard(value); err != nil {
 		state.notice = "Copy failed: " + err.Error()
 		return
 	}
@@ -170,7 +209,7 @@ func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 		state.syncMultiSelection(pane, doc)
 		return state.multiSelections[pane]
 	}
-	return &app.TextInput{State: inputState, CopyOverride: true, CopyText: func() string { return clipboardSelection().clipboardText() }, OnEvent: func(event app.TextEvent) (app.TextState, error) {
+	return &app.TextInput{State: inputState, CopyOverride: true, CopyRectangular: state.multiSelections[pane].rectangularClipboard(), CopyText: func() string { return clipboardSelection().clipboardText() }, OnEvent: func(event app.TextEvent) (app.TextState, error) {
 		if state.isReadOnly(doc) {
 			state.cancelDocumentComposition(doc)
 			state.notice = "Read-only document"
@@ -197,12 +236,7 @@ func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 		}
 		kind := multiInsert
 		value := event.Text
-		cutting := false
-		if event.Kind == app.TextPaste && value == "" {
-			cutting = slices.ContainsFunc(clipboardSelection().ranges, func(selection text.Range) bool {
-				return selection.Start != selection.End
-			})
-		}
+		cutting := event.Kind == app.TextPaste && value == "" && clipboardSelection().hasClipboardText()
 		if event.Kind == app.TextCommandEvent {
 			switch event.Command {
 			case app.TextDeleteBackward:
