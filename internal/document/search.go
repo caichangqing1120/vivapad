@@ -533,12 +533,25 @@ func (doc *Document) ReplaceCurrentWithEdit(query, replacement string, options S
 		return false, ReplacementEdit{}, nil
 	}
 	from, to := byteAtRune(value, selection.Start), byteAtRune(value, selection.End)
+	if !options.Regex {
+		var matched bool
+		visitLiteralMatches(value, query, options.MatchCase, func(match text.Span) bool {
+			if match.Start < from {
+				return true
+			}
+			matched = match.Start == from && match.End == to &&
+				(!options.WholeWord || searchWholeWord(value, from, to))
+			return false
+		})
+		if !matched {
+			return false, ReplacementEdit{}, nil
+		}
+		doc.Editor.Insert(replacement)
+		return true, ReplacementEdit{Start: from, End: to, Text: replacement}, nil
+	}
 	for _, match := range searchMatches(value, expression, options) {
 		if match[0] == from && match[1] == to {
-			insert := replacement
-			if options.Regex {
-				insert = string(expression.ExpandString(nil, replacement, value, match))
-			}
+			insert := string(expression.ExpandString(nil, replacement, value, match))
 			doc.Editor.Insert(insert)
 			return true, ReplacementEdit{Start: from, End: to, Text: insert}, nil
 		}

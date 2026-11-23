@@ -141,6 +141,64 @@ func TestLiteralMatchStreamAgreesWithQuotedRegexp(t *testing.T) {
 	}
 }
 
+func TestReplaceSelectedLiteralUsesMatchBoundaries(t *testing.T) {
+	doc := New("fixture")
+	doc.Editor.Insert("x \u212A tail")
+	doc.Editor.ClearHistory()
+	doc.Editor.SetSelection(text.Range{Start: 3, End: 2})
+	changed, edit, err := doc.ReplaceCurrentWithEdit("k", "$1", SearchOptions{WholeWord: true})
+	if err != nil || !changed || edit != (ReplacementEdit{Start: 2, End: 5, Text: "$1"}) || doc.Editor.String() != "x $1 tail" {
+		t.Fatalf("replacement: changed=%v edit=%+v text=%q err=%v", changed, edit, doc.Editor.String(), err)
+	}
+	if !doc.Editor.Undo() || doc.Editor.String() != "x \u212A tail" || doc.Editor.CanUndo() {
+		t.Fatal("replacement did not have exactly one undo step")
+	}
+	for _, tc := range []struct {
+		value, query string
+		selection    text.Range
+		options      SearchOptions
+	}{
+		{"aaaaa", "aa", text.Range{Start: 1, End: 3}, SearchOptions{MatchCase: true}},
+		{"cat_ cat", "cat", text.Range{Start: 0, End: 3}, SearchOptions{WholeWord: true}},
+	} {
+		doc := New("fixture")
+		doc.Editor.Insert(tc.value)
+		doc.Editor.ClearHistory()
+		doc.Editor.SetSelection(tc.selection)
+		changed, _, err := doc.ReplaceCurrentWithEdit(tc.query, "changed", tc.options)
+		if err != nil || changed || doc.Editor.String() != tc.value || doc.Editor.Selection() != tc.selection || doc.Editor.CanUndo() {
+			t.Fatalf("refusal for %q changed source or selection: changed=%v err=%v", tc.value, changed, err)
+		}
+	}
+}
+
+func TestReplaceSelectedLiteralDoesNotAllocateForOtherMatches(t *testing.T) {
+	doc := New("fixture")
+	doc.Editor.Insert(strings.Repeat("cat ", 50_000))
+	doc.Editor.ClearHistory()
+	allocations := testing.AllocsPerRun(3, func() {
+		doc.Editor.SetSelection(text.Range{Start: 0, End: 3})
+		changed, _, err := doc.ReplaceCurrentWithEdit("cat", "dog", SearchOptions{})
+		if err != nil || !changed || !doc.Editor.Undo() {
+			t.Fatalf("replace and undo: changed=%v err=%v", changed, err)
+		}
+	})
+	t.Logf("allocations per replace and undo: %.0f", allocations)
+	if allocations > 256 {
+		t.Fatalf("one literal replacement allocated %.0f times for 50,000 matches", allocations)
+	}
+}
+
+func TestReplaceSelectedRegexUsesCapturesAndOriginalContext(t *testing.T) {
+	doc := New("fixture")
+	doc.Editor.Insert("prefix item-12 suffix")
+	doc.Editor.SetSelection(text.Range{Start: 7, End: 14})
+	changed, edit, err := doc.ReplaceCurrentWithEdit(`\b(item)-(\d+)\b`, `$2:$1`, SearchOptions{Regex: true})
+	if err != nil || !changed || edit != (ReplacementEdit{Start: 7, End: 14, Text: "12:item"}) || doc.Editor.String() != "prefix 12:item suffix" {
+		t.Fatalf("replacement: changed=%v edit=%+v text=%q err=%v", changed, edit, doc.Editor.String(), err)
+	}
+}
+
 func TestRegexReplaceAllExpandsCapturesAsOneUndoUnit(t *testing.T) {
 	doc := New("new 1")
 	doc.Editor.Insert("item-12 item-34")
