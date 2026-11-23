@@ -67,6 +67,45 @@ func TestFoldCommandsHideNestedRowsWithoutChangingCleanDocument(t *testing.T) {
 	}
 }
 
+func TestFoldAllHidesPythonBodyAfterCommentedHeader(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "greet.py")
+	value := "def greet(): # inline comment\r\n    hidden_body()\r\noutside()\r\n"
+	if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{path})
+	doc := state.space.Current()
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer driver.Close()
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	before := doc.Editor.String()
+	state.command("Fold All")
+	if got := state.foldRanges(doc); !reflect.DeepEqual(got, []components.CodeEditorFoldRange{{Header: 0, LastLine: 1}}) {
+		t.Fatalf("Python fold ranges = %+v", got)
+	}
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	for _, label := range driver.Snapshot().Texts {
+		if strings.Contains(label.Value, "hidden_body") {
+			t.Fatal("folded Python body was still painted")
+		}
+	}
+	clickID(t, driver, leftFoldScope.At(0))
+	if len(state.foldRanges(doc)) != 0 || doc.Editor.String() != before || doc.Dirty() || doc.Editor.CanUndo() {
+		t.Fatal("toggling the Python fold changed document or undo state")
+	}
+	if actual, err := os.ReadFile(path); err != nil || string(actual) != value {
+		t.Fatalf("file changed: %q, %v", actual, err)
+	}
+}
+
 func TestFoldCurrentAndSearchIntoHiddenLineRevealIt(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()
