@@ -89,11 +89,11 @@ func TestHideLinesViewCommandFitsCompactWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(3))
-	row := syncScrollHit(t, driver, menuItemScope.At(25))
+	row := syncScrollHit(t, driver, menuItemScope.At(viewCommandIndex("Hide Lines")))
 	if row.Y+row.Height > 400-statusHeight || row.Height < 12 {
 		t.Fatalf("Hide Lines row clipped: %+v", row)
 	}
-	clickID(t, driver, menuItemScope.At(25))
+	clickID(t, driver, menuItemScope.At(viewCommandIndex("Hide Lines")))
 	if len(state.hiddenLines[doc]) != 1 {
 		t.Fatal("View menu did not hide the caret line")
 	}

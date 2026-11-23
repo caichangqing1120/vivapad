@@ -81,6 +81,7 @@ func (state *model) reloadDocumentWithHistory(index int, discard bool) (*documen
 }
 
 func (state *model) rebindReloadedDocument(previous, current *document.Document) {
+	current.RTL = previous.RTL
 	previousValue := previous.Editor.String()
 	previousRectangles := state.rectangles
 	language, selected := state.languages[previous]

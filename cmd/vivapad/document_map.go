@@ -108,6 +108,9 @@ func (state *model) paintDocumentMap(canvas *gfx.Canvas, bounds gfx.Rect, editor
 			}
 			x := content.X + 4 + min(float32(indent)*0.8, 18)
 			width := min(max(3, float32(utf8.RuneCountInString(line))*0.85), max(3, content.X+content.Width-x-4))
+			if doc.RTL {
+				x = content.X + content.Width - (x - content.X) - width
+			}
 			canvas.Fill(gfx.Rect{X: x, Y: content.Y + float32(index)*step + 1, Width: width, Height: 1.5}, gfx.RGB(158, 165, 172))
 		}
 	}

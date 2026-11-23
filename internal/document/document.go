@@ -20,6 +20,7 @@ type Document struct {
 	Path   string
 	Name   string
 	Editor *text.Editor
+	RTL    bool // View state shared by clones of this document.
 
 	saved         string
 	savedDisk     []byte

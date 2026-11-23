@@ -401,28 +401,28 @@ func TestMonitoringCompactMenuCheckedStateAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(3))
-	revealViewMenuItem(t, driver, 23)
+	revealViewMenuItem(t, driver, viewCommandIndex("Monitoring (tail -f)"))
 	for _, hit := range driver.Snapshot().Hits {
-		if hit.ID == menuItemScope.At(23) && (hit.Bounds.Y+hit.Bounds.Height > 400-statusHeight || hit.Checked) {
+		if hit.ID == menuItemScope.At(viewCommandIndex("Monitoring (tail -f)")) && (hit.Bounds.Y+hit.Bounds.Height > 400-statusHeight || hit.Checked) {
 			t.Fatalf("Monitoring menu row clipped or prematurely checked: %+v", hit)
 		}
 	}
-	clickID(t, driver, menuItemScope.At(23))
+	clickID(t, driver, menuItemScope.At(viewCommandIndex("Monitoring (tail -f)")))
 	if state.monitors[state.space.Current()] == nil || !state.isReadOnly(state.space.Current()) {
 		t.Fatal("View menu did not start monitoring")
 	}
 	clickID(t, driver, menuScope.At(3))
-	revealViewMenuItem(t, driver, 23)
+	revealViewMenuItem(t, driver, viewCommandIndex("Monitoring (tail -f)"))
 	checked := false
 	for _, hit := range driver.Snapshot().Hits {
-		if hit.ID == menuItemScope.At(23) {
+		if hit.ID == menuItemScope.At(viewCommandIndex("Monitoring (tail -f)")) {
 			checked = hit.Checked
 		}
 	}
 	if !checked {
 		t.Fatal("Monitoring menu did not show its checked state")
 	}
-	clickID(t, driver, menuItemScope.At(23))
+	clickID(t, driver, menuItemScope.At(viewCommandIndex("Monitoring (tail -f)")))
 	if len(state.monitors) != 0 || state.isReadOnly(state.space.Current()) {
 		t.Fatal("View menu did not stop monitoring cleanly")
 	}
@@ -453,8 +453,8 @@ func TestMonitoringMenuStopReturnsInputToReloadedRightPane(t *testing.T) {
 	clickID(t, driver, rightEditorID)
 	toggle := func() {
 		clickID(t, driver, menuScope.At(3))
-		revealViewMenuItem(t, driver, 23)
-		clickID(t, driver, menuItemScope.At(23))
+		revealViewMenuItem(t, driver, viewCommandIndex("Monitoring (tail -f)"))
+		clickID(t, driver, menuItemScope.At(viewCommandIndex("Monitoring (tail -f)")))
 	}
 	toggle()
 	const saved = "new\r\nlast"

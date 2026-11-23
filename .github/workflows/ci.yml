@@ -69,6 +69,30 @@ jobs:
         run: go build -o "$OUTPUT" ./cmd/vivapad
       - name: Run unit and integration tests
         run: go test ./... -count=1 -timeout=15m
+      - name: Compare RTL keyboard behavior with Notepad++ on the Windows desktop
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('vivapad-rtl-' + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $work | Out-Null
+          try {
+            $zip = Join-Path $work 'notepad++.zip'
+            Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.8.1/npp.8.9.8.1.portable.x64.zip' -OutFile $zip
+            if ((Get-FileHash -Algorithm SHA256 $zip).Hash -ne 'beddf5548e75c97930d1575ba1c7d113e6e2b33d0a200310e734ca08e225f414') {
+              throw 'Unexpected Notepad++ portable ZIP checksum'
+            }
+            $reference = Join-Path $work 'npp'
+            Expand-Archive -LiteralPath $zip -DestinationPath $reference
+            # Notepad++ supports RTL only with its GDI rendering technology.
+            Set-Content -LiteralPath (Join-Path $reference 'config.xml') -Encoding utf8 -Value '<NotepadPlus><GUIConfigs><GUIConfig name="MISC" writeTechnologyEngine="0" /></GUIConfigs></NotepadPlus>'
+            $env:VIVAPAD_RTL_REFERENCE_EXE = Join-Path $reference 'notepad++.exe'
+            $env:VIVAPAD_RTL_DESKTOP_EXE = (Resolve-Path -LiteralPath 'build/vivapad.exe').Path
+            go test ./tools/windows -run '^TestRTLDesktopMatchesNotepadPlusPlus$' -count=1 -v -timeout=2m
+            if ($LASTEXITCODE -ne 0) { throw 'Native desktop RTL comparison failed' }
+          } finally {
+            Remove-Item -LiteralPath $work -Recurse -Force
+          }
       - name: Upload unsigned executable
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

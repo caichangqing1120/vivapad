@@ -3,11 +3,20 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 )
+
+func viewCommandIndex(command string) int {
+	index := slices.Index(menuCommands[3][:], command)
+	if index < 0 {
+		panic("missing View command: " + command)
+	}
+	return index
+}
 
 func TestCompactViewMenuScrollReachesEveryCommandAtReadableHeight(t *testing.T) {
 	state, driver := startDriver(t)
