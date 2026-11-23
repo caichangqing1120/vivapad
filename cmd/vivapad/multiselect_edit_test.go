@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/vivaui/viva/components"
@@ -9,6 +10,30 @@ import (
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 )
+
+func BenchmarkMultiSelectionReplaceTwoRanges(b *testing.B) {
+	suffix := strings.Repeat("z", 512<<10)
+	initial := "a a " + suffix
+	want := "X X " + suffix
+	ranges := []text.Range{{Start: 0, End: 1}, {Start: 2, End: 3}}
+	b.ReportAllocs()
+	for b.Loop() {
+		b.StopTimer()
+		state := newModel()
+		doc := state.space.Current()
+		doc.Editor.Insert(initial)
+		doc.Editor.ClearHistory()
+		doc.Editor.SetSelection(ranges[1])
+		state.multiSelections[0] = multiSelectionState{doc: doc, value: doc.Editor.String(), active: true, ranges: ranges}
+		b.StartTimer()
+		changed, err := state.editMultiSelection(0, "X", multiInsert)
+		b.StopTimer()
+		if err != nil || !changed || doc.Editor.String() != want {
+			b.Fatalf("multi-selection edit: changed=%v, error=%v", changed, err)
+		}
+		b.StartTimer()
+	}
+}
 
 func TestMultiSelectionNativeTypingAndUndoAreAtomic(t *testing.T) {
 	state, driver := startDriver(t)
