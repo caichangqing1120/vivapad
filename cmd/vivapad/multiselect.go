@@ -57,8 +57,14 @@ func (state *model) multiSelect(options document.SearchOptions, all bool) {
 		*selected = multiSelectionState{doc: doc, value: doc.Editor.String(), ranges: []text.Range{initial}, active: true}
 	}
 	main := selected.ranges[len(selected.ranges)-1]
-	if !all && !options.Regex {
-		if next, ok := doc.NextLiteralSelection(main, selected.ranges, options); ok {
+	if !options.Regex {
+		if all {
+			originalCount := len(selected.ranges)
+			selected.ranges = doc.AppendLiteralSelections(main, selected.ranges, options)
+			if len(selected.ranges) > originalCount {
+				doc.Editor.SetSelection(selected.ranges[len(selected.ranges)-1])
+			}
+		} else if next, ok := doc.NextLiteralSelection(main, selected.ranges, options); ok {
 			selected.ranges = append(selected.ranges, next)
 			doc.Editor.SetSelection(next)
 		}
