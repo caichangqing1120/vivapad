@@ -9,21 +9,43 @@ import (
 	"vivapad/internal/document"
 )
 
-func TestMultiSelectAllExpandsWordBeforeAddingEveryOccurrence(t *testing.T) {
-	state := newModel()
-	doc := state.space.Current()
-	doc.Editor.Insert("one ONE one\none")
-	doc.Editor.ClearHistory()
-	doc.Editor.MoveTo(1, false)
-	state.multiSelectAll(document.SearchOptions{})
-	if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, []text.Range{{Start: 0, End: 3}}) {
-		t.Fatalf("first All should select the caret word: %+v", got)
-	}
-	state.multiSelectAll(document.SearchOptions{})
-	if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, []text.Range{
-		{Start: 0, End: 3}, {Start: 4, End: 7}, {Start: 8, End: 11}, {Start: 12, End: 15},
-	}) || doc.Editor.String() != "one ONE one\none" || doc.Editor.CanUndo() {
-		t.Fatalf("All selections = %+v, text=%q", got, doc.Editor.String())
+func TestMultiSelectFirstInvocationFromCaret(t *testing.T) {
+	const value = "cat CAT cat cats"
+	seed := text.Range{Start: 8, End: 11}
+	after := text.Range{Start: 12, End: 15}
+	first := text.Range{Start: 0, End: 3}
+	upper := text.Range{Start: 4, End: 7}
+	for _, tc := range []struct {
+		name  string
+		flags document.SearchOptions
+		want  []text.Range
+	}{
+		{"unrestricted", document.SearchOptions{}, []text.Range{seed, after, first, upper}},
+		{"match case", document.SearchOptions{MatchCase: true}, []text.Range{seed, after, first}},
+		{"whole word", document.SearchOptions{WholeWord: true}, []text.Range{seed, first, upper}},
+		{"match case and whole word", document.SearchOptions{MatchCase: true, WholeWord: true}, []text.Range{seed, first}},
+	} {
+		for _, all := range []bool{true, false} {
+			mode := "Next"
+			want := []text.Range{seed}
+			if all {
+				mode, want = "All", tc.want
+			}
+			t.Run(mode+"/"+tc.name, func(t *testing.T) {
+				state := newModel()
+				doc := state.space.Current()
+				doc.Editor.Insert(value)
+				doc.Editor.ClearHistory()
+				doc.Editor.MoveTo(9, false)
+				state.multiSelect(tc.flags, all)
+				if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, want) || doc.Editor.Selection() != want[len(want)-1] {
+					t.Fatalf("selected %+v, main %+v; want ranges %+v", got, doc.Editor.Selection(), want)
+				}
+				if doc.Editor.String() != value || doc.Editor.CanUndo() {
+					t.Fatal("multi-select changed the text or edit history")
+				}
+			})
+		}
 	}
 }
 
