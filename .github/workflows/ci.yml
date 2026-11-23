@@ -88,7 +88,10 @@ jobs:
             Set-Content -LiteralPath (Join-Path $reference 'config.xml') -Encoding utf8 -Value '<NotepadPlus><GUIConfigs><GUIConfig name="MISC" writeTechnologyEngine="0" /></GUIConfigs></NotepadPlus>'
             $env:VIVAPAD_RTL_REFERENCE_EXE = Join-Path $reference 'notepad++.exe'
             $env:VIVAPAD_RTL_DESKTOP_EXE = (Resolve-Path -LiteralPath 'build/vivapad.exe').Path
-            go test ./tools/windows -run '^Test(RTLDesktopMatchesNotepadPlusPlus|NotepadPlusPlusMultiSelectionClipboard)$' -count=1 -v -timeout=2m
+            $env:VIVAPAD_CLIPBOARD_FIXTURE_EXE = Join-Path $work 'vivapad-clipboard.test.exe'
+            go test -c -o $env:VIVAPAD_CLIPBOARD_FIXTURE_EXE ./cmd/vivapad
+            if ($LASTEXITCODE -ne 0) { throw 'Build Windows clipboard fixture failed' }
+            go test ./tools/windows -run '^Test(RTLDesktopMatchesNotepadPlusPlus|NotepadPlusPlusMultiSelectionClipboard|VivaPadMultiSelectionClipboardRoundTrip)$' -count=1 -v -timeout=3m
             if ($LASTEXITCODE -ne 0) { throw 'Native desktop reference checks failed' }
             $env:VIVAPAD_WINDOWS_CLIPBOARD_TEST = '1'
             go test ./cmd/vivapad -run '^TestMultiSelectionWritesWindowsClipboard$' -count=1 -v -timeout=1m

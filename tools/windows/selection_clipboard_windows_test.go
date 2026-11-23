@@ -10,10 +10,16 @@ import (
 	"vivapad/tools/windows"
 )
 
+const clipboardReceiverSource = "111\r\n222\r\n333\r\n444\r\n555\r\n"
+const clipboardReceiverPasted = "1c11\r\n2d22\r\n333\r\n4a44\r\n555\r\n"
+
 func TestNotepadPlusPlusMultiSelectionClipboard(t *testing.T) {
-	reference := os.Getenv("VIVAPAD_RTL_REFERENCE_EXE")
-	if reference == "" {
-		t.Skip("requires pinned portable Notepad++ on an isolated Windows desktop")
+	reference, app := os.Getenv("VIVAPAD_RTL_REFERENCE_EXE"), os.Getenv("VIVAPAD_RTL_DESKTOP_EXE")
+	if reference == "" && app == "" {
+		t.Skip("requires VivaPad and pinned portable Notepad++ on an isolated Windows desktop")
+	}
+	if reference == "" || app == "" {
+		t.Fatal("both desktop executables are required for the clipboard comparison")
 	}
 	path := filepath.Join(t.TempDir(), "selection.txt")
 	if err := os.WriteFile(path, []byte(windows.SelectionClipboardSource), 0600); err != nil {
@@ -55,16 +61,67 @@ func TestNotepadPlusPlusMultiSelectionClipboard(t *testing.T) {
 	if got := send(2570, 0, 0); got != 3 {
 		t.Fatalf("Scintilla selection count = %d, want 3", got)
 	}
-	for _, message := range []uintptr{0x0301, 0x0300} { // WM_COPY, WM_CUT
-		sequence := windows.ClipboardSequence()
-		send(message, 0, 0)
-		if sequence == windows.ClipboardSequence() {
-			t.Fatalf("message %#x did not write to the system clipboard", message)
-		}
-		if err := windows.CheckSelectionClipboard(); err != nil {
-			t.Fatalf("clipboard after %#x: %v", message, err)
-		}
+	checkClipboardShortcut(t, editor, 'C')
+	appData := filepath.Join(t.TempDir(), "appdata")
+	if err := os.Mkdir(appData, 0700); err != nil {
+		t.Fatal(err)
 	}
-	send(2176, 0, 0) // SCI_UNDO before closing the reference document
+	pasteIntoDesktopEditor(t, app, "VivaPad", append(os.Environ(), "APPDATA="+appData, "LOCALAPPDATA="+appData))
+	checkClipboardShortcut(t, editor, 'X')
+	editor.keys(t, keyLeftControl, 'Z')
+	editor.close(t)
+}
+
+func TestVivaPadMultiSelectionClipboardRoundTrip(t *testing.T) {
+	reference, fixture := os.Getenv("VIVAPAD_RTL_REFERENCE_EXE"), os.Getenv("VIVAPAD_CLIPBOARD_FIXTURE_EXE")
+	if fixture == "" && reference == "" {
+		t.Skip("requires the built VivaPad fixture and pinned portable Notepad++")
+	}
+	if fixture == "" || reference == "" {
+		t.Fatal("both the fixture and Notepad++ are required for the round trip")
+	}
+	path := filepath.Join(t.TempDir(), "source.txt")
+	if err := os.WriteFile(path, []byte(windows.SelectionClipboardSource), 0600); err != nil {
+		t.Fatal(err)
+	}
+	editor := openDesktopEditor(t, fixture, "VivaPad clipboard fixture", append(os.Environ(), "VIVAPAD_MULTI_SELECTION_FIXTURE="+path), "-test.run=^TestServeWindowsMultiSelectionClipboardFixture$")
+	awaitBytes(t, path+".ready", "ready")
+	checkClipboardShortcut(t, editor, 'C')
+	pasteIntoDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin")
+	checkClipboardShortcut(t, editor, 'X')
+	editor.keys(t, keyLeftControl, 'S')
+	awaitBytes(t, path, "b\n")
+	editor.keys(t, keyLeftControl, 'Z')
+	editor.keys(t, keyLeftControl, 'S')
+	awaitBytes(t, path, windows.SelectionClipboardSource)
+	checkClipboardShortcut(t, editor, 'C') // Undo also restores the selected ranges.
+	editor.close(t)
+}
+
+func checkClipboardShortcut(t *testing.T, editor *desktopEditor, key uintptr) {
+	t.Helper()
+	sequence := windows.ClipboardSequence()
+	editor.keys(t, keyLeftControl, key)
+	if sequence == windows.ClipboardSequence() {
+		t.Fatalf("Ctrl+%c did not update the Windows clipboard", key)
+	}
+	if err := windows.CheckSelectionClipboard(); err != nil {
+		t.Fatalf("Ctrl+%c: %v", key, err)
+	}
+}
+
+func pasteIntoDesktopEditor(t *testing.T, executable, title string, env []string, args ...string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "receiver.txt")
+	if err := os.WriteFile(path, []byte(clipboardReceiverSource), 0600); err != nil {
+		t.Fatal(err)
+	}
+	editor := openDesktopEditor(t, executable, title, env, append(args, path)...)
+	editor.focusText(t)
+	editor.keys(t, keyLeftControl, 0x24) // Home
+	editor.keys(t, 0x27)                 // Right
+	editor.keys(t, keyLeftControl, 'V')
+	editor.keys(t, keyLeftControl, 'S')
+	awaitBytes(t, path, clipboardReceiverPasted)
 	editor.close(t)
 }
