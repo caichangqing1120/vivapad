@@ -1,3 +1,5 @@
+const { setTimeout: delay } = require('node:timers/promises');
+
 function detectCommand(body) {
   if (typeof body !== 'string') return null;
   if (/^\s*\/unclaim(?:ed)?\s*$/.test(body)) return 'unclaim';
@@ -105,7 +107,7 @@ async function handleIssueComment({ github, context }) {
   return 'closed';
 }
 
-async function validatePullRequest({ github, context, pullNumber }) {
+async function validatePullRequest({ github, context, pullNumber, wait = delay }) {
   const number = pullNumber || context.payload.pull_request?.number;
   if (!Number.isSafeInteger(number) || number <= 0) throw new Error('Invalid pull request number');
   const query = `query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
@@ -121,6 +123,8 @@ async function validatePullRequest({ github, context, pullNumber }) {
   }`;
   const repositoryName = `${context.repo.owner}/${context.repo.repo}`;
   const cursors = new Set();
+  const retryDelays = [2000, 4000, 8000, 16000];
+  let retry = 0;
   let cursor = null;
   let count = 0;
   while (true) {
@@ -129,6 +133,12 @@ async function validatePullRequest({ github, context, pullNumber }) {
     if (!pull?.author?.login || !pull.closingIssuesReferences) throw new Error('Cannot verify pull request references');
     if (pull.author.__typename === 'Bot' && pull.author.login === 'dependabot') return 'dependency-update';
     const references = pull.closingIssuesReferences;
+    // GitHub may index closing references after delivering the PR event.
+    if (cursor === null && references.nodes.length === 0 && references.pageInfo.hasNextPage === false &&
+        retry < retryDelays.length) {
+      await wait(retryDelays[retry++]);
+      continue;
+    }
     for (const issue of references.nodes) {
       if (!sameLogin(issue.repository?.nameWithOwner, repositoryName) || issue.state !== 'OPEN') {
         throw new Error(`#${issue.number} must be an open issue in this repository`);

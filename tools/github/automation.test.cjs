@@ -4,6 +4,7 @@ const { detectCommand, handleIssueComment, validatePullRequest } = require('./au
 
 function fixture({ body = '/claim', assignees = [], state = 'open', pages = [] } = {}) {
   const calls = [];
+  const waits = [];
   const issue = { state, assignees: assignees.map(login => ({ login })) };
   const policy = { author: 'alice', authorType: 'User', references: null, pages: [] };
   const context = {
@@ -52,7 +53,7 @@ function fixture({ body = '/claim', assignees = [], state = 'open', pages = [] }
       } } };
     },
   };
-  return { github, context, calls, issue, policy };
+  return { github, context, calls, issue, policy, waits, wait: async ms => { waits.push(ms); } };
 }
 
 function page(prs = [], next = null) {
@@ -164,6 +165,29 @@ test('PR policy consumes GitHub-resolved references and current PR author, not r
   fixtureData.context.payload.pull_request.user.login = 'stale-author';
   assert.equal(await validatePullRequest(fixtureData), 'linked-and-claimed');
   assert.deepEqual(fixtureData.calls, [['policy', 8, null]]);
+});
+
+test('PR policy rereads the first page when GitHub has not indexed the closing reference yet', async () => {
+  const fixtureData = fixture({ assignees: ['alice'] });
+  fixtureData.policy.pages = [{ nodes: [], pageInfo: { hasNextPage: false } }];
+  assert.equal(await validatePullRequest(fixtureData), 'linked-and-claimed');
+  assert.deepEqual(fixtureData.calls, [['policy', 8, null], ['policy', 8, null]]);
+  assert.equal(fixtureData.waits.length, 1);
+});
+
+test('PR policy rejects a resolved but unclaimed reference after retrying an empty result', async () => {
+  const fixtureData = fixture();
+  fixtureData.policy.pages = [{ nodes: [], pageInfo: { hasNextPage: false } }];
+  await assert.rejects(validatePullRequest(fixtureData), /claim issue #7/i);
+  assert.equal(fixtureData.waits.length, 1);
+});
+
+test('PR policy stops retrying when GitHub keeps returning no closing references', async () => {
+  const fixtureData = fixture({ assignees: ['alice'] });
+  fixtureData.policy.references = [];
+  await assert.rejects(validatePullRequest(fixtureData), /link a claimed issue/i);
+  assert.equal(fixtureData.calls.length, 5);
+  assert.equal(fixtureData.waits.reduce((total, ms) => total + ms, 0), 30_000);
 });
 
 test('PR policy rejects absent, foreign, unassigned or closed resolved Issue references', async () => {
