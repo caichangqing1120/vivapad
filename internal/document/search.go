@@ -69,16 +69,54 @@ func searchWholeWord(value string, start, end int) bool {
 }
 
 func (doc *Document) WordAtCaret() (text.Range, bool) {
-	characters := []rune(doc.Editor.String())
+	value := doc.Editor.String()
 	caret := doc.Editor.Caret()
 	start, end := caret, caret
-	for start > 0 && wordRune(characters[start-1]) {
+	offset := doc.Editor.ByteOffset(caret)
+	for left := offset; left > 0; {
+		r, width := utf8.DecodeLastRuneInString(value[:left])
+		if !wordRune(r) {
+			break
+		}
+		left -= width
 		start--
 	}
-	for end < len(characters) && wordRune(characters[end]) {
+	for right := offset; right < len(value); {
+		r, width := utf8.DecodeRuneInString(value[right:])
+		if !wordRune(r) {
+			break
+		}
+		right += width
 		end++
 	}
 	return text.Range{Start: start, End: end}, start < end
+}
+
+// NextLiteralSelection finds the next non-overlapping occurrence of the
+// current selection, wrapping to the first available occurrence if needed.
+func (doc *Document) NextLiteralSelection(current text.Range, occupied []text.Range, options SearchOptions) (text.Range, bool) {
+	value := doc.Editor.String()
+	from, to := doc.Editor.ByteOffset(current.Start), doc.Editor.ByteOffset(current.End)
+	if from >= to {
+		return text.Range{}, false
+	}
+	var found text.Range
+	visitLiteralMatches(value, value[from:to], options.MatchCase, func(match text.Span) bool {
+		if match.Start < to && match.End > from ||
+			match.End <= from && found.End != 0 ||
+			options.WholeWord && !searchWholeWord(value, match.Start, match.End) {
+			return true
+		}
+		candidate := text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)}
+		for _, selection := range occupied {
+			if candidate.Start < selection.End && candidate.End > selection.Start {
+				return true
+			}
+		}
+		found = candidate
+		return match.Start < to
+	})
+	return found, found.End != 0
 }
 
 func byteAtRune(value string, offset int) int {

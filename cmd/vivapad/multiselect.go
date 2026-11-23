@@ -57,8 +57,14 @@ func (state *model) multiSelect(options document.SearchOptions, all bool) {
 		*selected = multiSelectionState{doc: doc, value: doc.Editor.String(), ranges: []text.Range{initial}, active: true}
 	}
 	main := selected.ranges[len(selected.ranges)-1]
-	characters := []rune(selected.value)
-	query := string(characters[main.Start:main.End])
+	if !all && !options.Regex {
+		if next, ok := doc.NextLiteralSelection(main, selected.ranges, options); ok {
+			selected.ranges = append(selected.ranges, next)
+			doc.Editor.SetSelection(next)
+		}
+		return
+	}
+	query := selected.value[doc.Editor.ByteOffset(main.Start):doc.Editor.ByteOffset(main.End)]
 	matches, err := doc.MatchesWith(query, options)
 	if err != nil || len(matches) == 0 {
 		return

@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/vivaui/viva/text"
@@ -55,6 +56,41 @@ func TestMultiSelectNextUndoLatestSkipAndWrap(t *testing.T) {
 	state.multiSelectNext(document.SearchOptions{})
 	if len(state.multiSelections[0].ranges) != 4 || state.multiSelections[0].ranges[3] != (text.Range{Start: 4, End: 7}) {
 		t.Fatalf("wrapped Next should revisit previously skipped match: %+v", state.multiSelections[0].ranges)
+	}
+}
+
+func TestMultiSelectNextSkipsMatchesOverlappingTheInitialRange(t *testing.T) {
+	state := newModel()
+	doc := state.space.Current()
+	doc.Editor.Insert("aaaaaa")
+	doc.Editor.ClearHistory()
+	initial := text.Range{Start: 1, End: 3}
+	doc.Editor.SetSelection(initial)
+	state.multiSelectNext(document.SearchOptions{MatchCase: true})
+	state.multiSelectNext(document.SearchOptions{MatchCase: true})
+	want := []text.Range{initial, {Start: 4, End: 6}}
+	if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, want) || doc.Editor.CanUndo() {
+		t.Fatalf("selected %+v, want %+v with no Undo entry", got, want)
+	}
+}
+
+func TestMultiSelectNextDoesNotAllocateForOtherMatches(t *testing.T) {
+	state := newModel()
+	doc := state.space.Current()
+	doc.Editor.Insert(strings.Repeat("cat ", 50_000))
+	doc.Editor.ClearHistory()
+	allocations := testing.AllocsPerRun(3, func() {
+		state.multiSelections[0] = multiSelectionState{}
+		doc.Editor.MoveTo(1, false)
+		state.multiSelectNext(document.SearchOptions{WholeWord: true})
+		state.multiSelectNext(document.SearchOptions{WholeWord: true})
+		if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, []text.Range{{Start: 0, End: 3}, {Start: 4, End: 7}}) || doc.Editor.CanUndo() {
+			t.Fatalf("selected %+v, wanted the first two matches without editing", got)
+		}
+	})
+	t.Logf("allocations per initial selection and Next: %.0f", allocations)
+	if allocations > 256 {
+		t.Fatalf("Next allocated %.0f times for 50,000 matches", allocations)
 	}
 }
 
