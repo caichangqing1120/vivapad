@@ -60,51 +60,47 @@ func (state *model) editMultiSelection(pane int, value string, kind multiEditKin
 		return false, fmt.Errorf("read-only document")
 	}
 	before := doc.Editor.String()
-	characters := []rune(before)
-	boundaries := multiGraphemeBoundaries(before)
-	positions := make([]int, len(characters)+1)
-	for index, character := range characters {
-		positions[index+1] = positions[index] + utf8.RuneLen(character)
+	runeCount := doc.Editor.RuneCount()
+	if kind != multiInsert {
+		value = ""
 	}
+	inserted := utf8.RuneCountInString(value)
+	var boundaries []int
 	type indexedEdit struct {
 		index  int
 		target text.Range
-		value  string
 	}
 	edits := make([]indexedEdit, 0, len(selected.ranges))
 	for index, selection := range selected.ranges {
-		if selection.Start < 0 || selection.End > len(characters) || selection.End < selection.Start {
+		if selection.Start < 0 || selection.End > runeCount || selection.End < selection.Start {
 			return false, fmt.Errorf("invalid multi-selection")
 		}
 		target := selection
-		replacement := value
-		if kind != multiInsert {
+		if kind != multiInsert && selection.Start == selection.End {
+			if boundaries == nil {
+				boundaries = multiGraphemeBoundaries(before)
+			}
 			target = multiDeleteTarget(selection, kind, boundaries)
-			replacement = ""
 		}
-		edits = append(edits, indexedEdit{index: index, target: target, value: replacement})
+		edits = append(edits, indexedEdit{index: index, target: target})
 	}
 	slices.SortFunc(edits, func(left, right indexedEdit) int { return left.target.Start - right.target.Start })
 	changes := make([]text.Replacement, 0, len(edits))
-	byteEdits := make([]document.ReplacementEdit, 0, len(edits))
 	carets := make([]text.Range, len(edits))
+	hasEdits := false
 	shift := 0
 	for index, edit := range edits {
 		if index > 0 && edit.target.Start < edits[index-1].target.End ||
 			index > 0 && edit.target.Start == edits[index-1].target.Start {
 			return false, fmt.Errorf("multi-selection deletion ranges overlap")
 		}
-		changes = append(changes, text.Replacement{Range: edit.target, Text: edit.value})
-		if edit.target.Start != edit.target.End || edit.value != "" {
-			byteEdits = append(byteEdits, document.ReplacementEdit{
-				Start: positions[edit.target.Start], End: positions[edit.target.End], Text: edit.value,
-			})
-		}
-		caret := edit.target.Start + shift + utf8.RuneCountInString(edit.value)
+		changes = append(changes, text.Replacement{Range: edit.target, Text: value})
+		hasEdits = hasEdits || edit.target.Start != edit.target.End || inserted != 0
+		caret := edit.target.Start + shift + inserted
 		carets[edit.index] = text.Range{Start: caret, End: caret}
-		shift += utf8.RuneCountInString(edit.value) - (edit.target.End - edit.target.Start)
+		shift += inserted - (edit.target.End - edit.target.Start)
 	}
-	if len(byteEdits) == 0 {
+	if !hasEdits {
 		return false, nil
 	}
 	state.bookmarkLines(doc)
