@@ -2883,6 +2883,17 @@ func (state *model) command(command string) {
 	}
 	if all, options, ok := multiSelectModeForCommand(command); ok {
 		state.multiSelect(options, all)
+		step := macro.Step{Kind: macro.SelectionStep, Selection: macro.SelectNextMatch}
+		if all {
+			step.Selection = macro.SelectAllMatches
+		}
+		if options.MatchCase {
+			step.SelectFlags |= macro.SelectMatchCase
+		}
+		if options.WholeWord {
+			step.SelectFlags |= macro.SelectWholeWord
+		}
+		state.recordMacro(doc, step)
 		state.focusViewRequested, state.focusViewArmed = true, false
 		state.invalidator.Invalidate()
 		return
@@ -3220,10 +3231,12 @@ func (state *model) command(command string) {
 		state.menuOpen, state.multiNextMenuOpen = 1, true
 	case "Undo Latest Multi-Select":
 		state.undoMultiSelect()
+		state.recordMacro(doc, macro.Step{Kind: macro.SelectionStep, Selection: macro.UndoLatestSelection})
 		state.focusViewRequested, state.focusViewArmed = true, false
 		state.invalidator.Invalidate()
 	case "Skip Current Multi-Select":
 		state.skipMultiSelect()
+		state.recordMacro(doc, macro.Step{Kind: macro.SelectionStep, Selection: macro.SkipCurrentMatch})
 		state.focusViewRequested, state.focusViewArmed = true, false
 		state.invalidator.Invalidate()
 	case "Redact Selection", "Redact Selection with Bullets":

@@ -209,6 +209,30 @@ func TestInvalidOrOversizedPlaybackLeavesDocumentUntouched(t *testing.T) {
 	}
 }
 
+func TestMultiSelectionMacroStepValidation(t *testing.T) {
+	valid := []Step{
+		{Kind: SelectionStep, Selection: SelectAllMatches, SelectFlags: SelectMatchCase | SelectWholeWord},
+		{Kind: SelectionStep, Selection: UndoLatestSelection},
+		{Kind: MultiTextStep, TextKind: app.TextInsert, Text: "x"},
+		{Kind: MultiTextStep, TextKind: app.TextCommandEvent, Command: app.TextDeleteForward},
+	}
+	if err := Validate(valid); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []Step{
+		{Kind: SelectionStep, Selection: SelectAllMatches, SelectFlags: 4},
+		{Kind: SelectionStep, Selection: SkipCurrentMatch, SelectFlags: SelectWholeWord},
+		{Kind: SelectionStep, Selection: SelectNextMatch, Text: "unexpected"},
+		{Kind: TextStep, TextKind: app.TextInsert, Selection: SelectAllMatches, Text: "x"},
+		{Kind: MultiTextStep, TextKind: app.TextInsert},
+		{Kind: MultiTextStep, TextKind: app.TextCommandEvent, Command: app.TextSelectAll},
+	} {
+		if err := Validate([]Step{step}); err == nil {
+			t.Fatalf("invalid step accepted: %+v", step)
+		}
+	}
+}
+
 func TestPrivateMacroRoundTripAndInvalidStorage(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "VivaPad", "macro.json")
 	want := []Step{{Kind: TextStep, TextKind: app.TextInsert, Text: "中文"}, {Kind: TextStep, TextKind: app.TextCommandEvent, Command: app.TextMoveLeft}}

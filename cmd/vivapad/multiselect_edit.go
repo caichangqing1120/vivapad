@@ -10,6 +10,7 @@ import (
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
+	"vivapad/internal/macro"
 )
 
 type multiEditKind uint8
@@ -109,7 +110,7 @@ func (state *model) editMultiSelection(pane int, value string, kind multiEditKin
 	}
 	state.bookmarkLines(doc)
 	after := doc.Editor.String()
-	if before == after {
+	if before == after && doc.Editor.Selection() == selected.ranges[len(selected.ranges)-1] {
 		return false, nil
 	}
 	state.multiSelections[pane] = multiSelectionState{doc: doc, value: after, ranges: carets, active: true}
@@ -117,9 +118,22 @@ func (state *model) editMultiSelection(pane int, value string, kind multiEditKin
 	state.recordMultiSelectionTransition(pane, doc, before, after, selected)
 	state.relocateSelectAnchors(doc, before, after, -1)
 	if state.macroRecording {
-		state.cancelMacroUnsupported("multi-selection edit")
+		step := macro.Step{Kind: macro.MultiTextStep, TextKind: app.TextCommandEvent}
+		switch kind {
+		case multiInsert:
+			if value == "" {
+				state.cancelMacroUnsupported("multi-selection cut")
+				return true, nil
+			}
+			step.TextKind, step.Text = app.TextInsert, value
+		case multiDeleteBackward:
+			step.Command = app.TextDeleteBackward
+		case multiDeleteForward:
+			step.Command = app.TextDeleteForward
+		}
+		state.recordMacro(doc, step)
 	}
-	return true, nil
+	return before != after, nil
 }
 
 func (selected multiSelectionState) hasClipboardText() bool {
@@ -216,6 +230,9 @@ func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 			return app.TextStateOf(doc.Editor), nil
 		}
 		if event.CompositionPhase != text.CompositionNone {
+			if state.macroRecording {
+				state.cancelMacroUnsupported("multi-selection composition")
+			}
 			next, handled := state.applyMacroComposition(doc, event)
 			if handled {
 				state.multiSelections[pane] = multiSelectionState{}
@@ -244,6 +261,9 @@ func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 			case app.TextDeleteForward:
 				kind = multiDeleteForward
 			case app.TextUndo, app.TextRedo:
+				if state.macroRecording {
+					state.cancelMacroUnsupported("undo or redo")
+				}
 				state.bookmarkLines(doc)
 				before := doc.Editor.String()
 				if event.Command == app.TextUndo && doc.Editor.Undo() || event.Command == app.TextRedo && doc.Editor.Redo() {
@@ -256,6 +276,9 @@ func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 				return state.macroTextInput(doc).OnEvent(event)
 			}
 		} else if !cutting && (event.Kind != app.TextInsert && event.Kind != app.TextPaste || event.Rectangular) {
+			if state.macroRecording && event.Rectangular {
+				state.cancelMacroUnsupported("column paste")
+			}
 			state.multiSelections[pane] = multiSelectionState{}
 			return state.macroTextInput(doc).OnEvent(event)
 		}
