@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/text"
@@ -48,29 +49,45 @@ func (state *model) closeRunDialog() {
 }
 
 func runCurrentWord(doc *document.Document) string {
-	characters := []rune(doc.Editor.String())
-	selection := doc.Editor.Selection()
+	const limit = 1024
+	editor := doc.Editor
+	value := editor.String()
+	selection := editor.Selection()
 	if selection.End > selection.Start {
-		return string(characters[selection.Start:min(selection.End, selection.Start+1024)])
+		start := editor.ByteOffset(selection.Start)
+		end := editor.ByteOffset(min(selection.End, selection.Start+limit))
+		return value[start:end]
 	}
-	caret := doc.Editor.Caret()
 	word := func(character rune) bool {
 		return unicode.IsLetter(character) || unicode.IsNumber(character) || character == '_'
 	}
-	if caret >= len(characters) || !word(characters[caret]) {
-		caret--
+	start := editor.ByteOffset(editor.Caret())
+	character, size := utf8.DecodeRuneInString(value[start:])
+	if !word(character) {
+		character, size = utf8.DecodeLastRuneInString(value[:start])
+		if !word(character) {
+			return ""
+		}
+		start -= size
 	}
-	if caret < 0 || !word(characters[caret]) {
-		return ""
+	end, count := start+size, 1
+	for start > 0 {
+		character, size := utf8.DecodeLastRuneInString(value[:start])
+		if !word(character) {
+			break
+		}
+		start -= size
+		count++
 	}
-	start, end := caret, caret+1
-	for start > 0 && word(characters[start-1]) {
-		start--
+	for end < len(value) && count < limit {
+		character, size := utf8.DecodeRuneInString(value[end:])
+		if !word(character) {
+			break
+		}
+		end += size
+		count++
 	}
-	for end < len(characters) && word(characters[end]) && end-start < 1024 {
-		end++
-	}
-	return string(characters[start:end])
+	return value[start:end]
 }
 
 func (state *model) runVariables(doc *document.Document) runcommand.Variables {
