@@ -100,8 +100,13 @@ func (state *model) runVariables(doc *document.Document) runcommand.Variables {
 	}
 	appPath, _ := os.Executable()
 	lineText := value[start:end]
-	if len(lineText) > 4096 {
-		lineText = lineText[:4096]
+	const maxLineBytes = 4096
+	if len(lineText) > maxLineBytes {
+		cut := maxLineBytes
+		for !utf8.RuneStart(lineText[cut]) {
+			cut--
+		}
+		lineText = lineText[:cut]
 	}
 	return runcommand.Variables{Path: doc.Path, Word: runCurrentWord(doc), Line: line, Column: column, LineText: lineText, AppPath: appPath}
 }
