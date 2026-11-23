@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"slices"
 
 	"github.com/vivaui/viva/components"
@@ -59,15 +60,29 @@ func (state *model) multiSelect(options document.SearchOptions, all bool) {
 		}
 	}
 	main := selected.ranges[len(selected.ranges)-1]
+	if main.Start == main.End && !slices.ContainsFunc(selected.ranges, func(r text.Range) bool { return r.Start != r.End }) {
+		word, found := doc.MultiSelectionWordAtCaret()
+		if !found {
+			return
+		}
+		main = word
+		selected.ranges[len(selected.ranges)-1] = word
+		selected.ranges = trimCoveredMultiSelectCarets(selected.ranges)
+		doc.Editor.SetSelection(word)
+		if !all {
+			return
+		}
+	}
 	if !options.Regex {
 		if all {
 			originalCount := len(selected.ranges)
 			selected.ranges = doc.AppendLiteralSelections(main, selected.ranges, options)
 			if len(selected.ranges) > originalCount {
+				selected.ranges = trimCoveredMultiSelectCarets(selected.ranges)
 				doc.Editor.SetSelection(selected.ranges[len(selected.ranges)-1])
 			}
 		} else if next, ok := doc.NextLiteralSelection(main, selected.ranges, options); ok {
-			selected.ranges = append(selected.ranges, next)
+			selected.ranges = trimCoveredMultiSelectCarets(append(selected.ranges, next))
 			doc.Editor.SetSelection(next)
 		}
 		return
@@ -86,10 +101,11 @@ func (state *model) multiSelect(options document.SearchOptions, all bool) {
 			before = append(before, candidate)
 		}
 	}
+	added := false
 	for _, candidate := range append(after, before...) {
 		overlaps := false
 		for _, existing := range selected.ranges {
-			if candidate.Start < existing.End && candidate.End > existing.Start {
+			if existing.Start != existing.End && candidate.Start < existing.End && candidate.End > existing.Start {
 				overlaps = true
 				break
 			}
@@ -98,11 +114,35 @@ func (state *model) multiSelect(options document.SearchOptions, all bool) {
 			continue
 		}
 		selected.ranges = append(selected.ranges, candidate)
+		added = true
 		doc.Editor.SetSelection(candidate)
 		if !all {
-			return
+			break
 		}
 	}
+	if added {
+		selected.ranges = trimCoveredMultiSelectCarets(selected.ranges)
+	}
+}
+
+func trimCoveredMultiSelectCarets(ranges []text.Range) []text.Range {
+	if !slices.ContainsFunc(ranges, func(r text.Range) bool { return r.Start == r.End }) {
+		return ranges
+	}
+	words := make([]text.Range, 0, len(ranges))
+	for _, r := range ranges {
+		if r.Start != r.End {
+			words = append(words, r)
+		}
+	}
+	slices.SortFunc(words, func(a, b text.Range) int { return cmp.Compare(a.End, b.End) })
+	return slices.DeleteFunc(ranges, func(r text.Range) bool {
+		if r.Start != r.End {
+			return false
+		}
+		i, _ := slices.BinarySearchFunc(words, r.Start, func(word text.Range, at int) int { return cmp.Compare(word.End, at) })
+		return i < len(words) && words[i].Start <= r.Start
+	})
 }
 
 func (state *model) undoMultiSelect() {
@@ -125,13 +165,18 @@ func (state *model) skipMultiSelect() {
 	pane := state.activePane
 	doc := state.paneDocument(pane)
 	state.syncMultiSelection(pane, doc)
-	previous := len(state.multiSelections[pane].ranges)
-	state.multiSelectNext(state.multiSelectOptions)
 	selected := &state.multiSelections[pane]
-	if previous == 0 || len(selected.ranges) <= previous {
+	var previous text.Range
+	if len(selected.ranges) != 0 {
+		previous = selected.ranges[len(selected.ranges)-1]
+	}
+	state.multiSelectNext(state.multiSelectOptions)
+	if previous.Start == previous.End || len(selected.ranges) == 0 || selected.ranges[len(selected.ranges)-1] == previous {
 		return
 	}
-	selected.ranges = slices.Delete(selected.ranges, previous-1, previous)
+	if i := slices.Index(selected.ranges, previous); i >= 0 {
+		selected.ranges = slices.Delete(selected.ranges, i, i+1)
+	}
 }
 
 func (state *model) paintMultiSelection(snapshot *components.CodeEditorSnapshot, doc *document.Document, pane int) {

@@ -77,6 +77,57 @@ func TestMultiSelectAllKeepsExistingRangesAndWrapOrder(t *testing.T) {
 	}
 }
 
+func TestMultiSelectResumesFromCaretsAfterBatchEdit(t *testing.T) {
+	for _, mode := range []string{"Next", "All", "Next then All", "Skip at a covered caret", "no word"} {
+		t.Run(mode, func(t *testing.T) {
+			state := newModel()
+			doc := state.space.Current()
+			doc.Editor.Insert("one one new")
+			doc.Editor.ClearHistory()
+			first := text.Range{Start: 0, End: 3}
+			second := text.Range{Start: 4, End: 7}
+			doc.Editor.SetSelection(first)
+			options := document.SearchOptions{WholeWord: true}
+			state.multiSelectAll(options)
+			replacement := "new"
+			if mode == "no word" {
+				replacement = "!"
+			}
+			if changed, err := state.editMultiSelection(0, replacement, multiInsert); err != nil || !changed {
+				t.Fatalf("replace: changed=%t, error=%v", changed, err)
+			}
+			value := doc.Editor.String()
+			want := append([]text.Range(nil), state.multiSelections[0].ranges...)
+			switch mode {
+			case "Next":
+				state.multiSelectNext(options)
+				want = []text.Range{{Start: 3, End: 3}, second}
+			case "All", "Next then All":
+				if mode == "Next then All" {
+					state.multiSelectNext(options)
+				}
+				state.multiSelectAll(options)
+				want = []text.Range{second, {Start: 8, End: 11}, first}
+			case "Skip at a covered caret":
+				state.multiSelectNext(options)
+				state.multiSelectNext(options)
+				state.skipMultiSelect()
+				want = []text.Range{second, first}
+			default:
+				state.multiSelectNext(options)
+				state.multiSelectAll(options)
+			}
+			if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, want) || doc.Editor.Selection() != want[len(want)-1] || doc.Editor.String() != value {
+				t.Fatalf("ranges = %+v, main = %+v, text = %q; want %+v and %q", got, doc.Editor.Selection(), doc.Editor.String(), want, value)
+			}
+			state.command("Undo")
+			if doc.Editor.String() != "one one new" || doc.Editor.CanUndo() || !reflect.DeepEqual(state.multiSelections[0].ranges, []text.Range{first, second}) {
+				t.Fatalf("undo = %q, ranges=%+v, history=%t", doc.Editor.String(), state.multiSelections[0].ranges, doc.Editor.CanUndo())
+			}
+		})
+	}
+}
+
 func TestMultiSelectAllAvoidsAnAllocationPerMatch(t *testing.T) {
 	state := newModel()
 	doc := state.space.Current()
