@@ -100,7 +100,7 @@ func TestSummaryModalUsesActiveSplitViewAndPreservesEditingState(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(3))
-	clickID(t, driver, menuItemScope.At(22))
+	clickID(t, driver, menuItemScope.At(viewCommandIndex("Summary...")))
 	if !state.summaryOpen || state.summary.characters != 8 || state.summary.selectedCharacters != 2 || state.summary.selectedBytes != 6 {
 		t.Fatalf("active-pane summary = %+v, open=%v", state.summary, state.summaryOpen)
 	}

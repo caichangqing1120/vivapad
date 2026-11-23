@@ -35,11 +35,11 @@ func TestFocusOnAnotherViewKeepsBothEditorsIntact(t *testing.T) {
 		doc   *document.Document
 	}{{1, rightEditorID, right}, {0, editorID, left}} {
 		clickID(t, driver, menuScope.At(3))
-		hit := syncScrollHit(t, driver, menuItemScope.At(24))
+		hit := syncScrollHit(t, driver, menuItemScope.At(viewCommandIndex("Focus on Another View")))
 		if hit.Y+hit.Height > 400-statusHeight || hit.Height < 12 {
 			t.Fatalf("View focus row clipped: %+v", hit)
 		}
-		clickID(t, driver, menuItemScope.At(24))
+		clickID(t, driver, menuItemScope.At(viewCommandIndex("Focus on Another View")))
 		if err := driver.Pump(); err != nil {
 			t.Fatal(err)
 		}
@@ -55,7 +55,7 @@ func TestFocusOnAnotherViewKeepsBothEditorsIntact(t *testing.T) {
 func TestFocusOnAnotherViewWithoutSplitKeepsOneEditor(t *testing.T) {
 	state, driver := startDriver(t)
 	clickID(t, driver, menuScope.At(3))
-	clickID(t, driver, menuItemScope.At(24))
+	clickID(t, driver, menuItemScope.At(viewCommandIndex("Focus on Another View")))
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}

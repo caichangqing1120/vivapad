@@ -146,7 +146,7 @@ func (state *model) nppSessionStateWithFolders(includeWorkspace bool) (session.N
 			entry := session.NPPFile{
 				Path: doc.Path, Encoding: nppCodepage(doc), Language: nppLanguage(state.languageFor(doc)),
 				StartPos: nppBytePosition(doc, selection.Start), EndPos: nppBytePosition(doc, selection.End),
-				Marks: append([]int(nil), marks...), Folds: state.foldHeaders(doc), ReadOnly: state.readOnly[doc] && state.monitors[doc] == nil, Pinned: state.isPinned(doc), Color: state.tabColors[doc],
+				Marks: append([]int(nil), marks...), Folds: state.foldHeaders(doc), ReadOnly: state.readOnly[doc] && state.monitors[doc] == nil, Pinned: state.isPinned(doc), Color: state.tabColors[doc], RTL: doc.RTL,
 			}
 			if selection.Start != selection.End && doc.Editor.Caret() == selection.Start {
 				entry.StartPos, entry.EndPos = entry.EndPos, entry.StartPos
@@ -393,7 +393,7 @@ func (state *model) loadNPPSession() {
 				// Omitted language leaves the existing mode; explicit Normal Text clears it.
 				sameLanguage := item.language == language && (item.file.Language == "") == (file.Language == "")
 				if !slices.Equal(item.file.Marks, file.Marks) || !slices.Equal(item.file.Folds, file.Folds) ||
-					item.file.ReadOnly != file.ReadOnly || item.file.Pinned != file.Pinned || item.file.Color != file.Color || !sameLanguage {
+					item.file.ReadOnly != file.ReadOnly || item.file.Pinned != file.Pinned || item.file.Color != file.Color || item.file.RTL != file.RTL || !sameLanguage {
 					state.notice = "Session has conflicting document state for " + canonical
 					return
 				}
@@ -432,6 +432,7 @@ func (state *model) loadNPPSession() {
 		state.setBookmarkLines(item.doc, item.file.Marks)
 		state.readOnly[item.doc] = item.file.ReadOnly
 		state.pinned[item.doc] = item.file.Pinned
+		item.doc.RTL = item.file.RTL
 		if item.file.Color == 0 {
 			delete(state.tabColors, item.doc)
 		} else {

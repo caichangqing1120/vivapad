@@ -39,7 +39,7 @@ func TestMissingAndDamagedSessions(t *testing.T) {
 	}
 	for name, content := range map[string]string{
 		"malformed":              "{",
-		"unsupported":            `{"version":13,"paths":[],"active":""}`,
+		"unsupported":            `{"version":999,"paths":[],"active":""}`,
 		"unknown read-only path": `{"version":4,"paths":[],"active":"","read_only":{"/missing.txt":true}}`,
 		"unknown pinned path":    `{"version":5,"paths":[],"active":"","pinned":{"/missing.txt":true}}`,
 		"relative folder":        `{"version":6,"paths":[],"active":"","folder_roots":["relative"]}`,

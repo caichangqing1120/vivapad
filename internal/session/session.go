@@ -14,7 +14,7 @@ import (
 	"vivapad/internal/syntax"
 )
 
-const version = 12
+const version = 13
 const maxJSONSessionBytes = 1 << 20
 
 type FoldState struct {
@@ -31,6 +31,7 @@ type State struct {
 	Folds               map[string]FoldState
 	ReadOnly            map[string]bool
 	Pinned              map[string]bool
+	RTL                 map[string]bool
 	TabColors           map[string]uint8
 	FolderRoots         []string
 	FolderVisible       bool
@@ -59,6 +60,7 @@ type diskState struct {
 	Folds               map[string]FoldState `json:"folds,omitempty"`
 	ReadOnly            map[string]bool      `json:"read_only,omitempty"`
 	Pinned              map[string]bool      `json:"pinned,omitempty"`
+	RTL                 map[string]bool      `json:"rtl,omitempty"`
 	TabColors           map[string]uint8     `json:"tab_colors,omitempty"`
 	FolderRoots         []string             `json:"folder_roots,omitempty"`
 	FolderVisible       bool                 `json:"folder_visible,omitempty"`
@@ -72,7 +74,7 @@ func Save(path string, state State) error {
 	if err := validate(state); err != nil {
 		return err
 	}
-	data, err := json.Marshal(diskState{Version: version, Paths: state.Paths, Active: state.Active, View: state.View, Encodings: state.Encodings, Languages: state.Languages, Folds: state.Folds, ReadOnly: state.ReadOnly, Pinned: state.Pinned, TabColors: state.TabColors, FolderRoots: state.FolderRoots, FolderVisible: state.FolderVisible, DocumentMapVisible: state.DocumentMapVisible, FunctionListVisible: state.FunctionListVisible, DocumentListVisible: state.DocumentListVisible, ActiveLeftDock: state.ActiveLeftDock})
+	data, err := json.Marshal(diskState{Version: version, Paths: state.Paths, Active: state.Active, View: state.View, Encodings: state.Encodings, Languages: state.Languages, Folds: state.Folds, ReadOnly: state.ReadOnly, Pinned: state.Pinned, RTL: state.RTL, TabColors: state.TabColors, FolderRoots: state.FolderRoots, FolderVisible: state.FolderVisible, DocumentMapVisible: state.DocumentMapVisible, FunctionListVisible: state.FunctionListVisible, DocumentListVisible: state.DocumentListVisible, ActiveLeftDock: state.ActiveLeftDock})
 	if err != nil {
 		return err
 	}
@@ -149,7 +151,7 @@ func decodeSession(source io.Reader) (State, error) {
 	if stored.Version < 1 || stored.Version > version {
 		return State{}, fmt.Errorf("unsupported session version %d", stored.Version)
 	}
-	state := State{Paths: stored.Paths, Active: stored.Active, View: stored.View, Encodings: stored.Encodings, Languages: stored.Languages, Folds: stored.Folds, ReadOnly: stored.ReadOnly, Pinned: stored.Pinned, TabColors: stored.TabColors, FolderRoots: stored.FolderRoots, FolderVisible: stored.FolderVisible, DocumentMapVisible: stored.DocumentMapVisible, FunctionListVisible: stored.FunctionListVisible, DocumentListVisible: stored.DocumentListVisible, ActiveLeftDock: stored.ActiveLeftDock}
+	state := State{Paths: stored.Paths, Active: stored.Active, View: stored.View, Encodings: stored.Encodings, Languages: stored.Languages, Folds: stored.Folds, ReadOnly: stored.ReadOnly, Pinned: stored.Pinned, RTL: stored.RTL, TabColors: stored.TabColors, FolderRoots: stored.FolderRoots, FolderVisible: stored.FolderVisible, DocumentMapVisible: stored.DocumentMapVisible, FunctionListVisible: stored.FunctionListVisible, DocumentListVisible: stored.DocumentListVisible, ActiveLeftDock: stored.ActiveLeftDock}
 	if stored.Version == 1 {
 		state.View = ViewState{}
 	}
@@ -182,6 +184,9 @@ func decodeSession(source io.Reader) (State, error) {
 	}
 	if stored.Version < 12 {
 		state.TabColors = nil
+	}
+	if stored.Version < 13 {
+		state.RTL = nil
 	}
 	if err := validate(state); err != nil {
 		return State{}, err
@@ -247,6 +252,11 @@ func validate(state State) error {
 	for path, color := range state.TabColors {
 		if !paths[path] || color < 1 || color > 5 {
 			return fmt.Errorf("invalid session tab color for %s", path)
+		}
+	}
+	for path, enabled := range state.RTL {
+		if !paths[path] || !enabled {
+			return fmt.Errorf("invalid session RTL state for %s", path)
 		}
 	}
 	if len(state.FolderRoots) > 64 {

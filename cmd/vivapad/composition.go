@@ -74,6 +74,9 @@ func (state *model) documentTextInput(pane int) *app.TextInput {
 				state.cancelDocumentComposition(doc)
 				return app.TextStateOf(doc.Editor), nil
 			}
+			if !state.rectangles[pane].active && !state.multiSelections[pane].active && state.moveShapedTextCommand(pane, doc, event) {
+				return app.TextStateOf(doc.Editor), nil
+			}
 			if event.Kind != app.TextSetMarked || event.CompositionPhase != text.CompositionNone {
 				return handle(event)
 			}

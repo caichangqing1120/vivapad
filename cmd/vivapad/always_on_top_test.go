@@ -26,20 +26,20 @@ func TestAlwaysOnTopMenuKeepsDocumentAndOnlyChecksSuccessfulRequests(t *testing.
 		return nil
 	}
 	clickID(t, driver, menuScope.At(3))
-	revealViewMenuItem(t, driver, 26)
-	row := syncScrollHit(t, driver, menuItemScope.At(26))
+	revealViewMenuItem(t, driver, viewCommandIndex("Always on Top"))
+	row := syncScrollHit(t, driver, menuItemScope.At(viewCommandIndex("Always on Top")))
 	if row.Y < menuHeight || row.Y+row.Height > 400-statusHeight {
 		t.Fatalf("topmost command clipped at 640x400: %+v", row)
 	}
-	clickID(t, driver, menuItemScope.At(26))
+	clickID(t, driver, menuItemScope.At(viewCommandIndex("Always on Top")))
 	if !state.alwaysOnTop || len(requests) != 1 || !requests[0] || doc.Editor.String() != before || doc.Editor.CanUndo() {
 		t.Fatalf("topmost command changed document or failed: state=%v requests=%v text=%q", state.alwaysOnTop, requests, doc.Editor.String())
 	}
 	clickID(t, driver, menuScope.At(3))
-	revealViewMenuItem(t, driver, 26)
+	revealViewMenuItem(t, driver, viewCommandIndex("Always on Top"))
 	checked := false
 	for _, hit := range driver.Snapshot().Hits {
-		if hit.ID == menuItemScope.At(26) {
+		if hit.ID == menuItemScope.At(viewCommandIndex("Always on Top")) {
 			checked = hit.Checked
 		}
 	}
@@ -48,7 +48,7 @@ func TestAlwaysOnTopMenuKeepsDocumentAndOnlyChecksSuccessfulRequests(t *testing.
 	}
 	failed := errors.New("window manager denied")
 	state.requestAlwaysOnTop = func(bool) error { return failed }
-	clickID(t, driver, menuItemScope.At(26))
+	clickID(t, driver, menuItemScope.At(viewCommandIndex("Always on Top")))
 	if !state.alwaysOnTop || !strings.Contains(state.notice, failed.Error()) || doc.Editor.String() != before {
 		t.Fatalf("rejected request cleared topmost: %v, %q", state.alwaysOnTop, state.notice)
 	}
@@ -90,7 +90,7 @@ func TestCaptureAlwaysOnTopMenuWhenRequested(t *testing.T) {
 			t.Fatal(err)
 		}
 		clickID(t, web.Driver(), menuScope.At(3))
-		row := revealViewMenuItem(t, web.Driver(), 26)
+		row := revealViewMenuItem(t, web.Driver(), viewCommandIndex("Always on Top"))
 		if row.Y < menuHeight || row.Y+row.Height > float32(size.height)-statusHeight {
 			t.Fatalf("%s topmost row clipped: %+v", size.name, row)
 		}
@@ -100,6 +100,6 @@ func TestCaptureAlwaysOnTopMenuWhenRequested(t *testing.T) {
 		if err := web.Screenshot(filepath.Join(output, "always-on-top-menu-"+size.name+".png")); err != nil {
 			t.Fatal(err)
 		}
-		clickID(t, web.Driver(), menuItemScope.At(26))
+		clickID(t, web.Driver(), menuItemScope.At(viewCommandIndex("Always on Top")))
 	}
 }

@@ -894,6 +894,7 @@ func newStartupModel(paths []string, sessionPath string) *model {
 		state.restoreSessionFolds(stored.Folds)
 		state.restoreSessionReadOnly(stored.ReadOnly)
 		state.restoreSessionPinned(stored.Pinned)
+		state.restoreSessionDirection(stored.RTL)
 		state.restoreTabColors(stored.TabColors)
 		state.restoreFolderWorkspace(stored)
 		state.restoreFunctionDock(stored)
@@ -926,6 +927,7 @@ func newStartupModel(paths []string, sessionPath string) *model {
 	state.resetPaneOwnership()
 	state.restoreSessionReadOnly(stored.ReadOnly)
 	state.restoreSessionPinned(stored.Pinned)
+	state.restoreSessionDirection(stored.RTL)
 	state.restoreTabColors(stored.TabColors)
 	if sessionErr == nil {
 		state.restoreFolderWorkspace(stored)
@@ -1467,6 +1469,11 @@ func newConfig(state *model) app.Config {
 		}
 		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
 			return gfx.EventResult{Handled: true}
+		}
+		if command := directionShortcut(event); command != "" {
+			state.activatePane(paneForTarget(event.Target))
+			state.command(command)
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) &&
 			state.isReadOnly(state.paneDocument(pane)) && event.Modifiers == primary() {
@@ -2141,6 +2148,9 @@ func newConfig(state *model) app.Config {
 		if state.extendRectangleKey(pane, event) {
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
+		if state.moveShapedHorizontal(pane, doc, event) {
+			return gfx.EventResult{Handled: true, Repaint: true}
+		}
 		if state.isReadOnly(doc) && (event.Key == gfx.KeyLeft || event.Key == gfx.KeyRight) {
 			modifiers := event.Modifiers &^ gfx.ModifierShift
 			extend := event.Modifiers&gfx.ModifierShift != 0
@@ -2688,6 +2698,12 @@ func (state *model) persistSession() {
 				}
 				stored.Pinned[doc.Path] = true
 			}
+			if doc.RTL {
+				if stored.RTL == nil {
+					stored.RTL = make(map[string]bool)
+				}
+				stored.RTL[doc.Path] = true
+			}
 			if color := state.tabColors[doc]; color > 0 {
 				if stored.TabColors == nil {
 					stored.TabColors = make(map[string]uint8)
@@ -2787,6 +2803,10 @@ func (state *model) goToLine() {
 }
 
 func (state *model) command(command string) {
+	if command == textDirectionRTL || command == textDirectionLTR {
+		state.setTextDirection(command == textDirectionRTL)
+		return
+	}
 	doc := state.space.Current()
 	fromSearchMenu := state.menuOpen == 2
 	// Clear refuses a live composition without mutating anything, so its preflight

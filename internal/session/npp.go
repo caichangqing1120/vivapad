@@ -26,6 +26,7 @@ type NPPFile struct {
 	Folds    []int
 	ReadOnly bool
 	Pinned   bool
+	RTL      bool
 	Color    uint8
 }
 
@@ -92,6 +93,7 @@ type nppXMLFile struct {
 	BackupFilePath string       `xml:"backupFilePath,attr,omitempty"`
 	UserReadOnly   string       `xml:"userReadOnly,attr,omitempty"`
 	TabPinned      string       `xml:"tabPinned,attr,omitempty"`
+	RTL            string       `xml:"RTL,attr,omitempty"`
 	TabColourID    *int         `xml:"tabColourId,attr"`
 	Marks          []nppXMLMark `xml:"Mark"`
 	Folds          []nppXMLFold `xml:"Fold"`
@@ -248,6 +250,10 @@ func decodeNPPSession(source io.Reader) (NPPState, error) {
 			if err != nil {
 				return NPPState{}, fmt.Errorf("invalid NPP pinned state for %q: %w", entry.Filename, err)
 			}
+			rtl, err := nppReadOnly(entry.RTL)
+			if err != nil {
+				return NPPState{}, fmt.Errorf("invalid NPP RTL state for %q: %w", entry.Filename, err)
+			}
 			color := uint8(0)
 			if entry.TabColourID != nil {
 				if *entry.TabColourID < -1 || *entry.TabColourID > 4 {
@@ -259,7 +265,7 @@ func decodeNPPSession(source io.Reader) (NPPState, error) {
 			if entry.Encoding != nil {
 				encoding = *entry.Encoding
 			}
-			file := NPPFile{Path: entry.Filename, Encoding: encoding, Language: entry.Language, StartPos: entry.StartPos, EndPos: entry.EndPos, ReadOnly: readOnly, Pinned: pinned, Color: color}
+			file := NPPFile{Path: entry.Filename, Encoding: encoding, Language: entry.Language, StartPos: entry.StartPos, EndPos: entry.EndPos, ReadOnly: readOnly, Pinned: pinned, RTL: rtl, Color: color}
 			for _, mark := range entry.Marks {
 				if mark.Line == nil {
 					return NPPState{}, fmt.Errorf("NPP bookmark has no line in %q", entry.Filename)
@@ -361,6 +367,9 @@ func SaveNPP(path string, state NPPState) error {
 			}
 			if file.Pinned {
 				entry.TabPinned = "yes"
+			}
+			if file.RTL {
+				entry.RTL = "yes"
 			}
 			for _, line := range file.Marks {
 				markLine := line
