@@ -3,9 +3,11 @@ package windows_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -28,23 +30,33 @@ func TestNotepadPlusPlusMultiSelectionMacros(t *testing.T) {
 	if reference == "" {
 		t.Skip("requires pinned portable Notepad++ on an isolated Windows desktop")
 	}
+	type selectionStep struct {
+		command uintptr
+		ranges  [][2]uintptr
+	}
 	for _, tc := range []struct {
 		name, source, recorded, target, replayed string
-		commands                                 []uintptr
-		key, selections                          uintptr
+		steps                                    []selectionStep
+		key                                      uintptr
 	}{
 		{
 			name: "AllAndType", source: "cat CAT cats cat", recorded: "x x cats x",
 			// Notepad++ records a typed character as SCI_REPLACESEL. Playback
 			// clears the selected ranges and inserts once at the main caret.
+			// VivaPad's Driver instead expects "x x dogs x".
 			target: "dog DOG dogs dog", replayed: "  dogs x",
-			commands: []uintptr{nppAllWholeWord}, key: 'X', selections: 3,
+			steps: []selectionStep{{nppAllWholeWord, [][2]uintptr{{0, 3}, {4, 7}, {13, 16}}}}, key: 'X',
 		},
 		{
 			name: "NextSkipUndoAndBackspace", source: "cat cat cat cat!", recorded: " cat cat cat!",
 			target: "dog dog dog dog!", replayed: " dog dog dog!",
-			commands: []uintptr{nppNextCaseAndWholeWord, nppNextCaseAndWholeWord, nppSkipSelection, nppUndoLatestSelection},
-			key:      0x08, selections: 1, // VK_BACK
+			steps: []selectionStep{
+				{nppNextCaseAndWholeWord, [][2]uintptr{{0, 3}}},
+				{nppNextCaseAndWholeWord, [][2]uintptr{{0, 3}, {4, 7}}},
+				{nppSkipSelection, [][2]uintptr{{0, 3}, {8, 11}}},
+				{nppUndoLatestSelection, [][2]uintptr{{0, 3}}},
+			},
+			key: 0x08, // VK_BACK
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -57,15 +69,31 @@ func TestNotepadPlusPlusMultiSelectionMacros(t *testing.T) {
 				t.Fatal(err)
 			}
 			editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", source, target)
+			// The window appears before Notepad++ opens the two files and
+			// activates the last one supplied on the command line.
+			for deadline := time.Now().Add(8 * time.Second); !notepadShowsFile(editor, target); time.Sleep(40 * time.Millisecond) {
+				if time.Now().After(deadline) {
+					t.Fatal("Notepad++ did not finish opening the macro fixtures")
+				}
+			}
 			send := selectMacroFixture(t, editor, source, tc.source)
 			invokeNotepadCommand(t, editor, nppStartMacro)
-			for _, cmd := range tc.commands {
-				invokeNotepadCommand(t, editor, cmd)
-			}
-			if count := send(2570, 0, 0); count != tc.selections { // SCI_GETSELECTIONS
-				t.Fatalf("recording selected %d ranges, want %d", count, tc.selections)
+			for _, step := range tc.steps {
+				invokeNotepadCommand(t, editor, step.command)
+				var ranges [][2]uintptr
+				for n := range send(2570, 0, 0) { // SCI_GETSELECTIONS
+					ranges = append(ranges, [2]uintptr{send(2585, n, 0), send(2587, n, 0)})
+				}
+				if !slices.Equal(ranges, step.ranges) {
+					t.Fatalf("menu command %d selected %v, want %v", step.command, ranges, step.ranges)
+				}
 			}
 			editor.keys(t, tc.key)
+			for deadline := time.Now().Add(4 * time.Second); send(2159, 0, 0) == 0; time.Sleep(40 * time.Millisecond) { // SCI_GETMODIFY
+				if time.Now().After(deadline) {
+					t.Fatal("recorded native key did not edit the source")
+				}
+			}
 			invokeNotepadCommand(t, editor, nppStopMacro)
 			assertNotepadSaved(t, editor, source, tc.recorded)
 
@@ -87,15 +115,10 @@ func TestNotepadPlusPlusMultiSelectionMacros(t *testing.T) {
 
 func selectMacroFixture(t *testing.T, editor *desktopEditor, path, text string) func(uintptr, uintptr, uintptr) uintptr {
 	t.Helper()
-	active := func() bool {
-		var title [2048]uint16
-		getWindowText.Call(editor.hwnd, uintptr(unsafe.Pointer(&title[0])), uintptr(len(title)))
-		return strings.Contains(syscall.UTF16ToString(title[:]), filepath.Base(path)+" - Notepad++")
-	}
-	if !active() {
+	if !notepadShowsFile(editor, path) {
 		invokeNotepadCommand(t, editor, nppNextTab)
 	}
-	if !active() {
+	if !notepadShowsFile(editor, path) {
 		t.Fatalf("Notepad++ did not switch to %s", filepath.Base(path))
 	}
 	editor.focusText(t)
@@ -105,6 +128,12 @@ func selectMacroFixture(t *testing.T, editor *desktopEditor, path, text string) 
 	}
 	send(2556, 1, 0) // SCI_SETEMPTYSELECTION: inside the initial word.
 	return send
+}
+
+func notepadShowsFile(editor *desktopEditor, path string) bool {
+	var title [2048]uint16
+	getWindowText.Call(editor.hwnd, uintptr(unsafe.Pointer(&title[0])), uintptr(len(title)))
+	return strings.Contains(syscall.UTF16ToString(title[:]), filepath.Base(path)+" - Notepad++")
 }
 
 func invokeNotepadCommand(t *testing.T, editor *desktopEditor, command uintptr) {
