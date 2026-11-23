@@ -100,6 +100,59 @@ func TestNotepadPlusPlusMultiSelectionWordBoundaries(t *testing.T) {
 	}
 }
 
+func TestNotepadPlusPlusFirstMultiSelectFromCaret(t *testing.T) {
+	reference := os.Getenv("VIVAPAD_RTL_REFERENCE_EXE")
+	if reference == "" {
+		t.Skip("requires pinned portable Notepad++ on an isolated Windows desktop")
+	}
+	const value = "cat CAT cat cats"
+	path := filepath.Join(t.TempDir(), "first-selection.txt")
+	if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+		t.Fatal(err)
+	}
+	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", path)
+	editor.focusText(t)
+	send := focusedScintilla(t, editor)
+	if got := send(2006, 0, 0); got != uintptr(len(value)) { // SCI_GETLENGTH
+		t.Fatalf("Scintilla document length = %d, want %d", got, len(value))
+	}
+	seed, first, upper, after := [2]uintptr{8, 11}, [2]uintptr{0, 3}, [2]uintptr{4, 7}, [2]uintptr{12, 15}
+	for i, tc := range []struct {
+		name string
+		want [][2]uintptr
+	}{
+		{"unrestricted", [][2]uintptr{seed, after, first, upper}},
+		{"match case", [][2]uintptr{seed, after, first}},
+		{"whole word", [][2]uintptr{seed, first, upper}},
+		{"match case and whole word", [][2]uintptr{seed, first}},
+	} {
+		for _, all := range []bool{true, false} {
+			mode, command, want := "Next", 42094+uintptr(i), [][2]uintptr{seed}
+			if all {
+				mode, command, want = "All", 42090+uintptr(i), tc.want
+			}
+			t.Run(mode+"/"+tc.name, func(t *testing.T) {
+				send(2556, 9, 0) // SCI_SETEMPTYSELECTION
+				var result uintptr
+				if ok, _, err := sendMessageTimeout.Call(editor.hwnd, 0x0111, command, 0, 2, 1000, uintptr(unsafe.Pointer(&result))); ok == 0 {
+					t.Fatalf("Notepad++ menu command %d: %v", command, err)
+				}
+				var got [][2]uintptr
+				for n := range send(2570, 0, 0) { // SCI_GETSELECTIONS
+					got = append(got, [2]uintptr{send(2585, n, 0), send(2587, n, 0)})
+				}
+				if main := send(2575, 0, 0); !slices.Equal(got, want) || main != uintptr(len(want)-1) {
+					t.Fatalf("menu selected %v, main=%d; want %v", got, main, want)
+				}
+				if send(2159, 0, 0) != 0 { // SCI_GETMODIFY
+					t.Fatal("menu changed the document")
+				}
+			})
+		}
+	}
+	editor.close(t)
+}
+
 func focusedScintilla(t *testing.T, editor *desktopEditor) func(uintptr, uintptr, uintptr) uintptr {
 	t.Helper()
 	info := struct {

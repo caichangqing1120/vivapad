@@ -44,17 +44,19 @@ func (state *model) multiSelect(options document.SearchOptions, all bool) {
 		state.rectangles[pane] = rectangleSelection{}
 		state.selectAnchors[pane] = selectAnchor{}
 		initial := doc.Editor.Selection()
-		if initial.Start == initial.End {
+		initialWasEmpty := initial.Start == initial.End
+		if initialWasEmpty {
 			var found bool
 			initial, found = doc.MultiSelectionWordAtCaret()
 			if !found {
 				return
 			}
 			doc.Editor.SetSelection(initial)
-			*selected = multiSelectionState{doc: doc, value: doc.Editor.String(), ranges: []text.Range{initial}, active: true}
-			return
 		}
 		*selected = multiSelectionState{doc: doc, value: doc.Editor.String(), ranges: []text.Range{initial}, active: true}
+		if !all && initialWasEmpty {
+			return
+		}
 	}
 	main := selected.ranges[len(selected.ranges)-1]
 	if !options.Regex {
