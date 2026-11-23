@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
@@ -32,6 +33,50 @@ func BenchmarkMultiSelectionReplaceTwoRanges(b *testing.B) {
 			b.Fatalf("multi-selection edit: changed=%v, error=%v", changed, err)
 		}
 		b.StartTimer()
+	}
+}
+
+func BenchmarkMultiSelectionTextInputRefresh(b *testing.B) {
+	state := newModel()
+	doc := state.space.Current()
+	doc.Editor.Insert("猫 " + strings.Repeat("z", 512<<10) + " 犬")
+	end := doc.Editor.RuneCount()
+	ranges := []text.Range{{Start: 0, End: 1}, {Start: end - 1, End: end}}
+	doc.Editor.SetSelection(ranges[1])
+	state.multiSelections[0] = multiSelectionState{doc: doc, value: doc.Editor.String(), active: true, ranges: ranges}
+	var input *app.TextInput
+	b.ReportAllocs()
+	for b.Loop() {
+		input = state.multiSelectionTextInput(0)
+	}
+	if got := input.CopyText(); got != "猫\n犬" {
+		b.Fatalf("copy text = %q", got)
+	}
+}
+
+func TestMultiSelectionClipboardRejectsStaleInput(t *testing.T) {
+	for _, change := range []struct {
+		name string
+		edit func(*model, *document.Document)
+	}{
+		{"document edit", func(_ *model, doc *document.Document) { doc.Editor.Insert("new") }},
+		{"tab switch", func(state *model, _ *document.Document) { state.space.NewDocument() }},
+	} {
+		t.Run(change.name, func(t *testing.T) {
+			state := newModel()
+			doc := state.space.Current()
+			doc.Editor.Insert("猫 猫")
+			doc.Editor.SetSelection(text.Range{Start: 0, End: 1})
+			state.multiSelectAll(document.SearchOptions{})
+			input := state.multiSelectionTextInput(0)
+			if got := input.CopyText(); got != "猫\n猫" {
+				t.Fatalf("initial clipboard = %q", got)
+			}
+			change.edit(state, doc)
+			if got := input.CopyText(); got != "" {
+				t.Fatalf("stale input copied %q", got)
+			}
+		})
 	}
 }
 
@@ -189,19 +234,27 @@ func TestMultiSelectionReadOnlyAndSplitCloneDoNotDuplicateEdits(t *testing.T) {
 func TestMultiSelectionNativeCopyCutUsesDisjointClipboard(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()
-	doc.Editor.Insert("red red")
+	const initial = "红 gap 🙂 gap e\u0301"
+	const clipboard = "e\u0301\n红\n🙂"
+	doc.Editor.Insert(initial)
 	clickID(t, driver, editorID)
-	doc.Editor.SetSelection(text.Range{Start: 0, End: 3})
-	state.multiSelectAll(document.SearchOptions{})
+	doc.Editor.ClearHistory()
+	ranges := []text.Range{{Start: 12, End: 14}, {Start: 5, End: 5}, {Start: 0, End: 1}, {Start: 6, End: 7}}
+	doc.Editor.SetSelection(ranges[len(ranges)-1])
+	state.multiSelections[0] = multiSelectionState{doc: doc, value: initial, active: true, ranges: ranges}
 	state.invalidator.Invalidate()
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	if handled, err := driver.ShortcutChord(primary(), 'c'); err != nil || !handled || driver.Clipboard() != "red\nred" {
+	if handled, err := driver.ShortcutChord(primary(), 'c'); err != nil || !handled || driver.Clipboard() != clipboard {
 		t.Fatalf("native multi-copy handled=%v err=%v clipboard=%q", handled, err, driver.Clipboard())
 	}
-	if handled, err := driver.ShortcutChord(primary(), 'x'); err != nil || !handled || doc.Editor.String() != " " || driver.Clipboard() != "red\nred" {
+	if handled, err := driver.ShortcutChord(primary(), 'x'); err != nil || !handled || doc.Editor.String() != " gap  gap " || driver.Clipboard() != clipboard {
 		t.Fatalf("native multi-cut handled=%v err=%v text=%q clipboard=%q", handled, err, doc.Editor.String(), driver.Clipboard())
+	}
+	state.command("Undo")
+	if doc.Editor.String() != initial || doc.Editor.CanUndo() || !reflect.DeepEqual(state.multiSelections[0].ranges, ranges) {
+		t.Fatalf("native multi-cut undo: text=%q, ranges=%+v", doc.Editor.String(), state.multiSelections[0].ranges)
 	}
 }
 

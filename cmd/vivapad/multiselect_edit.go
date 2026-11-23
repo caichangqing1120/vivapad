@@ -122,14 +122,11 @@ func (state *model) editMultiSelection(pane int, value string, kind multiEditKin
 	return true, nil
 }
 
-func (state *model) multiSelectionText(pane int) string {
-	doc := state.paneDocument(pane)
-	state.syncMultiSelection(pane, doc)
-	selected := state.multiSelections[pane]
+func (selected multiSelectionState) clipboardText() string {
 	if !selected.active {
 		return ""
 	}
-	characters := []rune(selected.value)
+	editor := selected.doc.Editor
 	var output strings.Builder
 	for _, selection := range selected.ranges {
 		if selection.Start == selection.End {
@@ -138,13 +135,15 @@ func (state *model) multiSelectionText(pane int) string {
 		if output.Len() != 0 {
 			output.WriteByte('\n')
 		}
-		output.WriteString(string(characters[selection.Start:selection.End]))
+		output.WriteString(selected.value[editor.ByteOffset(selection.Start):editor.ByteOffset(selection.End)])
 	}
 	return output.String()
 }
 
 func (state *model) copyMultiSelection(doc *document.Document, cut bool) {
-	value := state.multiSelectionText(state.activePane)
+	pane := state.activePane
+	state.syncMultiSelection(pane, doc)
+	value := state.multiSelections[pane].clipboardText()
 	if value == "" {
 		return
 	}
@@ -153,7 +152,7 @@ func (state *model) copyMultiSelection(doc *document.Document, cut bool) {
 		return
 	}
 	if cut {
-		if _, err := state.editMultiSelection(state.activePane, "", multiInsert); err != nil {
+		if _, err := state.editMultiSelection(pane, "", multiInsert); err != nil {
 			state.notice = "Cut failed: " + err.Error()
 		}
 	}
@@ -161,8 +160,17 @@ func (state *model) copyMultiSelection(doc *document.Document, cut bool) {
 
 func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 	doc := state.paneDocument(pane)
-	copyText := state.multiSelectionText(pane)
-	return &app.TextInput{State: app.TextStateOf(doc.Editor), CopyOverride: true, CopyText: func() string { return copyText }, OnEvent: func(event app.TextEvent) (app.TextState, error) {
+	state.syncMultiSelection(pane, doc)
+	inputState := app.TextStateOf(doc.Editor)
+	clipboardSelection := func() multiSelectionState {
+		// Native clipboard callbacks may outlive the displayed text input.
+		if state.paneDocument(pane) != doc || doc.Editor.String() != inputState.Value {
+			return multiSelectionState{}
+		}
+		state.syncMultiSelection(pane, doc)
+		return state.multiSelections[pane]
+	}
+	return &app.TextInput{State: inputState, CopyOverride: true, CopyText: func() string { return clipboardSelection().clipboardText() }, OnEvent: func(event app.TextEvent) (app.TextState, error) {
 		if state.isReadOnly(doc) {
 			state.cancelDocumentComposition(doc)
 			state.notice = "Read-only document"
@@ -189,10 +197,13 @@ func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 		}
 		kind := multiInsert
 		value := event.Text
-		cutting := event.Kind == app.TextPaste && value == "" && copyText != ""
-		if cutting {
-			value = ""
-		} else if event.Kind == app.TextCommandEvent {
+		cutting := false
+		if event.Kind == app.TextPaste && value == "" {
+			cutting = slices.ContainsFunc(clipboardSelection().ranges, func(selection text.Range) bool {
+				return selection.Start != selection.End
+			})
+		}
+		if event.Kind == app.TextCommandEvent {
 			switch event.Command {
 			case app.TextDeleteBackward:
 				kind = multiDeleteBackward
@@ -210,7 +221,7 @@ func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 				state.multiSelections[pane] = multiSelectionState{}
 				return state.macroTextInput(doc).OnEvent(event)
 			}
-		} else if event.Kind != app.TextInsert && event.Kind != app.TextPaste || event.Rectangular {
+		} else if !cutting && (event.Kind != app.TextInsert && event.Kind != app.TextPaste || event.Rectangular) {
 			state.multiSelections[pane] = multiSelectionState{}
 			return state.macroTextInput(doc).OnEvent(event)
 		}
