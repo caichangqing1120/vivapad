@@ -132,18 +132,55 @@ func TestMultiSelectNextUndoLatestSkipAndWrap(t *testing.T) {
 	}
 }
 
-func TestMultiSelectNextSkipsMatchesOverlappingTheInitialRange(t *testing.T) {
-	state := newModel()
-	doc := state.space.Current()
-	doc.Editor.Insert("aaaaaa")
-	doc.Editor.ClearHistory()
-	initial := text.Range{Start: 1, End: 3}
-	doc.Editor.SetSelection(initial)
-	state.multiSelectNext(document.SearchOptions{MatchCase: true})
-	state.multiSelectNext(document.SearchOptions{MatchCase: true})
-	want := []text.Range{initial, {Start: 4, End: 6}}
-	if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, want) || doc.Editor.CanUndo() {
-		t.Fatalf("selected %+v, want %+v with no Undo entry", got, want)
+func TestMultiSelectSearchesFromSelectionBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name, value string
+		options     document.SearchOptions
+		initial     text.Range
+		want        []text.Range
+	}{
+		{"adjacent match", "aaaaaa", document.SearchOptions{MatchCase: true}, text.Range{Start: 1, End: 3}, []text.Range{{Start: 3, End: 5}}},
+		{"forward then wrap", "aaaaaaaaaaaa", document.SearchOptions{MatchCase: true}, text.Range{Start: 3, End: 5}, []text.Range{{Start: 5, End: 7}, {Start: 7, End: 9}, {Start: 9, End: 11}, {Start: 0, End: 2}}},
+		{"folded variable width", "\u212ak\u212ak\u212ak", document.SearchOptions{}, text.Range{Start: 1, End: 3}, []text.Range{{Start: 3, End: 5}}},
+		{"whole word sees past the search region", "aa aaaa aa", document.SearchOptions{WholeWord: true}, text.Range{Start: 3, End: 5}, []text.Range{{Start: 8, End: 10}, {Start: 0, End: 2}}},
+	} {
+		for _, all := range []bool{false, true} {
+			mode, matches := "Next", tc.want[:1]
+			if all {
+				mode, matches = "All", tc.want
+			}
+			t.Run(tc.name+"/"+mode, func(t *testing.T) {
+				state := newModel()
+				doc := state.space.Current()
+				doc.Editor.Insert(tc.value)
+				doc.Editor.ClearHistory()
+				doc.Editor.SetSelection(tc.initial)
+				state.multiSelect(tc.options, all)
+				want := append([]text.Range{tc.initial}, matches...)
+				if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, want) || doc.Editor.Selection() != want[len(want)-1] || doc.Editor.CanUndo() || doc.Editor.String() != tc.value {
+					t.Fatalf("selected %+v, main %+v, want %+v without editing", got, doc.Editor.Selection(), want)
+				}
+			})
+		}
+	}
+}
+
+func TestMultiSelectSearchContinuesAfterAnOccupiedCandidate(t *testing.T) {
+	const value = "aaaaaa"
+	for _, all := range []bool{false, true} {
+		state := newModel()
+		doc := state.space.Current()
+		doc.Editor.Insert(value)
+		doc.Editor.ClearHistory()
+		initial := text.Range{Start: 1, End: 3}
+		occupied := text.Range{Start: 3, End: 4}
+		doc.Editor.SetSelection(initial)
+		state.multiSelections[0] = multiSelectionState{doc: doc, value: value, active: true, ranges: []text.Range{occupied, initial}}
+		state.multiSelect(document.SearchOptions{}, all)
+		want := []text.Range{occupied, initial, {Start: 4, End: 6}}
+		if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, want) || doc.Editor.CanUndo() {
+			t.Fatalf("All=%t: selected %+v, want %+v without editing", all, got, want)
+		}
 	}
 }
 

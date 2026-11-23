@@ -137,21 +137,20 @@ func (doc *Document) NextLiteralSelection(current text.Range, occupied []text.Ra
 		return text.Range{}, false
 	}
 	var found text.Range
-	visitLiteralMatches(value, value[from:to], options.MatchCase, func(match text.Span) bool {
-		if match.Start < to && match.End > from ||
-			match.End <= from && found.End != 0 ||
-			options.WholeWord && !multiSelectionWholeWord(value, match.Start, match.End) {
-			return true
-		}
+	visit := func(match text.Span) literalMatchDecision {
 		candidate := text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)}
 		for _, selection := range occupied {
 			if candidate.Start < selection.End && candidate.End > selection.Start {
-				return true
+				return literalReject
 			}
 		}
 		found = candidate
-		return match.Start < to
-	})
+		return literalStop
+	}
+	query := value[from:to]
+	if scanMultiSelectionRegion(value, query, to, len(value), options, visit) {
+		scanMultiSelectionRegion(value, query, 0, from, options, visit)
+	}
 	return found, found.End != 0
 }
 
@@ -168,33 +167,32 @@ func (doc *Document) AppendLiteralSelections(current text.Range, selections []te
 		occupied[i] = text.Span{Start: doc.Editor.ByteOffset(selection.Start), End: doc.Editor.ByteOffset(selection.End)}
 	}
 	slices.SortFunc(occupied, func(a, b text.Span) int { return cmp.Compare(a.Start, b.Start) })
-	firstNew, before := len(selections), 0
-	visitLiteralMatches(value, value[from:to], options.MatchCase, func(match text.Span) bool {
-		if match.Start < to && match.End > from ||
-			options.WholeWord && !multiSelectionWholeWord(value, match.Start, match.End) {
-			return true
-		}
-		for len(occupied) > 0 && occupied[0].End <= match.Start {
-			occupied = occupied[1:]
-		}
-		if len(occupied) > 0 && occupied[0].Start < match.End {
-			return true
-		}
-		selections = append(selections, text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
-		if match.End <= from {
-			before++
-		}
-		return true
-	})
-	// The stream arrives in document order. Move only the new wrap ranges
-	// behind the new matches after the current selection.
-	added := selections[firstNew:]
-	if before > 0 && before < len(added) {
-		slices.Reverse(added[:before])
-		slices.Reverse(added[before:])
-		slices.Reverse(added)
+	query := value[from:to]
+	for _, region := range [...]text.Span{{Start: to, End: len(value)}, {End: from}} {
+		remaining := occupied
+		scanMultiSelectionRegion(value, query, region.Start, region.End, options, func(match text.Span) literalMatchDecision {
+			for len(remaining) > 0 && remaining[0].End <= match.Start {
+				remaining = remaining[1:]
+			}
+			if len(remaining) > 0 && remaining[0].Start < match.End {
+				return literalReject
+			}
+			selections = append(selections, text.Range{Start: doc.Editor.RuneIndex(match.Start), End: doc.Editor.RuneIndex(match.End)})
+			return literalAccept
+		})
 	}
 	return selections
+}
+
+func scanMultiSelectionRegion(value, query string, start, end int, options SearchOptions, visit func(text.Span) literalMatchDecision) bool {
+	return scanLiteralMatches(value[start:end], query, options.MatchCase, func(match text.Span) literalMatchDecision {
+		match.Start += start
+		match.End += start
+		if options.WholeWord && !multiSelectionWholeWord(value, match.Start, match.End) {
+			return literalReject
+		}
+		return visit(match)
+	})
 }
 
 func byteAtRune(value string, offset int) int {
@@ -305,26 +303,65 @@ func findLiteralSpan(value, query string, options SearchOptions, byteStart int, 
 }
 
 func visitLiteralMatches(value, query string, matchCase bool, visit func(text.Span) bool) {
+	scanLiteralMatches(value, query, matchCase, func(match text.Span) literalMatchDecision {
+		if !visit(match) {
+			return literalStop
+		}
+		return literalAccept
+	})
+}
+
+type literalMatchDecision uint8
+
+const (
+	literalAccept literalMatchDecision = iota
+	literalReject
+	literalStop
+)
+
+func scanLiteralMatches(value, query string, matchCase bool, visit func(text.Span) literalMatchDecision) bool {
+	if query == "" || value == "" {
+		return true
+	}
 	if matchCase {
 		for offset := 0; offset < len(value); {
 			index := strings.Index(value[offset:], query)
 			if index < 0 {
-				return
+				break
 			}
 			start := offset + index
-			offset = start + len(query)
-			if !visit(text.Span{Start: start, End: offset}) {
-				return
+			end := start + len(query)
+			switch visit(text.Span{Start: start, End: end}) {
+			case literalStop:
+				return false
+			case literalReject:
+				// A rejected hit may overlap the next valid one. Switch to
+				// the prefix table rather than rechecking the same long runs.
+				_, width := utf8.DecodeRuneInString(value[start:])
+				resume := start + width
+				return scanRuneLiteralMatches(value[resume:], query, matchCase, func(match text.Span) literalMatchDecision {
+					match.Start += resume
+					match.End += resume
+					return visit(match)
+				})
+			default:
+				offset = end
 			}
 		}
-		return
+		return true
 	}
+	return scanRuneLiteralMatches(value, query, matchCase, visit)
+}
+
+func scanRuneLiteralMatches(value, query string, matchCase bool, visit func(text.Span) literalMatchDecision) bool {
 	pattern := []rune(query)
 	prefix := make([]int, len(pattern))
-	for index, r := range pattern {
-		pattern[index] = simpleFoldKey(r)
+	if !matchCase {
+		for index, r := range pattern {
+			pattern[index] = simpleFoldKey(r)
+		}
 	}
-	// The prefix table keeps case-folded matching linear even when the
+	// The prefix table keeps matching linear even when the
 	// document repeatedly contains almost the entire search term.
 	for index, length := 1, 0; index < len(pattern); index++ {
 		for length > 0 && pattern[index] != pattern[length] {
@@ -335,28 +372,42 @@ func visitLiteralMatches(value, query string, matchCase bool, visit func(text.Sp
 		}
 		prefix[index] = length
 	}
-	length := 0
+	start, length := 0, 0
+	fallback := func() {
+		next := prefix[length-1]
+		for skip := length - next; skip > 0; skip-- {
+			_, width := utf8.DecodeRuneInString(value[start:])
+			start += width
+		}
+		length = next
+	}
 	for index, r := range value {
-		key := simpleFoldKey(r)
+		key := r
+		if !matchCase {
+			key = simpleFoldKey(r)
+		}
 		for length > 0 && key != pattern[length] {
-			length = prefix[length-1]
+			fallback()
 		}
 		if key == pattern[length] {
+			if length == 0 {
+				start = index
+			}
 			length++
 		}
 		if length == len(pattern) {
 			end := index + utf8.RuneLen(r)
-			start := end
-			for range pattern {
-				_, width := utf8.DecodeLastRuneInString(value[:start])
-				start -= width
+			switch visit(text.Span{Start: start, End: end}) {
+			case literalStop:
+				return false
+			case literalReject:
+				fallback()
+			default:
+				length = 0
 			}
-			if !visit(text.Span{Start: start, End: end}) {
-				return
-			}
-			length = 0 // Match FindAll's non-overlapping sequence.
 		}
 	}
+	return true
 }
 
 func simpleFoldKey(r rune) rune {
