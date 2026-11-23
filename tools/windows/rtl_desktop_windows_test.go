@@ -18,6 +18,10 @@ var (
 	windowPID           = user32.NewProc("GetWindowThreadProcessId")
 	isWindowVisible     = user32.NewProc("IsWindowVisible")
 	getWindowText       = user32.NewProc("GetWindowTextW")
+	getClassName        = user32.NewProc("GetClassNameW")
+	getGUIThreadInfo    = user32.NewProc("GetGUIThreadInfo")
+	getWindowLong       = user32.NewProc("GetWindowLongW")
+	sendMessageTimeout  = user32.NewProc("SendMessageTimeoutW")
 	getForegroundWindow = user32.NewProc("GetForegroundWindow")
 	setForegroundWindow = user32.NewProc("SetForegroundWindow")
 	getClientRect       = user32.NewProc("GetClientRect")
@@ -25,7 +29,13 @@ var (
 	setCursorPos        = user32.NewProc("SetCursorPos")
 	mouseEvent          = user32.NewProc("mouse_event")
 	keyboardEvent       = user32.NewProc("keybd_event")
+	mapVirtualKey       = user32.NewProc("MapVirtualKeyW")
 	postMessage         = user32.NewProc("PostMessageW")
+)
+
+const (
+	keyLeftControl = 0xa2
+	keyLeftAlt     = 0xa4
 )
 
 type desktopEditor struct {
@@ -63,11 +73,15 @@ func TestRTLDesktopMatchesNotepadPlusPlus(t *testing.T) {
 			args := append(append([]string(nil), target.args...), path)
 			editor := openDesktopEditor(t, target.path, target.title, target.env, args...)
 			editor.focusText(t)
-			editor.keys(t, 0x11, 0x24)      // Ctrl+Home
-			editor.keys(t, 0x11, 0x12, 'R') // Ctrl+Alt+R
-			editor.keys(t, 0x25)            // Left
+			editor.inspect(t, "focused", target.env == nil, false)
+			editor.keys(t, keyLeftControl, 0x24) // Ctrl+Home
+			editor.keys(t, keyLeftControl, keyLeftAlt, 'R')
+			editor.inspect(t, "Ctrl+Alt+R", target.env == nil, true)
+			editor.keys(t, 0x25) // Left
+			editor.inspect(t, "Left", target.env == nil, true)
 			editor.keys(t, 'X')
-			editor.keys(t, 0x11, 'S')
+			editor.inspect(t, "type x", target.env == nil, true)
+			editor.keys(t, keyLeftControl, 'S')
 			awaitBytes(t, path, afterRTL)
 			editor.close(t)
 
@@ -77,13 +91,14 @@ func TestRTLDesktopMatchesNotepadPlusPlus(t *testing.T) {
 			}
 			editor = openDesktopEditor(t, target.path, target.title, target.env, args...)
 			editor.focusText(t)
-			editor.keys(t, 0x11, 0x12, 'L') // Ctrl+Alt+L
-			editor.keys(t, 0x11, 0x23)      // Ctrl+End (empty last line)
-			editor.keys(t, 0x26)            // Up
-			editor.keys(t, 0x24)            // Home (start of abc)
-			editor.keys(t, 0x27)            // Right
+			editor.keys(t, keyLeftControl, keyLeftAlt, 'L')
+			editor.inspect(t, "Ctrl+Alt+L", target.env == nil, false)
+			editor.keys(t, keyLeftControl, 0x23) // Ctrl+End (empty last line)
+			editor.keys(t, 0x26)                 // Up
+			editor.keys(t, 0x24)                 // Home (start of abc)
+			editor.keys(t, 0x27)                 // Right
 			editor.keys(t, 'Y')
-			editor.keys(t, 0x11, 'S')
+			editor.keys(t, keyLeftControl, 'S')
 			awaitBytes(t, path, afterLTR)
 			editor.close(t)
 			if target.env != nil {
@@ -106,13 +121,17 @@ func checkSessionRTL(t *testing.T, appData, file string, want bool) {
 		t.Fatal(err)
 	}
 	got := false
+	file, err = filepath.EvalSymlinks(file)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for path, rtl := range session.RTL {
 		if strings.EqualFold(filepath.Clean(path), file) {
 			got = rtl
 		}
 	}
 	if got != want {
-		t.Fatalf("session RTL = %v, want %v", got, want)
+		t.Fatalf("session RTL = %v, want %v for %q; recorded flags: %v", got, want, file, session.RTL)
 	}
 }
 
@@ -217,13 +236,58 @@ func (e *desktopEditor) focusText(t *testing.T) {
 func (e *desktopEditor) keys(t *testing.T, chord ...uintptr) {
 	t.Helper()
 	e.activate(t)
+	press := func(key, flags uintptr) {
+		scan, _, _ := mapVirtualKey.Call(key, 0)
+		if key >= 0x23 && key <= 0x28 { // navigation keys use extended scan codes
+			flags |= 1
+		}
+		keyboardEvent.Call(key, scan, flags, 0)
+		time.Sleep(35 * time.Millisecond)
+	}
 	for _, key := range chord {
-		keyboardEvent.Call(key, 0, 0, 0)
+		press(key, 0)
 	}
 	for i := len(chord) - 1; i >= 0; i-- {
-		keyboardEvent.Call(chord[i], 0, 2, 0) // KEYEVENTF_KEYUP
+		press(chord[i], 2) // KEYEVENTF_KEYUP
 	}
 	time.Sleep(100 * time.Millisecond)
+}
+
+func (e *desktopEditor) inspect(t *testing.T, stage string, reference, rtl bool) {
+	t.Helper()
+	info := struct {
+		size, flags                                   uint32
+		active, focus, capture, menu, moveSize, caret uintptr
+		caretRect                                     [4]int32
+	}{}
+	info.size = uint32(unsafe.Sizeof(info))
+	thread, _, _ := windowPID.Call(e.hwnd, 0)
+	if ok, _, _ := getGUIThreadInfo.Call(thread, uintptr(unsafe.Pointer(&info))); ok == 0 || info.focus == 0 {
+		t.Fatalf("%s: could not read the editor's focused control", stage)
+	}
+	var name [128]uint16
+	getClassName.Call(info.focus, uintptr(unsafe.Pointer(&name[0])), uintptr(len(name)))
+	class := syscall.UTF16ToString(name[:])
+	if !reference {
+		t.Logf("%s: focused control is %q", stage, class)
+		return
+	}
+	if class != "Scintilla" {
+		t.Fatalf("%s: Notepad++ focus is %q, want Scintilla", stage, class)
+	}
+	read := func(message uintptr) uintptr {
+		var result uintptr
+		if ok, _, _ := sendMessageTimeout.Call(info.focus, message, 0, 0, 2, 500, uintptr(unsafe.Pointer(&result))); ok == 0 {
+			t.Fatalf("%s: Scintilla message %d timed out", stage, message)
+		}
+		return result
+	}
+	style, _, _ := getWindowLong.Call(info.focus, uintptr(^uint32(19))) // GWL_EXSTYLE (-20)
+	actual := style&0x00400000 != 0                                     // WS_EX_LAYOUTRTL
+	t.Logf("%s: Scintilla length=%d caret=%d read-only=%t RTL=%t", stage, read(2006), read(2008), read(2140) != 0, actual)
+	if actual != rtl {
+		t.Fatalf("%s: Scintilla RTL=%t, want %t", stage, actual, rtl)
+	}
 }
 
 func (e *desktopEditor) close(t *testing.T) {

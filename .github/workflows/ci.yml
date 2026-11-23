@@ -84,6 +84,9 @@ jobs:
             }
             $reference = Join-Path $work 'npp'
             Expand-Archive -LiteralPath $zip -DestinationPath $reference
+            # Notepad++ supports RTL only with its GDI rendering technology.
+            Set-Content -LiteralPath (Join-Path $reference 'config.xml') -Encoding utf8 -Value '<NotepadPlus><GUIConfigs><GUIConfig name="MISC" writeTechnologyEngine="0" /></GUIConfigs></NotepadPlus>'
+            New-Item -ItemType File -Path (Join-Path $reference 'disableNppAutoUpdate.xml') | Out-Null
             $env:VIVAPAD_RTL_REFERENCE_EXE = Join-Path $reference 'notepad++.exe'
             $env:VIVAPAD_RTL_DESKTOP_EXE = (Resolve-Path -LiteralPath 'build/vivapad.exe').Path
             go test ./tools/windows -run '^TestRTLDesktopMatchesNotepadPlusPlus$' -count=1 -v -timeout=2m
