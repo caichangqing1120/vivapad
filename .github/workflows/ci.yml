@@ -69,7 +69,7 @@ jobs:
         run: go build -o "$OUTPUT" ./cmd/vivapad
       - name: Run unit and integration tests
         run: go test ./... -count=1 -timeout=15m
-      - name: Compare RTL keyboard behavior with Notepad++ on the Windows desktop
+      - name: Compare RTL and multi-selection clipboard behavior with Notepad++
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -88,8 +88,11 @@ jobs:
             Set-Content -LiteralPath (Join-Path $reference 'config.xml') -Encoding utf8 -Value '<NotepadPlus><GUIConfigs><GUIConfig name="MISC" writeTechnologyEngine="0" /></GUIConfigs></NotepadPlus>'
             $env:VIVAPAD_RTL_REFERENCE_EXE = Join-Path $reference 'notepad++.exe'
             $env:VIVAPAD_RTL_DESKTOP_EXE = (Resolve-Path -LiteralPath 'build/vivapad.exe').Path
-            go test ./tools/windows -run '^TestRTLDesktopMatchesNotepadPlusPlus$' -count=1 -v -timeout=2m
-            if ($LASTEXITCODE -ne 0) { throw 'Native desktop RTL comparison failed' }
+            go test ./tools/windows -run '^Test(RTLDesktopMatchesNotepadPlusPlus|NotepadPlusPlusMultiSelectionClipboard)$' -count=1 -v -timeout=2m
+            if ($LASTEXITCODE -ne 0) { throw 'Native desktop reference checks failed' }
+            $env:VIVAPAD_WINDOWS_CLIPBOARD_TEST = '1'
+            go test ./cmd/vivapad -run '^TestMultiSelectionWritesWindowsClipboard$' -count=1 -v -timeout=1m
+            if ($LASTEXITCODE -ne 0) { throw 'VivaPad native clipboard comparison failed' }
           } finally {
             Remove-Item -LiteralPath $work -Recurse -Force
           }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -49,7 +51,7 @@ func BenchmarkMultiSelectionTextInputRefresh(b *testing.B) {
 	for b.Loop() {
 		input = state.multiSelectionTextInput(0)
 	}
-	if got := input.CopyText(); got != "猫\n犬" {
+	if got := input.CopyText(); got != "猫\n犬\n" {
 		b.Fatalf("copy text = %q", got)
 	}
 }
@@ -69,7 +71,7 @@ func TestMultiSelectionClipboardRejectsStaleInput(t *testing.T) {
 			doc.Editor.SetSelection(text.Range{Start: 0, End: 1})
 			state.multiSelectAll(document.SearchOptions{})
 			input := state.multiSelectionTextInput(0)
-			if got := input.CopyText(); got != "猫\n猫" {
+			if got := input.CopyText(); got != "猫\n猫\n" {
 				t.Fatalf("initial clipboard = %q", got)
 			}
 			change.edit(state, doc)
@@ -182,7 +184,7 @@ func TestMultiSelectionCopyCutAndRedactUseEveryRange(t *testing.T) {
 	doc.Editor.ClearHistory()
 	state.multiSelectAll(document.SearchOptions{})
 	state.command("Copy")
-	if got := driver.Clipboard(); got != "red\nred\nred" {
+	if got := driver.Clipboard(); got != "red\nred\nred\n" || !app.ClipboardRectangular() {
 		t.Fatalf("multi-selection clipboard = %q", got)
 	}
 	state.command("Redact Selection")
@@ -194,7 +196,7 @@ func TestMultiSelectionCopyCutAndRedactUseEveryRange(t *testing.T) {
 		t.Fatalf("multi-selection redaction undo = %q, ranges=%+v", doc.Editor.String(), state.multiSelections[0].ranges)
 	}
 	state.command("Cut")
-	if doc.Editor.String() != "  " || driver.Clipboard() != "red\nred\nred" {
+	if doc.Editor.String() != "  " || driver.Clipboard() != "red\nred\nred\n" || !app.ClipboardRectangular() {
 		t.Fatalf("multi-selection cut = %q, clipboard=%q", doc.Editor.String(), driver.Clipboard())
 	}
 	state.command("Undo")
@@ -235,7 +237,7 @@ func TestMultiSelectionNativeCopyCutUsesDisjointClipboard(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()
 	const initial = "红 gap 🙂 gap e\u0301"
-	const clipboard = "e\u0301\n红\n🙂"
+	const clipboard = "e\u0301\n\n红\n🙂\n"
 	doc.Editor.Insert(initial)
 	clickID(t, driver, editorID)
 	doc.Editor.ClearHistory()
@@ -246,15 +248,80 @@ func TestMultiSelectionNativeCopyCutUsesDisjointClipboard(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	if handled, err := driver.ShortcutChord(primary(), 'c'); err != nil || !handled || driver.Clipboard() != clipboard {
+	if handled, err := driver.ShortcutChord(primary(), 'c'); err != nil || !handled || driver.Clipboard() != clipboard || !app.ClipboardRectangular() {
 		t.Fatalf("native multi-copy handled=%v err=%v clipboard=%q", handled, err, driver.Clipboard())
 	}
-	if handled, err := driver.ShortcutChord(primary(), 'x'); err != nil || !handled || doc.Editor.String() != " gap  gap " || driver.Clipboard() != clipboard {
+	if handled, err := driver.ShortcutChord(primary(), 'x'); err != nil || !handled || doc.Editor.String() != " gap  gap " || driver.Clipboard() != clipboard || !app.ClipboardRectangular() {
 		t.Fatalf("native multi-cut handled=%v err=%v text=%q clipboard=%q", handled, err, doc.Editor.String(), driver.Clipboard())
 	}
 	state.command("Undo")
 	if doc.Editor.String() != initial || doc.Editor.CanUndo() || !reflect.DeepEqual(state.multiSelections[0].ranges, ranges) {
 		t.Fatalf("native multi-cut undo: text=%q, ranges=%+v", doc.Editor.String(), state.multiSelections[0].ranges)
+	}
+	receiver := state.space.NewDocument()
+	receiver.Editor.Insert("123\n456\n789\n000")
+	clickID(t, driver, editorID)
+	receiver.Editor.MoveTo(1, false)
+	state.invalidator.Invalidate()
+	if handled, err := driver.ShortcutChord(primary(), 'v'); err != nil || !handled || receiver.Editor.String() != "1e\u030123\n456\n7红89\n0🙂00" {
+		t.Fatalf("column paste handled=%v err=%v text=%q", handled, err, receiver.Editor.String())
+	}
+}
+
+func TestMultiSelectionClipboardPreservesPhysicalLineEndings(t *testing.T) {
+	for _, tc := range []struct{ name, source, want string }{
+		{"CRLF", "a\r\nb\r\nc\r\nd", "c\r\nd\r\n\r\na\r\n\r\n"},
+		{"LF", "a\nb\nc\nd", "c\nd\n\na\n\n"},
+		{"CR", "a\rb\rc\rd", "c\rd\r\ra\r\r"},
+		{"mixed", "a\r\nb\nc\rd", "c\rd\r\n\r\na\r\n\r\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			path := filepath.Join(t.TempDir(), "clipboard.txt")
+			if err := os.WriteFile(path, []byte(tc.source), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := state.space.Open(path); err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			ranges := []text.Range{{Start: 4, End: 7}, {Start: 2, End: 2}, {Start: 0, End: 2}}
+			doc.Editor.SetSelection(ranges[2])
+			state.multiSelections[0] = multiSelectionState{doc: doc, value: doc.Editor.String(), active: true, ranges: ranges}
+			state.command("Copy")
+			if driver.Clipboard() != tc.want || !app.ClipboardRectangular() || doc.Dirty() || doc.Editor.CanUndo() {
+				t.Fatalf("copy = %q, rectangular=%v, dirty=%v", driver.Clipboard(), app.ClipboardRectangular(), doc.Dirty())
+			}
+			state.command("Cut")
+			if driver.Clipboard() != tc.want || !app.ClipboardRectangular() || doc.Editor.String() != "b\n" {
+				t.Fatalf("cut = %q, remaining text = %q", driver.Clipboard(), doc.Editor.String())
+			}
+			state.command("Undo")
+			if doc.Dirty() || doc.Editor.CanUndo() || !reflect.DeepEqual(state.multiSelections[0].ranges, ranges) {
+				t.Fatalf("undo: dirty=%v, text=%q, ranges=%+v", doc.Dirty(), doc.Editor.String(), state.multiSelections[0].ranges)
+			}
+		})
+	}
+}
+
+func TestMultiSelectionClipboardSingleAndEmptyRanges(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	doc.Editor.Insert("cat dog")
+	for _, tc := range []struct {
+		ranges []text.Range
+		want   string
+	}{
+		{[]text.Range{{Start: 0, End: 3}}, "cat"},
+		{[]text.Range{{Start: 0, End: 0}, {Start: 4, End: 4}}, "sentinel"},
+	} {
+		driver.SetClipboard("sentinel")
+		doc.Editor.SetSelection(tc.ranges[len(tc.ranges)-1])
+		state.multiSelections[0] = multiSelectionState{doc: doc, value: doc.Editor.String(), active: true, ranges: tc.ranges}
+		state.command("Copy")
+		if driver.Clipboard() != tc.want || app.ClipboardRectangular() {
+			t.Fatalf("copy %v = %q, rectangular=%v", tc.ranges, driver.Clipboard(), app.ClipboardRectangular())
+		}
 	}
 }
 
