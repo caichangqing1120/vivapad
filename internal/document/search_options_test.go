@@ -1,10 +1,13 @@
 package document
 
 import (
+	"math/rand/v2"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/vivaui/viva/text"
 )
 
 func TestReplaceAllReportsOriginalByteEditsWithRegexCaptures(t *testing.T) {
@@ -46,6 +49,95 @@ func TestUnicodeWholeWordDoesNotMatchInsideIdentifier(t *testing.T) {
 	}
 	if found, err := doc.FindWith("猫", options, false); err != nil || !found || doc.Editor.Selection().Start != 5 {
 		t.Fatalf("last match: found=%v err=%v selection=%+v", found, err, doc.Editor.Selection())
+	}
+}
+
+func TestLiteralFindKeepsMatchOrderAndDirectionalCaret(t *testing.T) {
+	for _, tc := range []struct {
+		name, value, query string
+		options            SearchOptions
+		caret              int
+		backward           bool
+		want               text.Range
+	}{
+		{"forward across overlapping candidate", "aaaaa", "aa", SearchOptions{MatchCase: true}, 1, false, text.Range{Start: 2, End: 4}},
+		{"previous before partial match", "aaaaa", "aa", SearchOptions{}, 3, true, text.Range{Start: 0, End: 2}},
+		{"wrap backward", "aaaaa", "aa", SearchOptions{}, 0, true, text.Range{Start: 2, End: 4}},
+		{"wrap forward", "aaaaa", "aa", SearchOptions{MatchCase: true}, 5, false, text.Range{Start: 0, End: 2}},
+		{"Unicode folding with different byte widths", "xK K", "k", SearchOptions{WholeWord: true}, 0, false, text.Range{Start: 3, End: 4}},
+		{"Unicode folding after wrap", "K K", "k", SearchOptions{WholeWord: true}, 3, false, text.Range{Start: 0, End: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := New("new 1")
+			doc.Editor.Insert(tc.value)
+			doc.Editor.MoveTo(tc.caret, false)
+			found, err := doc.FindWith(tc.query, tc.options, tc.backward)
+			wantCaret := tc.want.End
+			if tc.backward {
+				wantCaret = tc.want.Start
+			}
+			if !found || err != nil || doc.Editor.Selection() != tc.want || doc.Editor.Caret() != wantCaret {
+				t.Fatalf("found=%v, err=%v, selection=%+v, caret=%d; want %+v, caret=%d", found, err, doc.Editor.Selection(), doc.Editor.Caret(), tc.want, wantCaret)
+			}
+		})
+	}
+}
+
+func TestLiteralFindAllocationsStaySmallOnDenseMatches(t *testing.T) {
+	doc := New("new 1")
+	doc.Editor.Insert(strings.Repeat("cat ", 50_000))
+	for _, tc := range []struct {
+		name     string
+		options  SearchOptions
+		caret    int
+		backward bool
+		want     int
+	}{
+		{"default next near the start", SearchOptions{}, 0, false, 0},
+		{"default previous near the end", SearchOptions{}, doc.Editor.RuneCount(), true, doc.Editor.RuneCount() - 4},
+		{"case-sensitive previous near the end", SearchOptions{MatchCase: true}, doc.Editor.RuneCount(), true, doc.Editor.RuneCount() - 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			allocations := testing.AllocsPerRun(3, func() {
+				doc.Editor.MoveTo(tc.caret, false)
+				if found, err := doc.FindWith("cat", tc.options, tc.backward); !found || err != nil || doc.Editor.Selection().Start != tc.want {
+					t.Fatalf("found=%v, err=%v, selection=%+v", found, err, doc.Editor.Selection())
+				}
+			})
+			t.Logf("allocations per find: %.0f", allocations)
+			if allocations > 128 {
+				t.Fatalf("one literal find allocated %.0f times for 50,000 matches", allocations)
+			}
+		})
+	}
+}
+
+func TestLiteralMatchStreamAgreesWithQuotedRegexp(t *testing.T) {
+	random := rand.New(rand.NewPCG(19, 31))
+	alphabet := []rune("aAbBkkKSsſΣσς猫.\n")
+	for trial := 0; trial < 1500; trial++ {
+		characters := make([]rune, 1+random.IntN(64))
+		for index := range characters {
+			characters[index] = alphabet[random.IntN(len(alphabet))]
+		}
+		from := random.IntN(len(characters))
+		to := from + 1 + random.IntN(min(len(characters)-from, 8))
+		value, query := string(characters), string(characters[from:to])
+		for _, matchCase := range []bool{false, true} {
+			expression, err := compileSearch(query, SearchOptions{MatchCase: matchCase})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := expression.FindAllStringIndex(value, -1)
+			var got [][]int
+			visitLiteralMatches(value, query, matchCase, func(match text.Span) bool {
+				got = append(got, []int{match.Start, match.End})
+				return true
+			})
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("case=%v, Find %q in %q: ranges %v, want %v", matchCase, query, value, got, want)
+			}
+		}
 	}
 }
 
