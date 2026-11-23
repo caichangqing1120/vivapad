@@ -29,11 +29,11 @@ func TestFullScreenViewMenuRestoresFrameAndEditingState(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(3))
-	row := syncScrollHit(t, driver, menuItemScope.At(27))
+	row := syncScrollHit(t, driver, menuItemScope.At(viewCommandIndex("Toggle Full Screen Mode")))
 	if row.Y+row.Height > 400-statusHeight || row.Height < 11 {
 		t.Fatalf("fullscreen row clipped: %+v", row)
 	}
-	clickID(t, driver, menuItemScope.At(27))
+	clickID(t, driver, menuItemScope.At(viewCommandIndex("Toggle Full Screen Mode")))
 	if !state.fullscreen || !driver.Fullscreen() || driver.Frame() != monitor || !state.menuSelected("Toggle Full Screen Mode") {
 		t.Fatalf("fullscreen entry = observed:%v frame:%+v", state.fullscreen, driver.Frame())
 	}
@@ -99,7 +99,7 @@ func TestFullScreenCommandsReturnFocusToTheEditor(t *testing.T) {
 			doc := state.space.Current()
 			doc.Editor.MoveTo(2, false)
 			clickID(t, driver, menuScope.At(3))
-			clickID(t, driver, menuItemScope.At(27))
+			clickID(t, driver, menuItemScope.At(viewCommandIndex("Toggle Full Screen Mode")))
 			requireEditorCommandFocus(t, driver, editorID)
 			if exit == "Escape" {
 				if err := driver.Key(gfx.KeyEscape, 0); err != nil {
@@ -181,7 +181,7 @@ func TestCaptureFullScreenWhenRequested(t *testing.T) {
 	if err := session.Screenshot(filepath.Join(output, "fullscreen-compact-menu.png")); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, session.Driver(), menuItemScope.At(27))
+	clickID(t, session.Driver(), menuItemScope.At(viewCommandIndex("Toggle Full Screen Mode")))
 	if problems := headless.CheckLayout(session.Snapshot()); len(problems) != 0 {
 		t.Fatalf("fullscreen layout: %+v", problems)
 	}

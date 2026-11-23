@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
 	"hash"
 	"io"
@@ -68,18 +69,30 @@ func Text(algorithm Algorithm, value string, eachLine bool) (string, error) {
 	if !eachLine {
 		return Digest(algorithm, []byte(value))
 	}
-	lines := strings.Split(strings.ReplaceAll(value, "\r\n", "\n"), "\n")
-	if strings.HasSuffix(value, "\n") {
-		lines = lines[:len(lines)-1]
-	}
 	var result strings.Builder
-	for _, line := range lines {
+	var hasher hash.Hash
+	var input []byte
+	var sum [sha512.Size]byte
+	var encoded [sha512.Size * 2]byte
+	for line := range strings.Lines(value) {
+		if strings.HasSuffix(line, "\n") {
+			line = strings.TrimSuffix(line[:len(line)-1], "\r")
+		}
 		if line != "" {
-			digest, err := Digest(algorithm, []byte(line))
-			if err != nil {
+			if hasher == nil {
+				var err error
+				hasher, err = newHash(algorithm)
+				if err != nil {
+					return "", err
+				}
+			}
+			input = append(input[:0], line...)
+			if _, err := hasher.Write(input); err != nil {
 				return "", err
 			}
-			result.WriteString(digest)
+			n := hex.Encode(encoded[:], hasher.Sum(sum[:0]))
+			result.Write(encoded[:n])
+			hasher.Reset()
 		}
 		result.WriteString("\r\n")
 	}

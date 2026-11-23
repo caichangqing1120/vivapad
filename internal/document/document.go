@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/changehistory"
@@ -19,6 +20,7 @@ type Document struct {
 	Path   string
 	Name   string
 	Editor *text.Editor
+	RTL    bool // View state shared by clones of this document.
 
 	saved         string
 	savedDisk     []byte
@@ -137,7 +139,7 @@ func readDecodedFile(path string, selected *Encoding, maxBytes int64) (decodedFi
 	var value string
 	var encoding Encoding
 	if selected == nil {
-		value, encoding, err = decodeText(data)
+		value, encoding, err = decodeTextWithNFOFallback(data, strings.EqualFold(filepath.Ext(absolute), ".nfo"))
 	} else {
 		value, encoding, err = decodeLegacy(data, *selected)
 	}
@@ -452,21 +454,10 @@ func (doc *Document) ReplaceAll(query, replacement string) int {
 }
 
 func (doc *Document) Position() (line, column int) {
-	line, column = 1, 1
-	caret := doc.Editor.Caret()
-	index := 0
-	for _, character := range doc.Editor.String() {
-		if index == caret {
-			break
-		}
-		if character == '\n' {
-			line, column = line+1, 1
-		} else {
-			column++
-		}
-		index++
-	}
-	return line, column
+	value := doc.Editor.String()
+	prefix := value[:doc.Editor.ByteOffset(doc.Editor.Caret())]
+	lineStart := strings.LastIndexByte(prefix, '\n') + 1
+	return strings.Count(prefix, "\n") + 1, utf8.RuneCountInString(prefix[lineStart:]) + 1
 }
 
 func (doc *Document) LineCount() int { return strings.Count(doc.Editor.String(), "\n") + 1 }

@@ -183,33 +183,6 @@ func (doc *Document) LineEndingAt(line int) string {
 	return doc.newline
 }
 
-func (doc *Document) PhysicalUTF8Bytes(startRune, endRune int) (total, selected int) {
-	if startRune > endRune {
-		startRune, endRune = endRune, startRune
-	}
-	start, end := doc.Editor.ByteOffset(startRune), doc.Editor.ByteOffset(endRune)
-	value := doc.Editor.String()
-	total, selected = len(value), end-start
-	breaks := doc.currentLineEndings()
-	line := 0
-	for index := 0; index < len(value); index++ {
-		if value[index] != '\n' {
-			continue
-		}
-		ending := doc.newline
-		if line < len(breaks) {
-			ending = breaks[line]
-		}
-		extra := len(ending) - 1
-		total += extra
-		if index >= start && index < end {
-			selected += extra
-		}
-		line++
-	}
-	return total, selected
-}
-
 func (doc *Document) EOLLabels(dst []string) []string {
 	dst = dst[:0]
 	for _, ending := range doc.currentLineEndings() {

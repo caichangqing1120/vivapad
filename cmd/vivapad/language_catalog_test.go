@@ -31,7 +31,7 @@ func clickLanguage(t *testing.T, driver *app.Driver, label string) {
 
 func TestRegisteredLanguageEditingOptionsUseCatalog(t *testing.T) {
 	for _, spec := range syntax.Languages() {
-		if spec.Mode == "" {
+		if spec.Lexer == "" {
 			continue
 		}
 		options, known := codeOptions(spec.Mode)
@@ -379,6 +379,16 @@ func TestLanguageAliasesUseEditingOptionsAndExportOriginalSessionNames(t *testin
 		{"demo.SPF", "Nncrontab", "nncrontab", "\\"},
 		{"demo.T2T", "txt2tags", "txt2tags", ""},
 		{"demo.HWS", "Hollywood", "hollywood", ";"},
+		{"demo.PRO", "Visual Prolog", "visualprolog", "%"},
+		{"demo.pack", "Visual Prolog", "visualprolog", "%"},
+		{"demo.SRC", "ESCRIPT", "escript", ""},
+		{"demo.EM", "ESCRIPT", "escript", ""},
+		{"demo.BC", "BaanC", "baanc", "|"},
+		{"demo.CLN", "BaanC", "baanc", "|"},
+		{"demo.ASP", "ASP", "asp", "'"},
+		{"demo.ASPX", "ASP", "asp", "'"},
+		{"demo.JSP", "JSP", "jsp", "//"},
+		{"demo.ANS", "Escape Sequence (ANSI)", "escseq", "#"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), tc.file)
@@ -433,6 +443,13 @@ func TestNewLanguageModesRoundTripSessionsWithoutEditing(t *testing.T) {
 		{"Nncrontab", ".tab", "nncrontab", "\xef\xbb\xbf#( demo\r\nTime: 5 * * * *\r\nAction: BEEP\r\n)#\r\n"},
 		{"txt2tags", ".t2t", "txt2tags", "\xef\xbb\xbf= Demo =\r\n**bold**\r\n"},
 		{"Hollywood", ".hws", "hollywood", "\xef\xbb\xbfFunction Demo()\r\nPrint(42)\r\nEndFunction\r\n"},
+		{"Visual Prolog", ".pro", "visualprolog", "\xef\xbb\xbfclass demo\r\npredicates\r\nend class\r\n"},
+		{"ESCRIPT", ".src", "escript", "\xef\xbb\xbfprogram demo\r\nreturn\r\nendprogram\r\n"},
+		{"BaanC", ".bc", "baanc", "\xef\xbb\xbfbefore.program:\r\nselect tccom001.name\r\nendselect\r\n"},
+		{"ASP", ".asp", "asp", "\xef\xbb\xbf<p><%= 42 %></p>\r\n"},
+		{"JSP", ".jsp", "jsp", "\xef\xbb\xbf<% return; %>\r\n"},
+		{"MS-DOS Style", ".nfo", "nfo", "\xef\xbb\xbf\u250c\u2500\u2510\r\n"},
+		{"Escape Sequence (ANSI)", ".ans", "escseq", "\xef\xbb\xbf\x1b[31mred\x1b[0m\r\n"},
 	} {
 		t.Run(tc.nppName, func(t *testing.T) {
 			checkLanguageSessionRoundTrip(t, tc.label, tc.mode, tc.nppName, tc.source)

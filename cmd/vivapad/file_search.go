@@ -442,7 +442,7 @@ func (state *model) openFileResult(index int) bool {
 		return false
 	}
 	if !alreadyOpen {
-		if err := state.space.AddOpened(doc); err != nil {
+		if err := state.openIntoWorkspace(func() error { return state.space.AddOpened(doc) }); err != nil {
 			state.notice = err.Error()
 			return false
 		}

@@ -100,6 +100,13 @@ var languages = [...]Language{
 	{"Nncrontab", ".tab", "nncrontab", "IDM_LANG_NNCRONTAB", "Nncrontab", "\\", ""},
 	{"txt2tags", ".t2t", "txt2tags", "IDM_LANG_TXT2TAGS", "txt2tags", "", ""},
 	{"Hollywood", ".hws", "hollywood", "IDM_LANG_HOLLYWOOD", "Hollywood", ";", ""},
+	{"Visual Prolog", ".pro", "visualprolog", "IDM_LANG_VISUALPROLOG", "Visual Prolog", "%", ""},
+	{"ESCRIPT", ".src", "escript", "IDM_LANG_ESCRIPT", "ESCRIPT", "", ""},
+	{"BaanC", ".bc", "baanc", "IDM_LANG_BAANC", "BaanC", "|", ""},
+	{"ASP", ".asp", "asp", "IDM_LANG_ASP", "ASP", "'", ""},
+	{"JSP", ".jsp", "jsp", "IDM_LANG_JSP", "JSP", "//", ""},
+	{"MS-DOS Style", ".nfo", "nfo", "IDM_LANG_ASCII", "", "", ""},
+	{"Escape Sequence (ANSI)", ".ans", "escseq", "IDM_LANG_ESCSEQ", "Escape Sequence (ANSI)", "#", ""},
 }
 
 func Languages() []Language { return append([]Language(nil), languages[:]...) }
@@ -144,6 +151,14 @@ func LanguageByMode(mode string) (Language, bool) {
 		mode = ".bas"
 	case ".spf":
 		mode = ".tab"
+	case ".cl", ".i", ".pack", ".ph":
+		mode = ".pro"
+	case ".em":
+		mode = ".src"
+	case ".cln":
+		mode = ".bc"
+	case ".aspx":
+		mode = ".asp"
 	}
 	for _, spec := range languages {
 		if spec.Mode == mode {

@@ -54,6 +54,59 @@ func TestDocumentListActivateAndDirtyCloseUseExistingGate(t *testing.T) {
 	}
 }
 
+func TestDocumentListActivationRoutesFirstKeyToSelectedEditor(t *testing.T) {
+	for _, tc := range []struct {
+		name, row string
+		split     bool
+		clone     bool
+	}{
+		{name: "single pane", row: "Open second.txt"},
+		{name: "split panes", row: "Open second.txt", split: true},
+		{name: "shared clone", row: "Open first.txt from sub view", split: true, clone: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			first := state.space.Current()
+			first.Name = "first.txt"
+			first.Editor.Insert("first")
+			second := state.space.NewDocument()
+			second.Name = "second.txt"
+			second.Editor.Insert("second")
+			state.paneOwner[second] = 1
+			state.paneDocs = [2]*document.Document{first, second}
+			state.splitEnabled = tc.split
+			state.space.Select(state.documentIndex(first))
+			target, untouched, focus := second, first, editorID
+			if tc.split {
+				focus = rightEditorID
+			}
+			if tc.clone {
+				state.paneDocs[1] = first
+				target, untouched = first, second
+			}
+			before, other := target.Editor.String(), untouched.Editor.String()
+			target.Editor.BreakUndoGroup()
+			state.command("Document List")
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickLabeledControl(t, driver, tc.row)
+			if got := driver.Snapshot().Focused; got != focus || state.space.Current() != target {
+				t.Fatalf("focused %v after activation; want %v on %s", got, focus, target.Name)
+			}
+			if err := driver.Type("x"); err != nil {
+				t.Fatal(err)
+			}
+			if target.Editor.String() != before+"x" || untouched.Editor.String() != other {
+				t.Fatalf("first key routed to the wrong editor: target=%q other=%q", target.Editor.String(), untouched.Editor.String())
+			}
+			if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || target.Editor.String() != before || untouched.Editor.String() != other {
+				t.Fatalf("undo after activation: target=%q other=%q handled=%v err=%v", target.Editor.String(), untouched.Editor.String(), handled, err)
+			}
+		})
+	}
+}
+
 func TestDocumentListSplitGroupsAndCloneCloseLeavePeerViewUntouched(t *testing.T) {
 	state, driver := startDriver(t)
 	left := state.space.Current()

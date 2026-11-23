@@ -53,19 +53,19 @@ func TestSplitZoomIsIndependentUntilSyncAndDoesNotEditText(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(3))
-	row := revealViewMenuItem(t, driver, 28)
+	row := revealViewMenuItem(t, driver, viewCommandIndex("Synchronize Zoom Across Views"))
 	if row.Y+row.Height > 400-statusHeight || row.Height < 20 {
 		t.Fatalf("zoom-sync View row clipped: %+v", row)
 	}
-	clickID(t, driver, menuItemScope.At(28))
+	clickID(t, driver, menuItemScope.At(viewCommandIndex("Synchronize Zoom Across Views")))
 	if !state.zoomSync || state.subFontSize != 14 {
 		t.Fatal("View menu did not align zoom")
 	}
 	clickID(t, driver, menuScope.At(3))
-	revealViewMenuItem(t, driver, 28)
+	revealViewMenuItem(t, driver, viewCommandIndex("Synchronize Zoom Across Views"))
 	checked := false
 	for _, hit := range driver.Snapshot().Hits {
-		if hit.ID == menuItemScope.At(28) {
+		if hit.ID == menuItemScope.At(viewCommandIndex("Synchronize Zoom Across Views")) {
 			checked = hit.Checked
 		}
 	}

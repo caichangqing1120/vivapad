@@ -101,6 +101,15 @@ func TestWindowRecentDynamicItemsFollowTabOrderAndDirtyState(t *testing.T) {
 	if state.space.Current() != second || state.menuOpen != -1 || second.Editor.String() != "draft" || !second.Dirty() {
 		t.Fatal("dynamic recent window did not activate its tab safely")
 	}
+	if got := driver.Snapshot().Focused; got != editorID {
+		t.Errorf("focus after Recent Window selection = %v, want editor", got)
+	}
+	if err := driver.Type("x"); err != nil {
+		t.Fatal(err)
+	}
+	if second.Editor.String() != "draftx" || first.Editor.String() != "" || third.Editor.String() != "" {
+		t.Fatal("first key did not edit only the selected document")
+	}
 }
 
 func TestWindowRecentMenuScrollsAndCapsOriginalFortyItems(t *testing.T) {
@@ -185,5 +194,28 @@ func TestWindowRecentDynamicListUsesOnlyActiveSplitView(t *testing.T) {
 	clickID(t, driver, windowRecentScope.At(1))
 	if state.space.Current() != otherRight || state.paneDocs[0] != left || state.activePane != 1 {
 		t.Fatalf("Window list activated wrong split view: current=%p panes=%+v", state.space.Current(), state.paneDocs)
+	}
+	if got := driver.Snapshot().Focused; got != rightEditorID {
+		t.Errorf("focus after Recent Window selection = %v, want right editor", got)
+	}
+	if err := driver.Type("x"); err != nil {
+		t.Fatal(err)
+	}
+	if otherRight.Editor.String() != "x" || left.Editor.String() != "" || right.Editor.String() != "" {
+		t.Fatal("first key did not edit only the selected split document")
+	}
+}
+
+func TestWindowRecentSelectingCurrentClonePreservesOwner(t *testing.T) {
+	state, driver := startDriver(t)
+	shared := state.space.Current()
+	state.moveToOtherView(true)
+	if state.activePane != 1 || state.paneDocs[0] != shared || state.paneDocs[1] != shared || state.paneOwner[shared] != 0 {
+		t.Fatal("expected the active pane to hold a clone owned by the left pane")
+	}
+	clickID(t, driver, menuScope.At(11))
+	clickID(t, driver, windowRecentScope.At(0))
+	if state.activePane != 1 || state.paneDocs[0] != shared || state.paneDocs[1] != shared || state.paneOwner[shared] != 0 {
+		t.Fatal("activating the clone changed its pane ownership")
 	}
 }

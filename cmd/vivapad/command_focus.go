@@ -32,7 +32,7 @@ func (state *model) restoreEditorCommandFocus(command string) {
 		returnsToEditor = true
 	}
 	switch command {
-	case "Record Macro", "Stop Recording", "Clear Macro", "Print...", "Print Now",
+	case "Record Macro", "Stop Recording", "Clear Macro", "Print...", "Print Now", "Generate from selection into clipboard",
 		openCommandPromptCommand, openPowerShellCommand, webSearchCommand, parameterHintCommand, previousHintCommand, nextHintCommand,
 		"Read-Only on Current Document", "Read-Only for All Documents", "Clear Read-Only for All Documents",
 		"Monitoring (tail -f)",

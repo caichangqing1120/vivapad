@@ -176,7 +176,7 @@ func (state *model) cancelMacroForCommand() {
 func macroMenuSupported(command string) bool {
 	switch command {
 	case "Record Macro", "Stop Recording", "Playback Macro", "Playback 5 Times", "Clear Macro", "Save Current Recorded Macro...", "Run a Macro Multiple Times...", "Saved Macros",
-		"Cut", "Copy", "Paste", "Delete", "Select All",
+		"Cut", "Copy", "Paste", pasteSpecialCommand, pasteHTMLCommand, pasteRTFCommand, "Delete", "Select All",
 		"Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Comment/Uncomment",
 		"Toggle Single Line Comment", "Single Line Comment", "Single Line Uncomment", "Block Comment", "Block Uncomment":
 		return true

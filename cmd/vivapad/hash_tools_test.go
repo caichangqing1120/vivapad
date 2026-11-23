@@ -69,6 +69,7 @@ func TestHashToolsMenuCoversFourAlgorithmsAndSelectionClipboard(t *testing.T) {
 			}
 		}
 		clickID(t, driver, hashScope.At(2))
+		requireEditorCommandFocus(t, driver, editorID)
 		if got := driver.Clipboard(); got != test.want || doc.Editor.String() != "abc" || doc.Dirty() != wasDirty || doc.Editor.CanUndo() {
 			t.Fatalf("algorithm %d clipboard=%q text=%q dirty=%v", index, got, doc.Editor.String(), doc.Dirty())
 		}
@@ -100,6 +101,15 @@ func TestHashTextDialogUpdatesPerLineAndCopiesWithoutEditing(t *testing.T) {
 	if got := state.hashResult; !strings.Contains(got, "\r\n\r\n") || strings.Count(got, "\r\n") != 3 {
 		t.Fatalf("per-line hash result = %q", got)
 	}
+	clickID(t, driver, hashInputID)
+	state.hashInput.SetSelection(text.Range{Start: 0, End: 1})
+	if err := driver.Type("c"); err != nil {
+		t.Fatal(err)
+	}
+	want, err := hashops.Text(hashops.MD5, "c\n\nb", true)
+	if err != nil || state.hashResult != want {
+		t.Fatalf("per-line digest after same-length edit = %q, want %q (%v)", state.hashResult, want, err)
+	}
 	clickID(t, driver, hashCopyID)
 	if driver.Clipboard() != state.hashResult || state.space.Current().Editor.String() != "" {
 		t.Fatalf("copy hash result = %q editor=%q", driver.Clipboard(), state.space.Current().Editor.String())
@@ -107,6 +117,48 @@ func TestHashTextDialogUpdatesPerLineAndCopiesWithoutEditing(t *testing.T) {
 	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.hashDialogOpen {
 		t.Fatalf("Escape did not close text hash dialog: %v", err)
 	}
+	state.hashAlgorithm = hashops.SHA256
+	state.command("Generate...")
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil || state.hashResult != "" || state.hashInput.String() != "" || state.hashEachLine {
+		t.Fatalf("reopened hash dialog did not start empty: %v", err)
+	}
+}
+
+func TestHashDialogRepaintDoesNotReallocatePerLineDigests(t *testing.T) {
+	state, repaint := warmHashDialog()
+	want := state.hashResult
+	allocations := testing.AllocsPerRun(5, repaint)
+	if state.hashResult != want || want == "" {
+		t.Fatal("unchanged repaint lost the digest")
+	}
+	// Repeatedly digesting 16,000 lines allocates at least once per line.
+	if allocations >= 16_000 {
+		t.Fatalf("unchanged repaint allocated %.0f times", allocations)
+	}
+}
+
+func BenchmarkPaintUnchangedHashDialog(b *testing.B) {
+	_, repaint := warmHashDialog()
+	b.ReportAllocs()
+	for b.Loop() {
+		repaint()
+	}
+}
+
+func warmHashDialog() (*model, func()) {
+	state := newModel()
+	state.hashAlgorithm = hashops.SHA256
+	state.openHashDialog(hashFromText)
+	state.hashInput.Insert(strings.Repeat("Unicode text \u6c34\U0001f680 with a line break\r\n", 16_000))
+	state.hashEachLine = true
+	var canvas gfx.Canvas
+	repaint := func() {
+		canvas.Reset()
+		state.paintHashDialog(&canvas, gfx.Size{Width: 640, Height: 400})
+	}
+	repaint()
+	return state, repaint
 }
 
 func TestHashFilesDialogCancelAndBinaryReport(t *testing.T) {
@@ -159,6 +211,47 @@ func TestSelectionHashUsesActiveSplitPaneOnly(t *testing.T) {
 	if state.activePane != 1 || driver.Clipboard() != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" ||
 		left.Editor.String() != "left" || right.Editor.String() != "abc" {
 		t.Fatalf("split hash pane=%d clipboard=%q left=%q right=%q", state.activePane, driver.Clipboard(), left.Editor.String(), right.Editor.String())
+	}
+}
+
+const unicodeSelectionSHA256 = "b29ddc48ddc4f651c1c0648bfbf2f5324822bde0c7b7b3765bfef01006f28b84"
+
+func TestSelectionHashUsesExactUTF8Boundaries(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	value := "\u00e9\u6c34\U0001f680\n\u03b2"
+	doc.Editor.Insert(value)
+	selection := text.Range{Start: 1, End: 4}
+	doc.Editor.SetSelection(selection)
+	wasDirty, couldUndo := doc.Dirty(), doc.Editor.CanUndo()
+	state.hashAlgorithm = hashops.SHA256
+	state.command("Generate from selection into clipboard")
+	if got := driver.Clipboard(); got != unicodeSelectionSHA256 {
+		t.Fatalf("UTF-8 selection hash = %q, want %q", got, unicodeSelectionSHA256)
+	}
+	if doc.Editor.Selection() != selection || doc.Editor.String() != value || doc.Dirty() != wasDirty || doc.Editor.CanUndo() != couldUndo {
+		t.Fatal("selection hashing changed the editor state")
+	}
+}
+
+func BenchmarkHashShortSelection(b *testing.B) {
+	state := newModel()
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(driver.Close)
+	doc := state.space.Current()
+	doc.Editor = text.NewEditor(strings.Repeat("\u6c34\U0001f680\n", 1<<18))
+	end := doc.Editor.RuneCount()
+	doc.Editor.SetSelection(text.Range{Start: end - 3, End: end})
+	state.hashAlgorithm = hashops.SHA256
+	b.ReportAllocs()
+	for b.Loop() {
+		state.hashSelectionToClipboard(doc)
+	}
+	if got := driver.Clipboard(); got != unicodeSelectionSHA256 {
+		b.Fatalf("UTF-8 selection hash = %q, want %q", got, unicodeSelectionSHA256)
 	}
 }
 

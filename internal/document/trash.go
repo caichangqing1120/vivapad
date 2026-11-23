@@ -43,9 +43,8 @@ func (doc *Document) PrepareTrash() (*TrashPlan, error) {
 		return nil, fmt.Errorf("untitled document has no disk file to trash")
 	}
 	path := doc.Path
-	current, err := os.Lstat(path)
-	if err != nil || !current.Mode().IsRegular() {
-		return nil, ErrTrashSourceChanged
+	if err := doc.CheckDiskPath(); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrTrashSourceChanged, err)
 	}
 	file, err := openTrashSource(path)
 	if err != nil {
@@ -100,6 +99,9 @@ func (plan *TrashPlan) Apply(move func(string) error) error {
 	defer plan.Close()
 	if plan.doc == nil || plan.doc.Path != plan.path || plan.file == nil {
 		return ErrTrashSourceChanged
+	}
+	if err := plan.doc.CheckDiskPath(); err != nil {
+		return fmt.Errorf("%w: %w", ErrTrashSourceChanged, err)
 	}
 	if err := plan.verify(); err != nil {
 		return err

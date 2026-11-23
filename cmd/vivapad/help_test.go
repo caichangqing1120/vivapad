@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"testing"
 
@@ -79,6 +81,106 @@ func TestHelpDialogsCopyExplicitlyAndRestoreFocus(t *testing.T) {
 			requireEditorCommandFocus(t, driver, editorID)
 			if state.space.Current() != doc || !doc.Dirty() || doc.Editor.String() != before || doc.Editor.Selection() != selection {
 				t.Fatal("help dialog changed the document")
+			}
+		})
+	}
+}
+
+func TestHelpProjectPageOpensOnlyTheOfficialRepository(t *testing.T) {
+	const target = "https://github.com/caichangqing1120/vivapad"
+	for _, layout := range []struct {
+		name          string
+		width, height int
+		overflow      bool
+	}{{"desktop", 1280, 800, false}, {"compact", 640, 400, true}} {
+		t.Run(layout.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			doc.Editor.Insert("private draft")
+			contents, selection, canUndo := doc.Editor.String(), doc.Editor.Selection(), doc.Editor.CanUndo()
+			driver.SetClipboard("private clipboard")
+			if err := driver.Resize(layout.width, layout.height); err != nil {
+				t.Fatal(err)
+			}
+			index := slices.Index(menuCommands[12], "Project Page")
+			if index < 0 {
+				t.Fatal("Help menu does not offer Project Page")
+			}
+			if layout.overflow {
+				clickID(t, driver, menuOverflowID)
+				clickID(t, driver, hiddenMenuScope.At(12))
+			} else {
+				clickID(t, driver, menuScope.At(12))
+			}
+			if _, opened := driver.LastOpenedURL(); opened {
+				t.Fatal("opening the menu launched a URL")
+			}
+			clickID(t, driver, menuItemScope.At(index))
+			if got, opened := driver.LastOpenedURL(); !opened || got != target {
+				t.Fatalf("opened URL = %q, %t; want %q", got, opened, target)
+			}
+			if state.space.Current() != doc || doc.Editor.String() != contents || doc.Editor.Selection() != selection || doc.Editor.CanUndo() != canUndo || !doc.Dirty() {
+				t.Fatal("opening Project Page changed the editor")
+			}
+			if driver.Clipboard() != "private clipboard" {
+				t.Fatal("opening Project Page changed the clipboard")
+			}
+		})
+	}
+}
+
+func TestHelpLinksReportBrowserFailure(t *testing.T) {
+	for _, test := range []struct{ command, notice string }{
+		{"Project Page", "Could not open the project page"},
+		{"User Guide", "Could not open the user guide"},
+	} {
+		t.Run(test.command, func(t *testing.T) {
+			state, _ := startDriver(t)
+			state.openHelpLink(test.command, func(string) error { return errors.New("no default browser") })
+			if state.notice != test.notice {
+				t.Fatalf("failure notice = %q, want %q", state.notice, test.notice)
+			}
+		})
+	}
+}
+
+func TestHelpUserGuideOpensPublishedInstructions(t *testing.T) {
+	const target = "https://github.com/caichangqing1120/vivapad/blob/main/README.md#current-behavior"
+	for _, layout := range []struct {
+		name          string
+		width, height int
+	}{{"desktop", 1280, 800}, {"compact", 640, 400}} {
+		t.Run(layout.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			doc.Editor.Insert("unsaved draft")
+			before := doc.Editor.Selection()
+			driver.SetClipboard("private clipboard")
+			if err := driver.Resize(layout.width, layout.height); err != nil {
+				t.Fatal(err)
+			}
+			index := slices.Index(menuCommands[12], "User Guide")
+			if index < 0 {
+				t.Fatal("Help menu does not offer User Guide")
+			}
+			if layout.width == 640 {
+				clickID(t, driver, menuOverflowID)
+				clickID(t, driver, hiddenMenuScope.At(12))
+			} else {
+				clickID(t, driver, menuScope.At(12))
+			}
+			if _, opened := driver.LastOpenedURL(); opened {
+				t.Fatal("opening Help launched a browser")
+			}
+			clickID(t, driver, menuItemScope.At(index))
+			if got, opened := driver.LastOpenedURL(); !opened || got != target {
+				t.Fatalf("opened URL = %q, %t; want %q", got, opened, target)
+			}
+			if state.space.Current() != doc || doc.Editor.String() != "unsaved draft" || doc.Editor.Selection() != before || !doc.Editor.CanUndo() || !doc.Dirty() {
+				t.Fatal("opening User Guide changed the editor")
+			}
+			if driver.Clipboard() != "private clipboard" {
+				t.Fatal("opening User Guide changed the clipboard")
 			}
 		})
 	}

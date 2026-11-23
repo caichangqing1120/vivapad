@@ -243,6 +243,7 @@ var (
 	calltipNextID              = tree.ID(page, "calltip-next")
 	blankScope                 = tree.Sub(page, tree.Name("blank-operations"))
 	copyPathsScope             = tree.Sub(page, tree.Name("copy-paths"))
+	pasteSpecialScope          = tree.Sub(page, tree.Name("paste-special"))
 	onSelectionScope           = tree.Sub(page, tree.Name("on-selection"))
 	webSearchEngineScope       = tree.Sub(page, tree.Name("web-search-engines"))
 	webSearchDialogID          = tree.ID(page, "web-search-dialog")
@@ -393,6 +394,11 @@ type model struct {
 	gui4CliHighlighters           map[*document.Document]*syntax.Gui4CliHighlighter
 	txt2tagsHighlighters          map[*document.Document]*syntax.Txt2tagsHighlighter
 	hollywoodHighlighters         map[*document.Document]*syntax.HollywoodHighlighter
+	visualPrologHighlighters      map[*document.Document]*syntax.VisualPrologHighlighter
+	escriptHighlighters           map[*document.Document]*syntax.ESCRIPTHighlighter
+	baanHighlighters              map[*document.Document]*syntax.BaanCHighlighter
+	serverPageHighlighters        map[*document.Document]*syntax.ServerPageHighlighter
+	ansiBackgrounds               map[*document.Document]*syntax.ANSIBackground
 	query                         *text.Editor
 	incrementQuery                *text.Editor
 	incrementOpen                 bool
@@ -591,6 +597,7 @@ type model struct {
 	hashInputLayout               components.TextareaLayout
 	hashResultLayout              components.TextareaLayout
 	hashResult                    string
+	hashTextKey                   hashTextKey
 	hashError                     string
 	hashEachLine                  bool
 	hashFocus                     bool
@@ -614,6 +621,7 @@ type model struct {
 	wordFocusPending              bool
 	blankMenuOpen                 bool
 	copyPathsMenuOpen             bool
+	pasteSpecialOpen              bool
 	onSelectionMenuOpen           bool
 	multiAllMenuOpen              bool
 	multiNextMenuOpen             bool
@@ -886,6 +894,7 @@ func newStartupModel(paths []string, sessionPath string) *model {
 		state.restoreSessionFolds(stored.Folds)
 		state.restoreSessionReadOnly(stored.ReadOnly)
 		state.restoreSessionPinned(stored.Pinned)
+		state.restoreSessionDirection(stored.RTL)
 		state.restoreTabColors(stored.TabColors)
 		state.restoreFolderWorkspace(stored)
 		state.restoreFunctionDock(stored)
@@ -918,6 +927,7 @@ func newStartupModel(paths []string, sessionPath string) *model {
 	state.resetPaneOwnership()
 	state.restoreSessionReadOnly(stored.ReadOnly)
 	state.restoreSessionPinned(stored.Pinned)
+	state.restoreSessionDirection(stored.RTL)
 	state.restoreTabColors(stored.TabColors)
 	if sessionErr == nil {
 		state.restoreFolderWorkspace(stored)
@@ -1378,7 +1388,9 @@ func newConfig(state *model) app.Config {
 			if pane := paneForTarget(event.Target); pane >= 0 {
 				state.activatePane(pane)
 			}
-			state.openDocumentPaths(event.Paths)
+			if state.openDocumentPaths(event.Paths) {
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+			}
 		}
 		return gfx.EventResult{Handled: true, Repaint: event.Phase == gfx.FileDropDrop}
 	}
@@ -1444,13 +1456,24 @@ func newConfig(state *model) app.Config {
 			return gfx.EventResult{Handled: true}
 		}
 		if state.filesDialogOpen {
-			if state.filesDialogField(event.Target) && event.Key == gfx.KeyUnknown && event.Text != "" && event.Modifiers&^gfx.ModifierShift == 0 {
-				return gfx.EventResult{}
+			if state.filesDialogField(event.Target) {
+				plainText := event.Key == gfx.KeyUnknown && event.Text != "" && event.Modifiers&^gfx.ModifierShift == 0
+				// GTK offers the input-method toggle here before filtering it through the IME.
+				inputMethodToggle := event.Modifiers == gfx.ModifierControl &&
+					(event.Key == gfx.KeySpace || event.Key == gfx.KeyUnknown && event.Text == " ")
+				if plainText || inputMethodToggle {
+					return gfx.EventResult{}
+				}
 			}
 			return gfx.EventResult{Handled: true}
 		}
 		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
 			return gfx.EventResult{Handled: true}
+		}
+		if command := directionShortcut(event); command != "" {
+			state.activatePane(paneForTarget(event.Target))
+			state.command(command)
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) &&
 			state.isReadOnly(state.paneDocument(pane)) && event.Modifiers == primary() {
@@ -1593,7 +1616,7 @@ func newConfig(state *model) app.Config {
 			state.zoom("Restore Default Zoom")
 		case "w":
 			state.cancelMacroForCommand()
-			state.closeTab(state.space.Active)
+			state.closePaneTab(state.activePane, state.paneDocument(state.activePane))
 		default:
 			return gfx.EventResult{}
 		}
@@ -1737,6 +1760,9 @@ func newConfig(state *model) app.Config {
 			}
 		}
 		if result, handled := state.changeHistoryMenuKey(event); handled {
+			return result
+		}
+		if result, handled := state.bookmarkMenuKey(event); handled {
 			return result
 		}
 		if result, handled := state.recentMenuKey(event); handled {
@@ -1889,6 +1915,10 @@ func newConfig(state *model) app.Config {
 			}
 			if state.copyPathsMenuOpen {
 				state.copyPathsMenuOpen = false
+				return gfx.EventResult{Handled: true, Repaint: true}
+			}
+			if state.pasteSpecialOpen {
+				state.pasteSpecialOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.onSelectionMenuOpen {
@@ -2118,6 +2148,9 @@ func newConfig(state *model) app.Config {
 		if state.extendRectangleKey(pane, event) {
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
+		if state.moveShapedHorizontal(pane, doc, event) {
+			return gfx.EventResult{Handled: true, Repaint: true}
+		}
 		if state.isReadOnly(doc) && (event.Key == gfx.KeyLeft || event.Key == gfx.KeyRight) {
 			modifiers := event.Modifiers &^ gfx.ModifierShift
 			extend := event.Modifiers&gfx.ModifierShift != 0
@@ -2266,7 +2299,7 @@ func (state *model) configureCode(doc *document.Document) {
 
 func codeOptions(language string) (text.CodeOptions, bool) {
 	options := text.CodeOptions{TabWidth: 4, AutoIndent: true, AutoClose: true}
-	if spec, ok := syntax.LanguageByMode(language); ok && spec.Mode != "" {
+	if spec, ok := syntax.LanguageByMode(language); ok && spec.Lexer != "" {
 		options.IndentAfter, options.LineComment = spec.IndentAfter, spec.LineComment
 		return options, true
 	}
@@ -2296,15 +2329,26 @@ func (state *model) openFiles() {
 	state.openDocumentPaths(paths)
 }
 
-func (state *model) openDocumentPaths(paths []string) (opened bool) {
+func (state *model) openDocumentPaths(paths []string) bool {
+	return state.openDocumentBatch(paths, state.space.OpenInteractive)
+}
+
+func (state *model) openDocumentBatch(paths []string, open func(string) error) (opened bool) {
 	for _, path := range paths {
-		if err := state.space.OpenInteractive(path); err != nil {
+		if err := state.openIntoWorkspace(func() error { return open(path) }); err != nil {
 			state.notice = err.Error()
 		} else {
-			state.showInActivePane(state.space.Current())
-			state.rememberRecent(state.space.Current())
+			doc := state.space.Current()
+			// Keep new tabs in the initiating pane until the batch is complete.
+			if _, owned := state.paneOwner[doc]; !owned {
+				state.showInActivePane(doc)
+			}
+			state.rememberRecent(doc)
 			opened = true
 		}
+	}
+	if opened {
+		state.activateOpenedDocument(state.space.Current())
 	}
 	return opened
 }
@@ -2321,14 +2365,9 @@ func (state *model) openFilesWithEncoding(encoding document.Encoding) {
 		}
 		return
 	}
-	for _, path := range paths {
-		if err := state.space.OpenInteractiveWithEncoding(path, encoding); err != nil {
-			state.notice = err.Error()
-		} else {
-			state.showInActivePane(state.space.Current())
-			state.rememberRecent(state.space.Current())
-		}
-	}
+	state.openDocumentBatch(paths, func(path string) error {
+		return state.space.OpenInteractiveWithEncoding(path, encoding)
+	})
 }
 
 func (state *model) save(index int, saveAs bool) bool {
@@ -2375,6 +2414,7 @@ func (state *model) save(index int, saveAs bool) bool {
 		return false
 	}
 	state.notice = "Saved " + filepath.Base(doc.Path)
+	state.stopMonitorAfterPathChange(doc)
 	state.rememberRecent(doc)
 	return true
 }
@@ -2430,6 +2470,14 @@ func (state *model) closeTab(index int) {
 func (state *model) releaseDocument(doc *document.Document) {
 	state.releaseDocumentComposition(doc)
 	state.stopMonitor(doc)
+	// A tab strip may not paint again while its view is hidden. Rebuild its
+	// scratch list on demand instead of keeping a closed document alive.
+	state.paneTabScratch = [2][]*document.Document{}
+	for pane, anchor := range state.paneTabAnchor {
+		if anchor == doc {
+			state.paneTabAnchor[pane] = nil
+		}
+	}
 	delete(state.editors, doc)
 	delete(state.secondEditors, doc)
 	delete(state.paneOwner, doc)
@@ -2447,6 +2495,11 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.gui4CliHighlighters, doc)
 	delete(state.txt2tagsHighlighters, doc)
 	delete(state.hollywoodHighlighters, doc)
+	delete(state.visualPrologHighlighters, doc)
+	delete(state.escriptHighlighters, doc)
+	delete(state.baanHighlighters, doc)
+	delete(state.serverPageHighlighters, doc)
+	delete(state.ansiBackgrounds, doc)
 	delete(state.bookmarks, doc)
 	delete(state.changeView, doc)
 	if state.noChangeNoticeDoc == doc {
@@ -2645,6 +2698,12 @@ func (state *model) persistSession() {
 				}
 				stored.Pinned[doc.Path] = true
 			}
+			if doc.RTL {
+				if stored.RTL == nil {
+					stored.RTL = make(map[string]bool)
+				}
+				stored.RTL[doc.Path] = true
+			}
 			if color := state.tabColors[doc]; color > 0 {
 				if stored.TabColors == nil {
 					stored.TabColors = make(map[string]uint8)
@@ -2744,6 +2803,10 @@ func (state *model) goToLine() {
 }
 
 func (state *model) command(command string) {
+	if command == textDirectionRTL || command == textDirectionLTR {
+		state.setTextDirection(command == textDirectionRTL)
+		return
+	}
 	doc := state.space.Current()
 	fromSearchMenu := state.menuOpen == 2
 	// Clear refuses a live composition without mutating anything, so its preflight
@@ -2768,13 +2831,14 @@ func (state *model) command(command string) {
 	}
 	checksComposition := command == "Replace All in Open Documents" ||
 		command == "Next Search Result" || command == "Previous Search Result" || isCompletionCommand(command) ||
-		command == "Auto-Completion" || command == webSearchCommand || isCalltipCommand(command)
+		command == "Auto-Completion" || command == webSearchCommand || isCalltipCommand(command) ||
+		command == pasteSpecialCommand || isPasteSourceCommand(command)
 	if !checksComposition {
 		state.cancelLiveComposition()
 	}
 	// Batch replacement and result navigation validate composition before acting.
 	// Do not map bookmarks or selection anchors against a provisional buffer.
-	trackActiveSource := !checksComposition || !doc.Editor.CompositionActive()
+	trackActiveSource := !isPasteSourceCommand(command) && (!checksComposition || !doc.Editor.CompositionActive())
 	if trackActiveSource {
 		state.bookmarkLines(doc)
 	}
@@ -2796,6 +2860,7 @@ func (state *model) command(command string) {
 	state.menuOpen = -1
 	state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.changeHistoryMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
 	state.insertDateOpen = false
+	state.pasteSpecialOpen = false
 	state.markJumpMenuOpen = false
 	state.styleMenuMode = ""
 	state.hashMenuOpen = false
@@ -2964,6 +3029,8 @@ func (state *model) command(command string) {
 		state.openHelp(aboutHelp)
 	case debugHelpCommand:
 		state.openHelp(debugHelp)
+	case projectPageHelpCommand, userGuideHelpCommand:
+		state.openHelpLink(command, app.OpenURL)
 	case "Monitoring (tail -f)":
 		state.toggleMonitoring()
 	case "Synchronize Vertical Scrolling":
@@ -3002,7 +3069,7 @@ func (state *model) command(command string) {
 			}
 		}
 	case "Close":
-		state.closeTab(state.space.Active)
+		state.closePaneTab(state.activePane, state.paneDocument(state.activePane))
 	case "Close All":
 		state.startBatchClose(nil)
 	case "Close Other Tabs":
@@ -3070,6 +3137,10 @@ func (state *model) command(command string) {
 				state.recordMacro(doc, macro.Step{Kind: macro.TextStep, TextKind: app.TextCommandEvent, Command: app.TextDeleteForward})
 			}
 		}
+	case pasteSpecialCommand:
+		state.menuOpen, state.pasteSpecialOpen = 1, true
+	case pasteHTMLCommand, pasteRTFCommand:
+		state.pasteClipboardSource(command)
 	case "Paste":
 		value, rectangular, err := app.ClipboardTextWithFormat()
 		if err != nil {

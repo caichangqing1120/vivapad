@@ -14,6 +14,8 @@ func (state *model) toggleSplit() {
 		state.splitEnabled = false
 		state.activePane = 0
 		state.paneDocs[0], state.paneDocs[1] = state.space.Current(), nil
+		state.paneTabScratch = [2][]*document.Document{}
+		state.paneTabAnchor = [2]*document.Document{}
 		return
 	}
 	current := state.space.Current()
@@ -182,6 +184,27 @@ func (state *model) showInActivePane(doc *document.Document) {
 		state.paneDocs[0] = doc
 		state.paneOwner[doc] = 0
 	}
+}
+
+// activateOpenedDocument follows an existing tab without changing its owner.
+func (state *model) activateOpenedDocument(doc *document.Document) {
+	if state.splitEnabled {
+		pane := state.activePane
+		if state.paneDocs[pane] == doc {
+			return
+		}
+		if state.paneDocs[1-pane] == doc {
+			pane = 1 - pane
+		} else if owner, ok := state.paneOwner[doc]; ok {
+			pane = owner
+		} else {
+			state.showInActivePane(doc)
+			return
+		}
+		state.activePane, state.paneDocs[pane] = pane, doc
+		return
+	}
+	state.showInActivePane(doc)
 }
 
 func (state *model) rebindClosedDocument(closed *document.Document) {

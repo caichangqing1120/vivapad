@@ -175,6 +175,10 @@ func formatLabel(format Encoding) string {
 }
 
 func decodeText(data []byte) (string, Encoding, error) {
+	return decodeTextWithNFOFallback(data, false)
+}
+
+func decodeTextWithNFOFallback(data []byte, nfo bool) (string, Encoding, error) {
 	encoding := UTF8
 	switch {
 	case bytes.HasPrefix(data, []byte{0xef, 0xbb, 0xbf}):
@@ -185,7 +189,13 @@ func decodeText(data []byte) (string, Encoding, error) {
 		encoding, data = UTF16BE, data[2:]
 	}
 	if encoding == UTF8 || encoding == UTF8BOM {
-		if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+		if bytes.IndexByte(data, 0) >= 0 {
+			return "", 0, errors.New("not a UTF-8 text file")
+		}
+		if !utf8.Valid(data) {
+			if encoding == UTF8 && nfo {
+				return decodeLegacy(data, DOS437)
+			}
 			return "", 0, errors.New("not a UTF-8 text file")
 		}
 		return string(data), encoding, nil

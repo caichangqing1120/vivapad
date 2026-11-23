@@ -17,7 +17,7 @@ var (
 )
 
 // ReadSearchSource reads a size-bounded file without constructing an editor.
-// Unicode uses BOM detection; legacy code pages are explicit.
+// Uses the same Unicode and NFO detection as Open unless a legacy encoding is explicit.
 func ReadSearchSource(path string, encoding Encoding, maxBytes int64) (SearchSource, error) {
 	file, err := readDecodedFile(path, searchEncoding(encoding), maxBytes)
 	if err != nil {

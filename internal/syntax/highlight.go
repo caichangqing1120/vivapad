@@ -28,6 +28,9 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	if language == "" || len(line) > components.CodeEditorMaxHighlightedLine {
 		return dst
 	}
+	if strings.EqualFold(language, ".ans") {
+		return highlightANSI(line, dst)
+	}
 	key := cacheKey{language: language, line: line, prefix: prefix}
 	if cached, ok := highlighter.lines[key]; ok {
 		return append(dst, cached...)
@@ -68,6 +71,9 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	_, nncrontab := lexer.(*nncrontabLexer)
 	_, txt2tags := lexer.(*txt2tagsLexer)
 	_, hollywood := lexer.(*hollywoodLexer)
+	_, visualProlog := lexer.(*visualPrologLexer)
+	_, escript := lexer.(*escriptLexer)
+	_, baan := lexer.(*baanLexer)
 	for offset := 0; ; {
 		token := iterator()
 		if token == chroma.EOF {
@@ -103,6 +109,12 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 			color, ok = txt2tagsTokenColor(token.Type)
 		} else if hollywood {
 			color, ok = hollywoodTokenColor(token.Type)
+		} else if visualProlog {
+			color, ok = visualPrologTokenColor(token.Type)
+		} else if escript {
+			color, ok = escriptTokenColor(token.Type)
+		} else if baan {
+			color, ok = baanTokenColor(token.Type)
 		}
 		if ok && end > start {
 			runs = append(runs, components.CodeEditorRun{Start: start, End: end, Color: color})

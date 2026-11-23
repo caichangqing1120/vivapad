@@ -24,6 +24,7 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 		return
 	}
 	var recoveredActive *document.Document
+	var restoreWarning string
 	var historyErr error
 	for index, tab := range stored.Tabs {
 		var doc *document.Document
@@ -55,16 +56,16 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 		// A caret already at the end does not separate recovery from the next keystroke.
 		doc.Editor.BreakUndoGroup()
 		doc.SetEncoding(tab.Encoding)
-		if err := doc.RestoreLineEndings(tab.LineEnding, tab.LineEndings); err != nil {
-			state.notice = "Recovery EOL unavailable: " + err.Error()
+		if err := doc.RestoreLineEndings(tab.LineEnding, tab.LineEndings); err != nil && restoreWarning == "" {
+			restoreWarning = "Recovery EOL unavailable: " + err.Error()
 		}
 		if tab.LanguageSelected {
 			state.languages[doc] = tab.Language
 			state.configureCode(doc)
 		}
 		doc.MarkRecovered()
-		if err := state.applyFoldHeaders(doc, tab.FoldedHeaders); err != nil {
-			state.notice = "Recovery fold unavailable: " + err.Error()
+		if err := state.applyFoldHeaders(doc, tab.FoldedHeaders); err != nil && restoreWarning == "" {
+			restoreWarning = "Recovery fold unavailable: " + err.Error()
 		}
 		state.readOnly[doc] = tab.ReadOnly
 		state.pinned[doc] = tab.Pinned
@@ -136,6 +137,9 @@ func (state *model) restoreRecovery(explicitActive *document.Document) {
 	}
 	if len(stored.Tabs) != 0 {
 		state.notice = fmt.Sprintf("Recovered %d unsaved document(s)", len(stored.Tabs))
+		if restoreWarning != "" {
+			state.notice = restoreWarning + "; " + state.notice
+		}
 	}
 	if historyErr != nil {
 		state.notice += "; " + historyErr.Error()

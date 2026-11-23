@@ -141,25 +141,26 @@ func (state *model) folderRows() []folderRow {
 	return rows
 }
 
-func (state *model) activateFolderRow(row folderRow) {
+func (state *model) activateFolderRow(row folderRow) bool {
 	state.folderSelected = row.path
 	if row.directory {
 		state.folderExpanded[row.path] = !state.folderExpanded[row.path]
 		if !state.folderExpanded[row.path] {
 			state.stopFolderBranch(row.path)
 		}
-		return
+		return false
 	}
 	err := foldertree.CheckCanonicalPath(row.path)
 	if err == nil {
-		err = state.space.Open(row.path)
+		err = state.openIntoWorkspace(func() error { return state.space.Open(row.path) })
 	}
 	if err != nil {
 		state.notice = "Cannot open " + row.name + ": " + err.Error()
-		return
+		return false
 	}
 	state.showInActivePane(state.space.Current())
 	state.rememberRecent(state.space.Current())
+	return true
 }
 
 func (state *model) refreshFolderTree() {

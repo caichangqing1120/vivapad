@@ -245,7 +245,7 @@ func BenchmarkMapMixedEOLManyChangedLines(b *testing.B) {
 	}
 }
 
-func TestPhysicalUTF8BytesPreservesMixedLineEndingWidths(t *testing.T) {
+func TestSummaryCountsPreserveMixedLineEndingWidths(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mixed.txt")
 	if err := os.WriteFile(path, []byte("a\r\nbé\nc\rd"), 0600); err != nil {
 		t.Fatal(err)
@@ -254,11 +254,11 @@ func TestPhysicalUTF8BytesPreservesMixedLineEndingWidths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total, selected := doc.PhysicalUTF8Bytes(1, 2); total != 10 || selected != 2 {
-		t.Fatalf("CRLF selected: total=%d selected=%d", total, selected)
+	if counts := doc.SummaryCounts(1, 2); counts.Bytes != 10 || counts.SelectedBytes != 2 {
+		t.Fatalf("CRLF selected: %+v", counts)
 	}
-	if total, selected := doc.PhysicalUTF8Bytes(3, 5); total != 10 || selected != 3 {
-		t.Fatalf("UTF-8 plus LF selected: total=%d selected=%d", total, selected)
+	if counts := doc.SummaryCounts(3, 5); counts.Bytes != 10 || counts.SelectedBytes != 3 {
+		t.Fatalf("UTF-8 plus LF selected: %+v", counts)
 	}
 	if doc.Dirty() || doc.Editor.String() != "a\nbé\nc\nd" {
 		t.Fatal("byte counting changed the document")

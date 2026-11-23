@@ -51,6 +51,13 @@ func (state *model) stopMonitor(doc *document.Document) {
 	}
 }
 
+func (state *model) stopMonitorAfterPathChange(doc *document.Document) {
+	if watcher := state.monitors[doc]; watcher != nil && watcher.path != doc.Path {
+		state.stopMonitor(doc)
+		state.notice += "; monitoring stopped"
+	}
+}
+
 func (state *model) stopAllMonitors() {
 	for doc := range state.monitors {
 		state.stopMonitor(doc)

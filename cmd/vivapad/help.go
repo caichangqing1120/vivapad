@@ -18,8 +18,12 @@ const (
 )
 
 const (
-	aboutHelpCommand = "About VivaPad"
-	debugHelpCommand = "Debug Info..."
+	aboutHelpCommand       = "About VivaPad"
+	debugHelpCommand       = "Debug Info..."
+	projectPageHelpCommand = "Project Page"
+	userGuideHelpCommand   = "User Guide"
+	projectPageURL         = "https://github.com/caichangqing1120/vivapad"
+	userGuideURL           = projectPageURL + "/blob/main/README.md#current-behavior"
 )
 
 var buildVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.+-]{1,64})?$`)
@@ -96,6 +100,21 @@ func (state *model) openHelp(mode uint8) {
 func (state *model) closeHelp() {
 	state.helpMode, state.helpCopyStatus = noHelp, ""
 	state.requestEditorCommandFocus()
+}
+
+func (state *model) openHelpLink(command string, openURL func(string) error) {
+	var target, failure string
+	switch command {
+	case projectPageHelpCommand:
+		target, failure = projectPageURL, "Could not open the project page"
+	case userGuideHelpCommand:
+		target, failure = userGuideURL, "Could not open the user guide"
+	default:
+		return
+	}
+	if err := openURL(target); err != nil {
+		state.notice = failure
+	}
 }
 
 func (state *model) paintHelp(canvas *gfx.Canvas, size gfx.Size) {

@@ -1102,6 +1102,35 @@ func TestSplitViewRoutesEditingToSelectedDocument(t *testing.T) {
 	}
 }
 
+func TestStatusPositionFollowsActiveEditor(t *testing.T) {
+	state, driver := startDriver(t)
+	assertPosition := func(want string) {
+		t.Helper()
+		for _, label := range driver.Snapshot().Texts {
+			if label.Value == want {
+				return
+			}
+		}
+		t.Fatalf("status does not show %q for pane %d", want, state.activePane)
+	}
+	clickID(t, driver, editorID)
+	if err := driver.Type("first\n\u732b\U0001f600"); err != nil {
+		t.Fatal(err)
+	}
+	assertPosition("Ln: 2  Col: 3")
+	clickID(t, driver, newID)
+	clickID(t, driver, editorID)
+	if err := driver.Type("a\n\nb"); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuScope.At(3))
+	clickID(t, driver, menuItemScope.At(5))
+	clickID(t, driver, rightEditorID)
+	assertPosition("Ln: 3  Col: 2")
+	clickID(t, driver, leftPaneID)
+	assertPosition("Ln: 2  Col: 3")
+}
+
 func TestSplitDividerClampsAtMinimumWidthAndMovesByKey(t *testing.T) {
 	state, driver := startDriver(t)
 	clickID(t, driver, menuScope.At(3))
@@ -2017,6 +2046,30 @@ func TestFindInFilesShortcutAndInvalidRegex(t *testing.T) {
 	}
 	if !visibleError {
 		t.Fatal("directory search error is hidden behind the modal")
+	}
+}
+
+func TestFindInFilesLeavesControlSpaceToFocusedInputMethod(t *testing.T) {
+	state := newModel()
+	state.openFilesDialog()
+	onShortcut := newConfig(state).OnShortcut
+	for _, tc := range []struct {
+		name    string
+		event   gfx.KeyEvent
+		handled bool
+	}{
+		{"normalized search field", gfx.KeyEvent{Target: queryID, Text: " ", Modifiers: gfx.ModifierControl}, false},
+		{"space key in directory field", gfx.KeyEvent{Target: filesRootID, Key: gfx.KeySpace, Modifiers: gfx.ModifierControl}, false},
+		{"hidden replacement field", gfx.KeyEvent{Target: replacementID, Text: " ", Modifiers: gfx.ModifierControl}, true},
+		{"background editor", gfx.KeyEvent{Target: editorID, Text: " ", Modifiers: gfx.ModifierControl}, true},
+		{"global shortcut", gfx.KeyEvent{Target: queryID, Text: "s", Modifiers: primary()}, true},
+		{"other space chord", gfx.KeyEvent{Target: queryID, Text: " ", Modifiers: gfx.ModifierControl | gfx.ModifierShift}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := onShortcut(tc.event).Handled; got != tc.handled {
+				t.Fatalf("shortcut handled = %v, want %v", got, tc.handled)
+			}
+		})
 	}
 }
 

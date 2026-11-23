@@ -32,6 +32,9 @@ func (doc *Document) PrepareRename(path string) (*RenamePlan, error) {
 	if doc.Path == "" {
 		return nil, fmt.Errorf("untitled document has no disk file to rename")
 	}
+	if err := doc.CheckDiskPath(); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrRenameSourceChanged, err)
+	}
 	target, err := CanonicalSavePath(path)
 	if err != nil {
 		return nil, err
@@ -86,6 +89,9 @@ func snapshotRenameFile(path string) (os.FileInfo, string, error) {
 func (plan *RenamePlan) Apply(replace bool) error {
 	if plan == nil || plan.doc == nil || plan.doc.Path != plan.source {
 		return ErrRenameSourceChanged
+	}
+	if err := plan.doc.CheckDiskPath(); err != nil {
+		return fmt.Errorf("%w: %w", ErrRenameSourceChanged, err)
 	}
 	sourceInfo, sourceDigest, err := snapshotRenameFile(plan.source)
 	if err != nil || !os.SameFile(plan.sourceInfo, sourceInfo) || sourceDigest != plan.sourceDigest {

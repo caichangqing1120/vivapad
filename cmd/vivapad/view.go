@@ -31,7 +31,7 @@ var menuLabels = [...]string{"File", "Edit", "Search", "View", "Encoding", "Lang
 
 var menuCommands = [...][]string{
 	{"New", "Open...", "Save", "Save As...", "Save a Copy As...", "Save All", "Close", "Open as GB18030...", "Open as Windows-1252...", "Reload from Disk", "Recent Files", "Close All", "Close Other Tabs", "Sessions", "Rename...", "Close Multiple Documents", "Open Folder as Workspace...", "Open in Default Viewer", "Open Containing Folder", "Open as Encoding...", "Move to Recycle Bin", "Print...", "Print Now", "Exit"},
-	{"Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Line Operations", "Convert Case", "Blank Operations", "Copy to Clipboard", "Delete", "Begin/End Select", "Read-Only in Notepad++", fileReadOnlyLabel(), "Auto-Completion", "Comment/Uncomment", "Insert", "EOL Conversion", "Column Editor...", "Begin/End Select in Column Mode", "On Selection", "Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select", characterPanelCommand},
+	{"Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Line Operations", "Convert Case", "Blank Operations", "Copy to Clipboard", "Delete", "Begin/End Select", "Read-Only in Notepad++", fileReadOnlyLabel(), "Auto-Completion", "Comment/Uncomment", "Insert", "EOL Conversion", "Column Editor...", "Begin/End Select in Column Mode", "On Selection", "Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select", pasteSpecialCommand, characterPanelCommand},
 	{
 		"Find...", "Find in Files...", "Find Next", "Find Previous", "Selected Text Search",
 		"Replace...", "Incremental Search", "Search Results Window", "Next Search Result", "Previous Search Result",
@@ -41,7 +41,7 @@ var menuCommands = [...][]string{
 		"Replace in Files...", "Find All in Current Document", "Find All in Open Documents", "Replace All in Open Documents",
 		"Clear Marks", "Next Change", "Previous Change", "Clear Change History",
 	},
-	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand, namedBrowserMenuCommand},
+	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", textDirectionRTL, textDirectionLTR, "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand, namedBrowserMenuCommand},
 	{"Unix (LF)", "Windows (CR LF)", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE", "GB18030", "Windows-1252", "Character sets"},
 	{"Normal Text", "Go", "JavaScript", "TypeScript", "Python", "JSON", "HTML", "CSS", "Markdown", "SQL"},
 	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off"},
@@ -50,7 +50,7 @@ var menuCommands = [...][]string{
 	{"Run..."},
 	{},
 	{"Sort By", "Windows...", "Recent Window"},
-	{aboutHelpCommand, debugHelpCommand},
+	{aboutHelpCommand, debugHelpCommand, projectPageHelpCommand, userGuideHelpCommand},
 }
 
 func fileMenuCount() int {
@@ -314,6 +314,7 @@ func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 		if enabled {
 			canvas.HitWithOptions(menuScope.At(index), item, label, gfx.HitOptions{Role: gfx.RoleButton})
 			if canvas.Clicked(menuScope.At(index)) {
+				state.pasteSpecialOpen = false
 				state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.changeHistoryMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
 				state.markJumpMenuOpen = false
 				state.styleMenuMode = ""
@@ -601,6 +602,7 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	}
 	snapshot := components.CodeEditorSnapshot{
 		ID: id, Label: "Text editor", Value: value,
+		ShapedBidi: true, Direction: editorDirection(doc),
 		ReadOnly:       state.isReadOnly(doc),
 		MarkerGutter:   true,
 		ShowCaret:      selection.Start == selection.End,
@@ -612,6 +614,9 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 		Representations: state.codeRepresentations(),
 		ScrollbarID:     barID, HorizontalScrollbarID: horizontalID,
 		Language: state.languageFor(doc), Highlight: state.syntax.Highlight,
+	}
+	if snapshot.Language == ".nfo" {
+		snapshot.MonoFace, snapshot.Highlight = gfx.MonoClassic, nil
 	}
 	if strings.EqualFold(snapshot.Language, ".json5") || strings.EqualFold(snapshot.Language, ".jsonc") {
 		highlighter := state.json5Highlighters[doc]
@@ -782,6 +787,71 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 		snapshot.HighlightLine = highlighter.ForText(value)
 	} else {
 		delete(state.hollywoodHighlighters, doc)
+	}
+	if language.Mode == ".pro" {
+		highlighter := state.visualPrologHighlighters[doc]
+		if highlighter == nil {
+			if state.visualPrologHighlighters == nil {
+				state.visualPrologHighlighters = make(map[*document.Document]*syntax.VisualPrologHighlighter)
+			}
+			highlighter = syntax.NewVisualPrologHighlighter()
+			state.visualPrologHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.visualPrologHighlighters, doc)
+	}
+	if language.Mode == ".src" {
+		highlighter := state.escriptHighlighters[doc]
+		if highlighter == nil {
+			if state.escriptHighlighters == nil {
+				state.escriptHighlighters = make(map[*document.Document]*syntax.ESCRIPTHighlighter)
+			}
+			highlighter = syntax.NewESCRIPTHighlighter()
+			state.escriptHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.escriptHighlighters, doc)
+	}
+	if language.Mode == ".bc" {
+		highlighter := state.baanHighlighters[doc]
+		if highlighter == nil {
+			if state.baanHighlighters == nil {
+				state.baanHighlighters = make(map[*document.Document]*syntax.BaanCHighlighter)
+			}
+			highlighter = syntax.NewBaanCHighlighter()
+			state.baanHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.baanHighlighters, doc)
+	}
+	if language.Mode == ".asp" || language.Mode == ".jsp" {
+		highlighter := state.serverPageHighlighters[doc]
+		if highlighter == nil {
+			if state.serverPageHighlighters == nil {
+				state.serverPageHighlighters = make(map[*document.Document]*syntax.ServerPageHighlighter)
+			}
+			highlighter = new(syntax.ServerPageHighlighter)
+			state.serverPageHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(language.Mode, value)
+	} else {
+		delete(state.serverPageHighlighters, doc)
+	}
+	if language.Mode == ".ans" {
+		background := state.ansiBackgrounds[doc]
+		if background == nil {
+			if state.ansiBackgrounds == nil {
+				state.ansiBackgrounds = make(map[*document.Document]*syntax.ANSIBackground)
+			}
+			background = new(syntax.ANSIBackground)
+			state.ansiBackgrounds[doc] = background
+		}
+		snapshot.MarkLayers = background.AppendLayers(value, snapshot.MarkLayers)
+	} else {
+		delete(state.ansiBackgrounds, doc)
 	}
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
@@ -1298,6 +1368,7 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(1)
 	canvas.HitWithOptions(menuDismissID, gfx.Rect{Y: menuHeight, Width: size.Width, Height: size.Height - menuHeight}, "Close menu", gfx.HitOptions{Role: gfx.RoleButton})
 	if canvas.Clicked(menuDismissID) {
+		state.pasteSpecialOpen = false
 		state.menuOpen, state.recentOpen, state.lineMenuOpen, state.caseMenuOpen, state.sessionMenuOpen, state.bookmarkMenuOpen, state.changeHistoryMenuOpen, state.closeMultipleMenuOpen, state.containingMenuOpen, state.autoMenuOpen, state.selectedSearchMenuOpen, state.blankMenuOpen, state.copyPathsMenuOpen, state.readOnlyMenuOpen, state.onSelectionMenuOpen, state.multiAllMenuOpen, state.multiNextMenuOpen = -1, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false
 		state.insertDateOpen = false
 		state.markJumpMenuOpen = false
@@ -1469,7 +1540,7 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 		if checked {
 			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 6, Y: iconY, Width: iconSize, Height: iconSize}, palette.blue)
 		}
-		if state.menuOpen == 7 || command == "Recent Files" || command == "Line Operations" || command == "Insert" || command == "Convert Case" || command == "Comment/Uncomment" || command == "EOL Conversion" || command == "Show Symbol" || command == "Tab" || command == "Fold Level" || command == "Unfold Level" || command == "Sort By" || command == "Blank Operations" || command == "Copy to Clipboard" || command == "On Selection" || command == "Multi-select All" || command == "Multi-select Next" || command == "Read-Only in Notepad++" || command == "Auto-Completion" || command == "Sessions" || command == "Bookmark" || command == "Change History" || command == "Jump Up" || command == "Jump Down" || command == "Style All Occurrences of Token" || command == "Style One Token" || command == "Clear Style" || command == "Copy Styled Text" || command == "Close Multiple Documents" || command == "Open Containing Folder" || command == "Selected Text Search" || command == "Character sets" || command == "Open as Encoding..." || command == "Saved Macros" {
+		if state.menuOpen == 7 || command == "Recent Files" || command == "Line Operations" || command == "Insert" || command == "Convert Case" || command == "Comment/Uncomment" || command == "EOL Conversion" || command == "Show Symbol" || command == "Tab" || command == "Fold Level" || command == "Unfold Level" || command == "Sort By" || command == "Blank Operations" || command == "Copy to Clipboard" || command == "On Selection" || command == "Multi-select All" || command == "Multi-select Next" || command == "Read-Only in Notepad++" || command == "Auto-Completion" || command == "Sessions" || command == "Bookmark" || command == "Change History" || command == "Jump Up" || command == "Jump Down" || command == "Style All Occurrences of Token" || command == "Style One Token" || command == "Clear Style" || command == "Copy Styled Text" || command == "Close Multiple Documents" || command == "Open Containing Folder" || command == "Selected Text Search" || command == "Character sets" || command == "Open as Encoding..." || command == "Saved Macros" || command == pasteSpecialCommand {
 			canvas.DrawIcon(rightIcon, gfx.Rect{X: item.X + item.Width - 21, Y: iconY, Width: iconSize, Height: iconSize}, palette.muted)
 		}
 		fontSize := float32(12)
@@ -1536,6 +1607,10 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 	}
 	if state.copyPathsMenuOpen && state.menuOpen == 1 {
 		state.paintCopyPathsMenu(canvas, size, x+width)
+	}
+	if state.pasteSpecialOpen && state.menuOpen == 1 {
+		index := slices.Index(commands, pasteSpecialCommand) - state.editMenuOffset
+		state.paintPasteSpecial(canvas, size, x+width, rows.Y+float32(index)*rowHeight)
 	}
 	if state.onSelectionMenuOpen && state.menuOpen == 1 {
 		state.paintOnSelectionMenu(canvas, size, x+width)
@@ -1679,6 +1754,10 @@ func (state *model) menuSelected(command string) bool {
 		return state.syncVertical
 	case "Synchronize Horizontal Scrolling":
 		return state.syncHorizontal
+	case textDirectionRTL:
+		return doc.RTL
+	case textDirectionLTR:
+		return !doc.RTL
 	case "Begin/End Select":
 		return state.selectAnchors[state.activePane].doc == doc
 	case "Begin/End Select in Column Mode":
