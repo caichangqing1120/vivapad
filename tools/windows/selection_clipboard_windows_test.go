@@ -153,6 +153,56 @@ func TestNotepadPlusPlusFirstMultiSelectFromCaret(t *testing.T) {
 	editor.close(t)
 }
 
+func TestNotepadPlusPlusMultiSelectSearchOrigin(t *testing.T) {
+	reference := os.Getenv("VIVAPAD_RTL_REFERENCE_EXE")
+	if reference == "" {
+		t.Skip("requires pinned portable Notepad++ on an isolated Windows desktop")
+	}
+	for _, tc := range []struct {
+		name, value string
+		option      uintptr
+		seed        [2]uintptr
+		want        [][2]uintptr
+	}{
+		{"adjacent match", "aaaaaa", 1, [2]uintptr{1, 3}, [][2]uintptr{{1, 3}, {3, 5}}},
+		{"forward then wrap", "aaaaaaaaaaaa", 1, [2]uintptr{3, 5}, [][2]uintptr{{3, 5}, {5, 7}, {7, 9}, {9, 11}, {0, 2}}},
+		{"UTF-8 offsets", "猫猫猫猫猫猫", 1, [2]uintptr{3, 9}, [][2]uintptr{{3, 9}, {9, 15}}},
+		{"whole word", "aa aaaa aa", 2, [2]uintptr{3, 5}, [][2]uintptr{{3, 5}, {8, 10}, {0, 2}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "search-origin.txt")
+			if err := os.WriteFile(path, []byte("\ufeff"+tc.value), 0600); err != nil {
+				t.Fatal(err)
+			}
+			editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", path)
+			editor.focusText(t)
+			send := focusedScintilla(t, editor)
+			if got := send(2006, 0, 0); got != uintptr(len(tc.value)) || send(2137, 0, 0) != 65001 {
+				t.Fatalf("Scintilla fixture is not UTF-8 at the expected length: %d", got)
+			}
+			for _, all := range []bool{false, true} {
+				command, want := 42094+tc.option, tc.want[:2]
+				if all {
+					command, want = 42090+tc.option, tc.want
+				}
+				send(2572, tc.seed[1], tc.seed[0]) // SCI_SETSELECTION
+				var result uintptr
+				if ok, _, err := sendMessageTimeout.Call(editor.hwnd, 0x0111, command, 0, 2, 1000, uintptr(unsafe.Pointer(&result))); ok == 0 {
+					t.Fatalf("Notepad++ menu command %d: %v", command, err)
+				}
+				var got [][2]uintptr
+				for n := range send(2570, 0, 0) { // SCI_GETSELECTIONS
+					got = append(got, [2]uintptr{send(2585, n, 0), send(2587, n, 0)})
+				}
+				if main := send(2575, 0, 0); !slices.Equal(got, want) || main != uintptr(len(want)-1) {
+					t.Fatalf("menu %d selected %v, main=%d; want %v", command, got, main, want)
+				}
+			}
+			editor.close(t)
+		})
+	}
+}
+
 func focusedScintilla(t *testing.T, editor *desktopEditor) func(uintptr, uintptr, uintptr) uintptr {
 	t.Helper()
 	info := struct {

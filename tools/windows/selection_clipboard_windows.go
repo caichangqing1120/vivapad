@@ -1,9 +1,11 @@
 package windows
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/vivaui/viva/app"
@@ -20,7 +22,13 @@ func ClipboardSequence() uintptr {
 // CheckSelectionClipboard verifies the UTF-16 payload and both column formats.
 func CheckSelectionClipboard() error {
 	const want = "c\rd\r\n\r\na\r\n\r\n"
-	value, column, err := app.ClipboardTextWithFormat()
+	var value string
+	var column bool
+	err := retryBusyClipboard(func() error {
+		var err error
+		value, column, err = app.ClipboardTextWithFormat()
+		return err
+	})
 	if err != nil || value != want || !column || !app.ClipboardRectangular() {
 		return fmt.Errorf("clipboard = %q, column=%v, error=%v; want %q and MSDEVColumnSelect", value, column, err, want)
 	}
@@ -36,7 +44,13 @@ func CheckSelectionClipboard() error {
 	if format == 0 {
 		return fmt.Errorf("register Borland clipboard format: %w", err)
 	}
-	if ok, _, err := user.NewProc("OpenClipboard").Call(0); ok == 0 {
+	openClipboard := user.NewProc("OpenClipboard")
+	if err := retryBusyClipboard(func() error {
+		if ok, _, err := openClipboard.Call(0); ok == 0 {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return fmt.Errorf("open clipboard to check Borland marker: %w", err)
 	}
 	defer user.NewProc("CloseClipboard").Call()
@@ -59,4 +73,14 @@ func CheckSelectionClipboard() error {
 		return fmt.Errorf("Borland marker = %#x, want 0x02", marker)
 	}
 	return nil
+}
+
+func retryBusyClipboard(read func() error) error {
+	for attempt := 0; ; attempt++ {
+		err := read()
+		if !errors.Is(err, syscall.ERROR_ACCESS_DENIED) || attempt == 9 {
+			return err
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
