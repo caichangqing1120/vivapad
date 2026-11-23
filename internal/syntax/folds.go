@@ -177,6 +177,8 @@ func indentFoldRegions(value string, python bool) []FoldRegion {
 	lines := strings.Split(value, "\n")
 	var starts []indentStart
 	var regions []FoldRegion
+	var pythonColons map[int]bool
+	multilineString := python && (strings.Contains(value, `"""`) || strings.Contains(value, `'''`) || strings.Contains(value, "\\\n"))
 	previousLine, previousIndent := -1, 0
 	for line, content := range lines {
 		trimmed := strings.TrimSpace(content)
@@ -202,8 +204,29 @@ func indentFoldRegions(value string, python bool) []FoldRegion {
 				regions = append(regions, FoldRegion{Header: start.line, LastLine: line - 1, Level: start.level})
 			}
 		}
-		if previousLine >= 0 && indent > previousIndent && (!python || strings.HasSuffix(strings.TrimSpace(lines[previousLine]), ":")) {
-			starts = append(starts, indentStart{line: previousLine, indent: previousIndent, level: len(starts) + 1})
+		if previousLine >= 0 && indent > previousIndent {
+			header := !python
+			if python {
+				text := lines[previousLine]
+				if strings.Contains(text, ":") {
+					if multilineString {
+						if pythonColons == nil {
+							pythonColons = pythonCodeColonLines(value)
+						}
+						header = pythonColons[previousLine]
+					} else {
+						code, _, _ := strings.Cut(text, "#")
+						if strings.ContainsAny(code, `"'`) {
+							header = pythonCodeColonLines(text)[0]
+						} else {
+							header = strings.HasSuffix(strings.TrimSpace(code), ":")
+						}
+					}
+				}
+			}
+			if header {
+				starts = append(starts, indentStart{line: previousLine, indent: previousIndent, level: len(starts) + 1})
+			}
 		}
 		previousLine, previousIndent = line, indent
 	}
@@ -215,6 +238,37 @@ func indentFoldRegions(value string, python bool) []FoldRegion {
 		}
 	}
 	return sortedFoldRegions(regions)
+}
+
+// Keep lexer state across lines so a colon in a multiline string is not a header.
+func pythonCodeColonLines(value string) map[int]bool {
+	result := make(map[int]bool)
+	iterator, err := lexers.Get("python").Tokenise(nil, value)
+	if err != nil {
+		return result
+	}
+	line, colon := 0, false
+	for token := iterator(); token != chroma.EOF; token = iterator() {
+		for remaining := token.Value; ; {
+			part, rest, newline := strings.Cut(remaining, "\n")
+			if part = strings.TrimSpace(part); part != "" && !token.Type.InCategory(chroma.Comment) {
+				colon = token.Type == chroma.Punctuation && strings.HasSuffix(part, ":")
+			}
+			if !newline {
+				break
+			}
+			if colon {
+				result[line] = true
+			}
+			line++
+			colon = false
+			remaining = rest
+		}
+	}
+	if colon {
+		result[line] = true
+	}
+	return result
 }
 
 func sortedFoldRegions(regions []FoldRegion) []FoldRegion {

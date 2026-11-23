@@ -44,6 +44,27 @@ func TestFoldRegionsFollowPythonIndentationAndSkipBlankComments(t *testing.T) {
 	}
 }
 
+func TestPythonFoldsRecognizeHeadersBeforeInlineComments(t *testing.T) {
+	value := "def greet(): # outer\n" +
+		"    if label == '#': # inner\n" +
+		"        print(label)\n" +
+		"    return label\n" +
+		"other()\n"
+	want := []FoldRegion{{Header: 0, LastLine: 3, Level: 1}, {Header: 1, LastLine: 2, Level: 2}}
+	if got := FoldRegions(".py", value); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Python fold regions = %+v, want %+v", got, want)
+	}
+	for _, text := range []string{
+		"work() # this colon is not a header:\n    other()\n",
+		"value = \"\"\"description\npretend: # inside the string\n    value\n\"\"\"\n",
+		"value = \"\"\"description\npretend:\n    value\n\"\"\"\n",
+	} {
+		if got := FoldRegions(".py", text); len(got) != 0 {
+			t.Fatalf("folded non-code colon in %q: %+v", text, got)
+		}
+	}
+}
+
 func TestInnoSetupFoldRegionsFollowRecognizedSections(t *testing.T) {
 	lines := []string{
 		"preamble",
