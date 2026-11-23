@@ -17,12 +17,16 @@ import (
 )
 
 type Kind string
+type SelectionAction string
+type SelectionFlags uint8
 
 const (
-	TextStep    Kind = "text"
-	CodeStep    Kind = "code"
-	LineStep    Kind = "line"
-	CommentStep Kind = "comment"
+	TextStep      Kind = "text"
+	CodeStep      Kind = "code"
+	LineStep      Kind = "line"
+	CommentStep   Kind = "comment"
+	SelectionStep Kind = "selection"
+	MultiTextStep Kind = "selection-text"
 
 	MaxSteps         = 1024
 	MaxReplays       = 9999
@@ -31,17 +35,28 @@ const (
 	maxPlaybackSteps = 1 << 20
 )
 
+const (
+	SelectAllMatches    SelectionAction = "all"
+	SelectNextMatch     SelectionAction = "next"
+	SkipCurrentMatch    SelectionAction = "skip"
+	UndoLatestSelection SelectionAction = "undo-latest"
+	SelectMatchCase     SelectionFlags  = 1
+	SelectWholeWord     SelectionFlags  = 2
+)
+
 type Step struct {
-	Kind       Kind                         `json:"kind"`
-	TextKind   app.TextEventKind            `json:"text_kind,omitempty"`
-	Text       string                       `json:"text,omitempty"`
-	Command    app.TextCommand              `json:"command,omitempty"`
-	Code       components.CodeEditorCommand `json:"code,omitempty"`
-	Line       string                       `json:"line,omitempty"`
-	Comment    string                       `json:"comment,omitempty"`
-	LinePrefix string                       `json:"line_prefix,omitempty"`
-	BlockStart string                       `json:"block_start,omitempty"`
-	BlockEnd   string                       `json:"block_end,omitempty"`
+	Selection   SelectionAction              `json:"selection,omitempty"`
+	SelectFlags SelectionFlags               `json:"select_flags,omitempty"`
+	Kind        Kind                         `json:"kind"`
+	TextKind    app.TextEventKind            `json:"text_kind,omitempty"`
+	Text        string                       `json:"text,omitempty"`
+	Command     app.TextCommand              `json:"command,omitempty"`
+	Code        components.CodeEditorCommand `json:"code,omitempty"`
+	Line        string                       `json:"line,omitempty"`
+	Comment     string                       `json:"comment,omitempty"`
+	LinePrefix  string                       `json:"line_prefix,omitempty"`
+	BlockStart  string                       `json:"block_start,omitempty"`
+	BlockEnd    string                       `json:"block_end,omitempty"`
 }
 
 type diskState struct {
@@ -59,13 +74,21 @@ func Validate(steps []Step) error {
 		if totalText > maxBytes {
 			return fmt.Errorf("macro text exceeds 1 MiB")
 		}
+		if step.Kind != SelectionStep && (step.Selection != "" || step.SelectFlags != 0) {
+			return fmt.Errorf("unexpected macro selection fields")
+		}
 		switch step.Kind {
-		case TextStep:
+		case TextStep, MultiTextStep:
 			if step.Code != 0 || step.Line != "" || hasCommentFields(step) ||
 				step.TextKind != app.TextInsert && step.TextKind != app.TextPaste && step.TextKind != app.TextCommandEvent ||
 				step.TextKind == app.TextCommandEvent && (step.Command < app.TextDeleteBackward || step.Command > app.TextDeleteToLineEnd || step.Command == app.TextUndo || step.Command == app.TextRedo || step.Text != "") ||
 				step.TextKind != app.TextCommandEvent && step.Command != 0 {
 				return fmt.Errorf("invalid macro text step")
+			}
+			if step.Kind == MultiTextStep &&
+				!(step.TextKind == app.TextInsert && step.Text != "" || step.TextKind == app.TextCommandEvent &&
+					(step.Command == app.TextDeleteBackward || step.Command == app.TextDeleteForward)) {
+				return fmt.Errorf("invalid macro multi-selection text step")
 			}
 		case CodeStep:
 			if step.TextKind != 0 || step.Text != "" || step.Command != 0 || step.Line != "" || hasCommentFields(step) ||
@@ -85,6 +108,22 @@ func Validate(steps []Step) error {
 				(step.BlockStart == "") != (step.BlockEnd == "") ||
 				!validCommentToken(step.LinePrefix) || !validCommentToken(step.BlockStart) || !validCommentToken(step.BlockEnd) {
 				return fmt.Errorf("invalid macro comment step")
+			}
+		case SelectionStep:
+			if step.TextKind != 0 || step.Text != "" || step.Command != 0 || step.Code != 0 || step.Line != "" || hasCommentFields(step) {
+				return fmt.Errorf("invalid macro selection step")
+			}
+			switch step.Selection {
+			case SelectAllMatches, SelectNextMatch:
+				if step.SelectFlags & ^(SelectMatchCase|SelectWholeWord) != 0 {
+					return fmt.Errorf("invalid macro selection flags")
+				}
+			case SkipCurrentMatch, UndoLatestSelection:
+				if step.SelectFlags != 0 {
+					return fmt.Errorf("unexpected macro selection flags")
+				}
+			default:
+				return fmt.Errorf("unknown macro selection action")
 			}
 		default:
 			return fmt.Errorf("unsupported macro step %q", step.Kind)
@@ -148,7 +187,7 @@ func Play(doc *document.Document, steps []Step, repeats int) error {
 }
 
 func PlayWithExecutor(doc *document.Document, steps []Step, repeats int, execute func(*document.Document, Step)) error {
-	return play(doc, steps, repeats, false, execute)
+	return PlayChecked(doc, steps, repeats, false, adaptExecutor(execute))
 }
 
 func PlayUntilEnd(doc *document.Document, steps []Step) error {
@@ -156,10 +195,23 @@ func PlayUntilEnd(doc *document.Document, steps []Step) error {
 }
 
 func PlayUntilEndWithExecutor(doc *document.Document, steps []Step, execute func(*document.Document, Step)) error {
-	return play(doc, steps, MaxReplays, true, execute)
+	return PlayChecked(doc, steps, MaxReplays, true, adaptExecutor(execute))
 }
 
-func play(doc *document.Document, steps []Step, repeats int, untilEnd bool, execute func(*document.Document, Step)) error {
+func adaptExecutor(execute func(*document.Document, Step)) func(*document.Document, Step) error {
+	if execute == nil {
+		return nil
+	}
+	return func(doc *document.Document, step Step) error {
+		execute(doc, step)
+		return nil
+	}
+}
+
+func PlayChecked(doc *document.Document, steps []Step, repeats int, untilEnd bool, execute func(*document.Document, Step) error) error {
+	if untilEnd {
+		repeats = MaxReplays
+	}
 	if doc == nil || doc.Editor == nil || len(steps) == 0 || repeats < 1 || repeats > MaxReplays || !untilEnd && len(steps)*repeats > maxPlaybackSteps {
 		return fmt.Errorf("macro or repeat count is invalid")
 	}
@@ -177,7 +229,7 @@ func play(doc *document.Document, steps []Step, repeats int, untilEnd bool, exec
 	})
 }
 
-func playDraft(lineDoc *document.Document, steps []Step, repeats int, untilEnd bool, execute func(*document.Document, Step)) error {
+func playDraft(lineDoc *document.Document, steps []Step, repeats int, untilEnd bool, execute func(*document.Document, Step) error) error {
 	editor := lineDoc.Editor
 	initialRevision := editor.TrackEdits()
 	for iteration := 0; iteration < repeats; iteration++ {
@@ -190,7 +242,9 @@ func playDraft(lineDoc *document.Document, steps []Step, repeats int, untilEnd b
 		remaining := editor.RuneCount() - editor.Caret()
 		for _, step := range steps {
 			if execute != nil {
-				execute(lineDoc, step)
+				if err := execute(lineDoc, step); err != nil {
+					return err
+				}
 			} else {
 				switch step.Kind {
 				case TextStep:
@@ -210,6 +264,8 @@ func playDraft(lineDoc *document.Document, steps []Step, repeats int, untilEnd b
 					}
 				case CommentStep:
 					ApplyComment(lineDoc, step)
+				case SelectionStep, MultiTextStep:
+					return fmt.Errorf("multi-selection macro requires the editor command executor")
 				}
 			}
 			if editor.RuneCount() > maxRunes {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -58,6 +59,113 @@ func TestMacroRecordsCommittedIMEAndCodeTabThenReplaysAtCaret(t *testing.T) {
 	restored := newStartupModel(nil, path)
 	if len(restored.macroLast) != 2 {
 		t.Fatalf("restart lost recorded macro: %+v", restored.macroLast)
+	}
+}
+
+func TestMacroRecordsMultiSelectionAndTyping(t *testing.T) {
+	state, driver := startDriver(t)
+	state.macroPath = filepath.Join(t.TempDir(), "macro.json")
+	doc := state.space.Current()
+	doc.Editor.Insert("cat CAT cats cat")
+	clickID(t, driver, editorID)
+	doc.Editor.MoveTo(1, false)
+	state.command("Record Macro")
+	state.command("Multi-select All")
+	state.command("Multi-select All / Match Whole Word Only")
+	if err := driver.Type("x"); err != nil {
+		t.Fatal(err)
+	}
+	state.command("Stop Recording")
+	if doc.Editor.String() != "x x cats x" || len(state.macroLast) != 2 {
+		t.Fatalf("recording text=%q steps=%+v notice=%q", doc.Editor.String(), state.macroLast, state.notice)
+	}
+	steps, err := macro.Load(state.macroPath)
+	if err != nil || len(steps) != 2 {
+		t.Fatalf("stored steps=%+v: %v", steps, err)
+	}
+	const initial = "dog DOG dogs dog"
+	path := filepath.Join(t.TempDir(), "target.txt")
+	if err := os.WriteFile(path, []byte(initial), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.space.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	target := state.space.Current()
+	target.Editor.MoveTo(1, false)
+	if !state.playMacroSteps(steps, 2, false) || target.Editor.String() != "x x dogs x" || len(state.multiSelections[0].ranges) != 3 {
+		t.Fatalf("replay text=%q ranges=%+v notice=%q", target.Editor.String(), state.multiSelections[0].ranges, state.notice)
+	}
+	state.command("Undo")
+	if target.Editor.String() != initial || target.Editor.CanUndo() || state.multiSelections[0].active {
+		t.Fatalf("undo text=%q ranges=%+v history=%t", target.Editor.String(), state.multiSelections[0].ranges, target.Editor.CanUndo())
+	}
+}
+
+func TestMacroRecordsMultiSelectionNavigationAndDelete(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	doc.Editor.Insert("cat cat cat cat!")
+	clickID(t, driver, editorID)
+	doc.Editor.MoveTo(1, false)
+	state.command("Record Macro")
+	state.command("Multi-select Next / Match Case & Whole Word")
+	state.command("Multi-select Next / Match Case & Whole Word")
+	state.command("Skip Current Multi-Select")
+	state.command("Undo Latest Multi-Select")
+	if err := driver.Key(gfx.KeyBackspace, 0); err != nil {
+		t.Fatal(err)
+	}
+	state.command("Stop Recording")
+	flags := macro.SelectMatchCase | macro.SelectWholeWord
+	want := []macro.Step{
+		{Kind: macro.SelectionStep, Selection: macro.SelectNextMatch, SelectFlags: flags},
+		{Kind: macro.SelectionStep, Selection: macro.SelectNextMatch, SelectFlags: flags},
+		{Kind: macro.SelectionStep, Selection: macro.SkipCurrentMatch},
+		{Kind: macro.SelectionStep, Selection: macro.UndoLatestSelection},
+		{Kind: macro.MultiTextStep, TextKind: app.TextCommandEvent, Command: app.TextDeleteBackward},
+	}
+	if doc.Editor.String() != " cat cat cat!" || !reflect.DeepEqual(state.macroLast, want) {
+		t.Fatalf("recording text=%q steps=%+v notice=%q", doc.Editor.String(), state.macroLast, state.notice)
+	}
+	doc = state.space.NewDocument()
+	doc.Editor.Insert("dog dog dog dog!")
+	doc.Editor.ClearHistory()
+	doc.Editor.MoveTo(1, false)
+	if !state.playMacroSteps(want, 1, false) || doc.Editor.String() != " dog dog dog!" {
+		t.Fatalf("replay text=%q notice=%q", doc.Editor.String(), state.notice)
+	}
+}
+
+func TestMacroMultiSelectionFailurePreservesSource(t *testing.T) {
+	state, _ := startDriver(t)
+	doc := state.space.Current()
+	const value = "a b aa z"
+	doc.Editor.Insert(value)
+	doc.Editor.ClearHistory()
+	// The first selection step stages new ranges, but replay never reaches EOF.
+	doc.Editor.MoveTo(0, false)
+	steps := []macro.Step{{Kind: macro.SelectionStep, Selection: macro.SelectNextMatch, SelectFlags: macro.SelectWholeWord}}
+	if state.playMacroSteps(steps, 1, true) || doc.Editor.String() != value || doc.Editor.Caret() != 0 || doc.Editor.CanUndo() || state.multiSelections[0].active {
+		t.Fatalf("failed playback changed source: text=%q caret=%d ranges=%+v history=%t notice=%q",
+			doc.Editor.String(), doc.Editor.Caret(), state.multiSelections[0].ranges, doc.Editor.CanUndo(), state.notice)
+	}
+}
+
+func TestMacroMissingMultiSelectionRollsBackEarlierSteps(t *testing.T) {
+	state, _ := startDriver(t)
+	doc := state.space.Current()
+	doc.Editor.Insert(" . ")
+	doc.Editor.ClearHistory()
+	doc.Editor.MoveTo(1, false)
+	steps := []macro.Step{
+		{Kind: macro.TextStep, TextKind: app.TextInsert, Text: "!"},
+		{Kind: macro.SelectionStep, Selection: macro.SelectAllMatches, SelectFlags: macro.SelectWholeWord},
+		{Kind: macro.MultiTextStep, TextKind: app.TextInsert, Text: "x"},
+	}
+	if state.playMacroSteps(steps, 1, false) || doc.Editor.String() != " . " || doc.Editor.Caret() != 1 || doc.Editor.CanUndo() || state.multiSelections[0].active || !strings.Contains(state.notice, "no active ranges") {
+		t.Fatalf("failed playback changed source: text=%q caret=%d ranges=%+v history=%t notice=%q",
+			doc.Editor.String(), doc.Editor.Caret(), state.multiSelections[0].ranges, doc.Editor.CanUndo(), state.notice)
 	}
 }
 

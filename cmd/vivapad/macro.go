@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 	"vivapad/internal/macro"
+	"vivapad/internal/workspace"
 )
 
 func (state *model) macroTextInput(doc *document.Document) *app.TextInput {
@@ -107,6 +109,12 @@ func (state *model) startMacro() {
 		state.notice = "Close dialogs before recording a macro"
 		return
 	}
+	pane := state.activePane
+	state.syncMultiSelection(pane, state.space.Current())
+	if state.multiSelections[pane].active {
+		state.notice = "Clear the multi-selection before recording a macro"
+		return
+	}
 	state.macroRecording, state.macroSource = true, state.space.Current()
 	state.macroSteps, state.macroTextBytes = nil, 0
 	state.notice = "Recording macro"
@@ -177,6 +185,7 @@ func macroMenuSupported(command string) bool {
 	switch command {
 	case "Record Macro", "Stop Recording", "Playback Macro", "Playback 5 Times", "Clear Macro", "Save Current Recorded Macro...", "Run a Macro Multiple Times...", "Saved Macros",
 		"Cut", "Copy", "Paste", pasteSpecialCommand, pasteHTMLCommand, pasteRTFCommand, "Delete", "Select All",
+		"Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select",
 		"Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Comment/Uncomment",
 		"Toggle Single Line Comment", "Single Line Comment", "Single Line Uncomment", "Block Comment", "Block Uncomment":
 		return true
@@ -198,55 +207,104 @@ func (state *model) playMacroSteps(steps []macro.Step, repeats int, untilEnd boo
 		return false
 	}
 	doc := state.space.Current()
+	pane := state.activePane
+	multiselect := slices.ContainsFunc(steps, func(step macro.Step) bool {
+		return step.Kind == macro.SelectionStep || step.Kind == macro.MultiTextStep
+	})
+	previous := state.multiSelections[pane]
+	before := doc.Editor.String()
+	if previous.doc != doc || previous.value != before || len(previous.ranges) == 0 || previous.ranges[len(previous.ranges)-1] != doc.Editor.Selection() {
+		previous = multiSelectionState{}
+	}
 	marked := append([]int(nil), state.bookmarkLines(doc)...)
 	var shadow *document.Document
 	var finalMarks []int
-	var execute func(*document.Document, macro.Step)
-	if len(marked) != 0 {
-		execute = func(preview *document.Document, step macro.Step) {
+	runner := state
+	var execute func(*document.Document, macro.Step) error
+	if len(marked) != 0 || multiselect {
+		execute = func(preview *document.Document, step macro.Step) error {
 			if shadow == nil {
 				shadow = preview
-				state.setBookmarkLines(shadow, marked)
+				if multiselect {
+					runner = &model{
+						space:              &workspace.Workspace{Documents: []*document.Document{shadow}},
+						bookmarks:          make(map[*document.Document]*bookmarkState),
+						multiSelectOptions: state.multiSelectOptions,
+					}
+				}
+				if len(marked) != 0 {
+					runner.setBookmarkLines(shadow, marked)
+				}
 			}
 			switch step.Kind {
+			case macro.SelectionStep:
+				switch step.Selection {
+				case macro.SelectAllMatches, macro.SelectNextMatch:
+					runner.multiSelect(document.SearchOptions{
+						MatchCase: step.SelectFlags&macro.SelectMatchCase != 0,
+						WholeWord: step.SelectFlags&macro.SelectWholeWord != 0,
+					}, step.Selection == macro.SelectAllMatches)
+				case macro.SkipCurrentMatch:
+					runner.skipMultiSelect()
+				case macro.UndoLatestSelection:
+					runner.undoMultiSelect()
+				}
+			case macro.MultiTextStep:
+				runner.syncMultiSelection(0, shadow)
+				if !runner.multiSelections[0].active {
+					return fmt.Errorf("multi-selection macro has no active ranges")
+				}
+				if err := runner.replayMultiSelectionText(step); err != nil {
+					return err
+				}
 			case macro.TextStep:
-				state.editWithBookmarkAnchor(shadow, func() {
+				if multiselect {
+					runner.multiSelections[0] = multiSelectionState{}
+				}
+				runner.editWithBookmarkAnchor(shadow, func() {
 					app.TextEvent{Kind: step.TextKind, Text: step.Text, Command: step.Command}.Apply(shadow.Editor)
 				})
 			case macro.CodeStep:
-				state.applyCodeCommand(shadow, step.Code)
+				runner.applyCodeCommand(shadow, step.Code)
 			case macro.CommentStep:
-				state.editWithBookmarkAnchor(shadow, func() { macro.ApplyComment(shadow, step) })
+				runner.editWithBookmarkAnchor(shadow, func() { macro.ApplyComment(shadow, step) })
 			case macro.LineStep:
 				switch step.Line {
 				case "Duplicate Line":
-					state.applyCodeCommand(shadow, components.CodeEditorDuplicateLinesDown)
+					runner.applyCodeCommand(shadow, components.CodeEditorDuplicateLinesDown)
 				case "Delete Line":
-					state.deleteLineWithBookmarks(shadow)
+					runner.deleteLineWithBookmarks(shadow)
 				case "Indent Lines":
-					state.editWithBookmarkAnchor(shadow, shadow.IndentLines)
+					runner.editWithBookmarkAnchor(shadow, shadow.IndentLines)
 				case "Unindent Lines":
-					state.editWithBookmarkAnchor(shadow, shadow.UnindentLines)
+					runner.editWithBookmarkAnchor(shadow, shadow.UnindentLines)
 				}
 			}
-			finalMarks = append(finalMarks[:0], state.bookmarkLines(shadow)...)
+			finalMarks = append(finalMarks[:0], runner.bookmarkLines(shadow)...)
+			return nil
 		}
 	}
-	var err error
-	if untilEnd {
-		err = macro.PlayUntilEndWithExecutor(doc, steps, execute)
-	} else {
-		err = macro.PlayWithExecutor(doc, steps, repeats, execute)
-	}
+	err := macro.PlayChecked(doc, steps, repeats, untilEnd, execute)
 	if shadow != nil {
-		delete(state.bookmarks, shadow)
+		delete(runner.bookmarks, shadow)
 	}
 	if err != nil {
 		state.notice = err.Error()
 		return false
 	}
-	if shadow != nil {
+	if shadow != nil && len(marked) != 0 {
 		state.setBookmarkLines(doc, finalMarks)
+	}
+	if multiselect && shadow != nil {
+		runner.syncMultiSelection(0, shadow)
+		after := doc.Editor.String()
+		result := runner.multiSelections[0]
+		if result.active {
+			result.doc, result.value = doc, after
+		}
+		state.multiSelections[pane] = result
+		state.multiSelectOptions = runner.multiSelectOptions
+		state.recordMultiSelectionTransition(pane, doc, before, after, previous)
 	}
 	if untilEnd {
 		state.notice = "Played macro to end of file"
@@ -259,6 +317,20 @@ func (state *model) playMacroSteps(steps []macro.Step, repeats int, untilEnd boo
 		state.notice += "; " + historyErr.Error()
 	}
 	return true
+}
+
+func (state *model) replayMultiSelectionText(step macro.Step) error {
+	kind := multiInsert
+	if step.TextKind == app.TextCommandEvent {
+		switch step.Command {
+		case app.TextDeleteBackward:
+			kind = multiDeleteBackward
+		case app.TextDeleteForward:
+			kind = multiDeleteForward
+		}
+	}
+	_, err := state.editMultiSelection(0, step.Text, kind)
+	return err
 }
 
 func (state *model) clearMacro() {
