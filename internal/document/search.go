@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"regexp/syntax"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -50,14 +51,7 @@ func searchMatches(value string, expression *regexp.Regexp, options SearchOption
 			filtered = append(filtered, match)
 			continue
 		}
-		before, after := rune(0), rune(0)
-		if start > 0 {
-			before, _ = utf8.DecodeLastRuneInString(value[:start])
-		}
-		if end < len(value) {
-			after, _ = utf8.DecodeRuneInString(value[end:])
-		}
-		if !wordRune(before) && !wordRune(after) {
+		if searchWholeWord(value, start, end) {
 			filtered = append(filtered, match)
 		}
 	}
@@ -66,6 +60,12 @@ func searchMatches(value string, expression *regexp.Regexp, options SearchOption
 
 func wordRune(value rune) bool {
 	return value == '_' || unicode.IsLetter(value) || unicode.IsDigit(value)
+}
+
+func searchWholeWord(value string, start, end int) bool {
+	before, _ := utf8.DecodeLastRuneInString(value[:start])
+	after, _ := utf8.DecodeRuneInString(value[end:])
+	return !wordRune(before) && !wordRune(after)
 }
 
 func (doc *Document) WordAtCaret() (text.Range, bool) {
@@ -100,7 +100,6 @@ func (doc *Document) FindWith(query string, options SearchOptions, backward bool
 		return false, err
 	}
 	value := doc.Editor.String()
-	matches := searchMatches(value, expression, options)
 	selection := doc.Editor.Selection()
 	start := doc.Editor.Caret()
 	if selection.Start != selection.End {
@@ -111,6 +110,26 @@ func (doc *Document) FindWith(query string, options SearchOptions, backward bool
 		}
 	}
 	byteStart := byteAtRune(value, start)
+	var match text.Span
+	if options.Regex {
+		match = findRegexSpan(searchMatches(value, expression, options), byteStart, backward)
+	} else {
+		match = findLiteralSpan(value, query, options, byteStart, backward)
+	}
+	if match.End == 0 {
+		return false, nil
+	}
+	from := utf8.RuneCountInString(value[:match.Start])
+	to := from + utf8.RuneCountInString(value[match.Start:match.End])
+	if backward {
+		doc.Editor.SetSelection(text.Range{Start: to, End: from})
+	} else {
+		doc.Editor.SetSelection(text.Range{Start: from, End: to})
+	}
+	return true, nil
+}
+
+func findRegexSpan(matches [][]int, byteStart int, backward bool) text.Span {
 	chosen := -1
 	if backward {
 		for index, match := range matches {
@@ -133,17 +152,109 @@ func (doc *Document) FindWith(query string, options SearchOptions, backward bool
 		}
 	}
 	if chosen < 0 {
-		return false, nil
+		return text.Span{}
 	}
 	match := matches[chosen]
-	from := utf8.RuneCountInString(value[:match[0]])
-	to := from + utf8.RuneCountInString(value[match[0]:match[1]])
-	if backward {
-		doc.Editor.SetSelection(text.Range{Start: to, End: from})
-	} else {
-		doc.Editor.SetSelection(text.Range{Start: from, End: to})
+	return text.Span{Start: match[0], End: match[1]}
+}
+
+func findLiteralSpan(value, query string, options SearchOptions, byteStart int, backward bool) text.Span {
+	var chosen, wrap text.Span
+	visitLiteralMatches(value, query, options.MatchCase, func(match text.Span) bool {
+		if options.WholeWord && !searchWholeWord(value, match.Start, match.End) {
+			return true
+		}
+		if backward {
+			if match.End <= byteStart {
+				chosen = match
+			} else if chosen.End != 0 {
+				return false
+			}
+			wrap = match
+		} else {
+			if match.Start >= byteStart {
+				chosen = match
+				return false
+			}
+			if wrap.End == 0 {
+				wrap = match
+			}
+		}
+		return true
+	})
+	if chosen.End == 0 {
+		return wrap
 	}
-	return true, nil
+	return chosen
+}
+
+func visitLiteralMatches(value, query string, matchCase bool, visit func(text.Span) bool) {
+	if matchCase {
+		for offset := 0; offset < len(value); {
+			index := strings.Index(value[offset:], query)
+			if index < 0 {
+				return
+			}
+			start := offset + index
+			offset = start + len(query)
+			if !visit(text.Span{Start: start, End: offset}) {
+				return
+			}
+		}
+		return
+	}
+	pattern := []rune(query)
+	prefix := make([]int, len(pattern))
+	for index, r := range pattern {
+		pattern[index] = simpleFoldKey(r)
+	}
+	// The prefix table keeps case-folded matching linear even when the
+	// document repeatedly contains almost the entire search term.
+	for index, length := 1, 0; index < len(pattern); index++ {
+		for length > 0 && pattern[index] != pattern[length] {
+			length = prefix[length-1]
+		}
+		if pattern[index] == pattern[length] {
+			length++
+		}
+		prefix[index] = length
+	}
+	length := 0
+	for index, r := range value {
+		key := simpleFoldKey(r)
+		for length > 0 && key != pattern[length] {
+			length = prefix[length-1]
+		}
+		if key == pattern[length] {
+			length++
+		}
+		if length == len(pattern) {
+			end := index + utf8.RuneLen(r)
+			start := end
+			for range pattern {
+				_, width := utf8.DecodeLastRuneInString(value[:start])
+				start -= width
+			}
+			if !visit(text.Span{Start: start, End: end}) {
+				return
+			}
+			length = 0 // Match FindAll's non-overlapping sequence.
+		}
+	}
+}
+
+func simpleFoldKey(r rune) rune {
+	if r < utf8.RuneSelf {
+		if 'a' <= r && r <= 'z' {
+			return r - ('a' - 'A')
+		}
+		return r
+	}
+	key := r
+	for folded := unicode.SimpleFold(r); folded != r; folded = unicode.SimpleFold(folded) {
+		key = min(key, folded)
+	}
+	return key
 }
 
 func (doc *Document) MatchesWith(query string, options SearchOptions) ([]text.Span, error) {
