@@ -93,6 +93,7 @@ func TestWindowCloseCancelLeavesPriorSessionAfterConfirmingAnotherTab(t *testing
 		t.Fatal(err)
 	}
 	state := newStartupModel([]string{first, second}, sessionPath)
+	secondTab := state.space.Documents[1]
 	for _, doc := range state.space.Documents {
 		doc.Editor.Insert("edited")
 	}
@@ -102,7 +103,7 @@ func TestWindowCloseCancelLeavesPriorSessionAfterConfirmingAnotherTab(t *testing
 		t.Fatal("close did not wait for the first dirty tab")
 	}
 	state.finishClose(true)
-	if allowed || state.pendingClose != 0 || len(state.space.Documents) != 1 || state.space.Current().Path != second {
+	if allowed || state.pendingClose != 0 || len(state.space.Documents) != 1 || state.space.Documents[0] != secondTab {
 		t.Fatal("close did not wait for the second dirty tab")
 	}
 	state.cancelClose()
