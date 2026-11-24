@@ -100,6 +100,24 @@ func (state *model) rebindReloadedDocument(previous, current *document.Document)
 	if state.batchKeep == previous {
 		state.batchKeep = current
 	}
+	// Monitoring can reload a tab while window close waits on another tab.
+	for index, doc := range state.closingDocs {
+		if doc == previous {
+			state.closingDocs[index] = current
+		}
+	}
+	if state.closingActive == previous {
+		state.closingActive = current
+	}
+	for pane, doc := range state.closingPaneDocs {
+		if doc == previous {
+			state.closingPaneDocs[pane] = current
+		}
+	}
+	if owner, ok := state.closingOwners[previous]; ok {
+		delete(state.closingOwners, previous)
+		state.closingOwners[current] = owner
+	}
 	if editor := state.editors[previous]; editor != nil {
 		state.editors[current] = editor
 	}
