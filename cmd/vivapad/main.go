@@ -18,6 +18,13 @@ func init() {
 }
 
 func main() {
+	paths, help := parseLaunchArguments(os.Args[1:])
+	if help {
+		if err := writeLaunchUsage(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if runtime.GOOS != "darwin" {
 		runtime.LockOSThread()
 	}
@@ -26,7 +33,7 @@ func main() {
 	if err != nil {
 		log.Printf("session storage unavailable: %v", err)
 	}
-	state := newStartupModel(os.Args[1:], sessionPath)
+	state := newStartupModel(paths, sessionPath)
 	config := newNativeConfig(state)
 	if err := app.RunApplication(func(application *app.Application) error {
 		window, err := application.OpenWindow(config, &canvas)
@@ -57,6 +64,25 @@ func (state *model) bindWindowModeControls(window *app.Window) {
 	state.requestFullscreen = window.SetFullscreen
 	state.requestAlwaysOnTop = window.SetAlwaysOnTop
 	state.requestDecoration = window.SetDecorated
+}
+
+const launchUsage = `Usage: vivapad [--] [file ...]
+       vivapad -h | --help
+
+Open files in VivaPad. With no files, reopen the previous session if available.
+Use -- before a filename such as --help to open it literally.
+`
+
+func parseLaunchArguments(args []string) (paths []string, help bool) {
+	if len(args) != 0 {
+		switch args[0] {
+		case "-h", "--help":
+			return nil, true
+		case "--":
+			return args[1:], false
+		}
+	}
+	return args, false
 }
 
 func newNativeConfig(state *model) app.Config {
