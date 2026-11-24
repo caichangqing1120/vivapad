@@ -133,6 +133,7 @@ func TestHelpLinksReportBrowserFailure(t *testing.T) {
 	for _, test := range []struct{ command, notice string }{
 		{"Project Page", "Could not open the project page"},
 		{"User Guide", "Could not open the user guide"},
+		{"Command Line Arguments...", "Could not open command-line help"},
 	} {
 		t.Run(test.command, func(t *testing.T) {
 			state, _ := startDriver(t)
@@ -144,8 +145,7 @@ func TestHelpLinksReportBrowserFailure(t *testing.T) {
 	}
 }
 
-func TestHelpUserGuideOpensPublishedInstructions(t *testing.T) {
-	const target = "https://github.com/caichangqing1120/vivapad/blob/main/README.md#current-behavior"
+func TestHelpOpensPublishedInstructions(t *testing.T) {
 	for _, layout := range []struct {
 		name          string
 		width, height int
@@ -159,28 +159,35 @@ func TestHelpUserGuideOpensPublishedInstructions(t *testing.T) {
 			if err := driver.Resize(layout.width, layout.height); err != nil {
 				t.Fatal(err)
 			}
-			index := slices.Index(menuCommands[12], "User Guide")
-			if index < 0 {
-				t.Fatal("Help menu does not offer User Guide")
-			}
-			if layout.width == 640 {
-				clickID(t, driver, menuOverflowID)
-				clickID(t, driver, hiddenMenuScope.At(12))
-			} else {
-				clickID(t, driver, menuScope.At(12))
-			}
-			if _, opened := driver.LastOpenedURL(); opened {
-				t.Fatal("opening Help launched a browser")
-			}
-			clickID(t, driver, menuItemScope.At(index))
-			if got, opened := driver.LastOpenedURL(); !opened || got != target {
-				t.Fatalf("opened URL = %q, %t; want %q", got, opened, target)
+			previousURL, previouslyOpened := "", false
+			for _, item := range []struct{ label, target string }{
+				{"User Guide", "https://github.com/caichangqing1120/vivapad/blob/main/README.md#current-behavior"},
+				{"Command Line Arguments...", "https://github.com/caichangqing1120/vivapad/blob/main/README.md#command-line-arguments"},
+			} {
+				index := slices.Index(menuCommands[12], item.label)
+				if index < 0 {
+					t.Fatalf("Help menu does not offer %s", item.label)
+				}
+				if layout.width == 640 {
+					clickID(t, driver, menuOverflowID)
+					clickID(t, driver, hiddenMenuScope.At(12))
+				} else {
+					clickID(t, driver, menuScope.At(12))
+				}
+				if got, opened := driver.LastOpenedURL(); got != previousURL || opened != previouslyOpened {
+					t.Fatal("opening Help launched a browser")
+				}
+				clickID(t, driver, menuItemScope.At(index))
+				if got, opened := driver.LastOpenedURL(); !opened || got != item.target {
+					t.Fatalf("opened URL = %q, %t; want %q", got, opened, item.target)
+				}
+				previousURL, previouslyOpened = item.target, true
 			}
 			if state.space.Current() != doc || doc.Editor.String() != "unsaved draft" || doc.Editor.Selection() != before || !doc.Editor.CanUndo() || !doc.Dirty() {
-				t.Fatal("opening User Guide changed the editor")
+				t.Fatal("opening Help links changed the editor")
 			}
 			if driver.Clipboard() != "private clipboard" {
-				t.Fatal("opening User Guide changed the clipboard")
+				t.Fatal("opening Help links changed the clipboard")
 			}
 		})
 	}
