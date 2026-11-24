@@ -54,6 +54,7 @@ var (
 	hiddenMenuScope            = tree.Sub(page, tree.Name("hidden-menus"))
 	menuOverflowID             = tree.ID(page, "menu-overflow")
 	fullscreenRestoreID        = tree.ID(page, "fullscreen-restore")
+	postItRestoreID            = tree.ID(page, "post-it-restore")
 	windowSortScope            = tree.Sub(page, tree.Name("window-sort"))
 	windowSortPanelID          = tree.ID(page, "window-sort-panel")
 	windowRecentScope          = tree.Sub(page, tree.Name("window-recent"))
@@ -466,6 +467,8 @@ type model struct {
 	distractionFreeEntering       bool
 	requestAlwaysOnTop            func(bool) error
 	alwaysOnTop                   bool
+	requestDecoration             func(bool, func(error)) error
+	postIt                        postItMode
 	functionListVisible           bool
 	documentListVisible           bool
 	documentListRows              []documentListRow
@@ -1623,6 +1626,9 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	config.OnKey = func(event gfx.KeyEvent) gfx.EventResult {
+		if result := state.postItShortcut(event); result.Handled {
+			return result
+		}
 		if state.markDialogOpen {
 			if event.Key == gfx.KeyEscape && state.menuOpen < 0 {
 				state.markDialogOpen = false
@@ -1948,6 +1954,10 @@ func newConfig(state *model) app.Config {
 					focus = rightEditorID
 				}
 				return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
+			}
+			if state.postIt.active {
+				state.command(postItCommand)
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.fullscreen {
 				state.command(state.fullscreenExitCommand())
@@ -3550,14 +3560,24 @@ func (state *model) command(command string) {
 			state.closeWindow()
 		}
 	case "Toggle Full Screen Mode":
+		if state.postIt.active || state.postIt.pending {
+			break
+		}
 		if state.requestFullscreen == nil {
 			state.notice = "Full screen unavailable"
 		} else if err := state.requestFullscreen(!state.fullscreen); err != nil {
 			state.notice = "Full screen unavailable: " + err.Error()
 		}
 	case distractionFreeCommand:
-		state.toggleDistractionFree()
+		if !state.postIt.active && !state.postIt.pending {
+			state.toggleDistractionFree()
+		}
+	case postItCommand:
+		state.togglePostIt()
 	case "Always on Top":
+		if state.postIt.active || state.postIt.pending || state.postIt.raised {
+			break
+		}
 		if state.requestAlwaysOnTop == nil {
 			state.notice = "Always on Top unavailable"
 		} else if err := state.requestAlwaysOnTop(!state.alwaysOnTop); err != nil {

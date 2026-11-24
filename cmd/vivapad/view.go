@@ -41,7 +41,7 @@ var menuCommands = [...][]string{
 		"Replace in Files...", "Find All in Current Document", "Find All in Open Documents", "Replace All in Open Documents",
 		"Clear Marks", "Next Change", "Previous Change", "Clear Change History",
 	},
-	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", textDirectionRTL, textDirectionLTR, "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand, namedBrowserMenuCommand},
+	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", textDirectionRTL, textDirectionLTR, "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand, namedBrowserMenuCommand, postItCommand},
 	{"Unix (LF)", "Windows (CR LF)", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE", "GB18030", "Windows-1252", "Character sets"},
 	{"Normal Text", "Go", "JavaScript", "TypeScript", "Python", "JSON", "HTML", "CSS", "Markdown", "SQL"},
 	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off"},
@@ -80,14 +80,28 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	state.consumeSystemDocuments()
 	window := gfx.Rect{Width: size.Width, Height: size.Height}
 	canvas.Fill(window, palette.white)
-	if !state.fullscreen {
+	postIt := state.postIt.active
+	if !state.fullscreen && !postIt {
 		state.paintMenuBar(canvas, size.Width)
 		state.paintToolbar(canvas, size.Width)
 	}
-	if !state.distractionFree {
+	if !state.distractionFree && !postIt {
 		state.paintTabs(canvas, size.Width)
 	}
-	if state.fullscreen {
+	if postIt {
+		canvas.Fill(gfx.Rect{Width: size.Width, Height: tabHeight}, palette.tabs)
+		bounds := gfx.Rect{X: max(0, size.Width-30), Width: min(30, size.Width), Height: tabHeight}
+		canvas.Border(bounds, 1, palette.border, palette.tabs)
+		canvas.DrawIcon(fullscreenRestoreIcon, bounds.Inset(gfx.All(6)), palette.text)
+		hint := state.postIt.failure
+		if hint == "" {
+			hint = "Exit Post-It (F12)"
+		}
+		canvas.HitWithOptions(postItRestoreID, bounds, "Exit Post-It", gfx.HitOptions{Role: gfx.RoleButton, Hint: hint, Disabled: state.postIt.pending})
+		if !state.postIt.pending && canvas.Clicked(postItRestoreID) {
+			state.command(postItCommand)
+		}
+	} else if state.fullscreen {
 		bounds := gfx.Rect{X: size.Width - 30, Width: 30, Height: tabHeight}
 		canvas.Border(bounds, 1, palette.border, palette.tabs)
 		canvas.DrawIcon(fullscreenRestoreIcon, bounds.Inset(gfx.All(6)), palette.text)
@@ -101,10 +115,11 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 		}
 	}
 
-	bottom := size.Height - statusHeight
-	if state.distractionFree {
-		bottom = size.Height
+	status := statusHeight
+	if state.distractionFree || postIt {
+		status = 0
 	}
+	bottom := size.Height - status
 	showResults := !state.distractionFree && state.resultsOpen && !state.searchOpen && !state.goToOpen && !state.incrementOpen
 	if showResults {
 		bottom -= resultPaneHeight(size.Height)
@@ -125,7 +140,7 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	panelWidth := state.folderPanelWidth(size.Width)
 	mapWidth := state.documentMapWidth(size.Width)
 	top := menuHeight + toolbarHeight + tabHeight
-	if state.fullscreen {
+	if state.fullscreen || postIt {
 		top = tabHeight
 	}
 	if state.distractionFree {
@@ -167,15 +182,15 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 		state.paintIncrementalSearch(canvas, size.Width, bottom)
 	}
 	if showResults {
-		state.paintFileResults(canvas, size.Width, size.Height-statusHeight-resultPaneHeight(size.Height), resultPaneHeight(size.Height))
+		state.paintFileResults(canvas, size.Width, size.Height-status-resultPaneHeight(size.Height), resultPaneHeight(size.Height))
 	}
-	if !state.distractionFree {
+	if !state.distractionFree && !postIt {
 		state.paintStatus(canvas, size.Width, size.Height-statusHeight)
 	}
-	if !state.fullscreen {
+	if !state.fullscreen && !postIt {
 		state.paintOpenMenu(canvas, size)
 	}
-	if state.menuOverflowOpen {
+	if !postIt && state.menuOverflowOpen {
 		state.paintOverflowMenu(canvas, size)
 	}
 	if state.provisional.doc == nil || state.wordCompletion == nil || state.wordCompletion.doc != state.provisional.doc {
@@ -1548,7 +1563,8 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 			fontSize = 11
 		}
 		label := canvas.FitLine(command, fontSize, gfx.WeightRegular, item.Width-30)
-		disabled := state.menuOpen == 11 && command == "Recent Window"
+		disabled := state.menuOpen == 11 && command == "Recent Window" ||
+			command == postItCommand && (state.requestDecoration == nil || state.requestAlwaysOnTop == nil || state.postIt.pending)
 		color := palette.text
 		if disabled {
 			color = palette.muted
@@ -1736,6 +1752,8 @@ func (state *model) menuSelected(command string) bool {
 		return state.fullscreen
 	case distractionFreeCommand:
 		return state.distractionFree
+	case postItCommand:
+		return state.postIt.active
 	case "Synchronize Zoom Across Views":
 		return state.zoomSync
 	case "Folder as Workspace":

@@ -36,6 +36,9 @@ func main() {
 		state.closeWindow = func() { config.OnCloseRequest(window.Close) }
 		state.requestFullscreen = window.SetFullscreen
 		state.requestAlwaysOnTop = window.SetAlwaysOnTop
+		if native, ok := any(window).(interface{ SetDecorated(bool, func(error)) error }); ok {
+			state.requestDecoration = native.SetDecorated
+		}
 		state.postBrowserResult = application.Post
 		state.saveSessionPicker = app.SaveFileWithCheckbox
 		state.printJob = func(job printing.Job) (int, error) {
