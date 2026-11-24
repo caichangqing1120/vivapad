@@ -244,6 +244,59 @@ func TestRunMenuScrollAndReplayLastSavedCommand(t *testing.T) {
 	}
 }
 
+func TestSavedRunMenuReturnsFocusToActiveEditor(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "success"},
+		{name: "failure", err: errors.New("program unavailable")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			left := state.space.Current()
+			left.Editor.Insert("left")
+			right := state.space.NewDocument()
+			right.Editor.Insert("right")
+			right.Editor.ClearHistory()
+			state.toggleSplit()
+			state.namedRuns = []runcommand.Named{{Name: "Example", Template: "echo $(CURRENT_WORD)"}}
+			calls := 0
+			state.runLauncher = func(prepared runcommand.Prepared) error {
+				calls++
+				if !reflect.DeepEqual(prepared.Args, []string{"igh"}) {
+					t.Fatalf("command used another pane or selection: %+v", prepared)
+				}
+				return tc.err
+			}
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, rightEditorID)
+			right.Editor.MoveTo(4, false)
+			right.Editor.MoveTo(1, true)
+			selection, caret := right.Editor.Selection(), right.Editor.Caret()
+			clickID(t, driver, menuScope.At(9))
+			clickID(t, driver, runNamedScope.At(0))
+			if calls != 1 || state.activePane != 1 || state.space.Current() != right ||
+				right.Editor.String() != "right" || right.Editor.Selection() != selection || right.Editor.Caret() != caret || right.Editor.CanUndo() {
+				t.Fatal("running a saved command changed the active view or its editing state")
+			}
+			if tc.err != nil && !strings.Contains(state.notice, tc.err.Error()) {
+				t.Fatalf("failed run notice = %q", state.notice)
+			}
+			requireEditorCommandFocus(t, driver, rightEditorID)
+			if err := driver.Type("x"); err != nil || right.Editor.String() != "rxt" || left.Editor.String() != "left" {
+				t.Fatalf("first key after running: left=%q right=%q err=%v", left.Editor.String(), right.Editor.String(), err)
+			}
+		})
+	}
+}
+
 func TestRunDialogEscapeAndDuplicateNameLeavePriorSaveUntouched(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "session.json")
