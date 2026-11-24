@@ -114,3 +114,61 @@ func TestWindowCloseCancelLeavesPriorSessionAfterConfirmingAnotherTab(t *testing
 		t.Fatal("cancel closed the window or discarded the remaining edit")
 	}
 }
+
+func TestRepeatedWindowCloseKeepsOriginalSession(t *testing.T) {
+	root := t.TempDir()
+	first, second := filepath.Join(root, "first.txt"), filepath.Join(root, "second.txt")
+	for _, path := range []string{first, second} {
+		if err := os.WriteFile(path, []byte("saved"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sessionPath := filepath.Join(root, "settings", "session.json")
+	state := newStartupModel([]string{first, second}, sessionPath)
+	left, right := state.space.Documents[0], state.space.Documents[1]
+	state.space.Select(state.documentIndex(left))
+	state.showInActivePane(left)
+	state.command("Pin Tab")
+	state.setTabColor("Apply Color 3")
+	state.space.Select(state.documentIndex(right))
+	state.toggleSplit()
+	state.activatePane(0)
+	left.Editor.Insert("draft left")
+	right.Editor.Insert("draft right")
+	if !state.splitEnabled || state.paneDocument(0) != left || state.paneDocument(1) != right || !state.isPinned(left) || state.tabColors[left] != 3 {
+		t.Fatal("did not prepare the two dirty panes")
+	}
+	config := newConfig(state)
+	firstAllowed, repeatedAllowed := 0, 0
+	config.OnCloseRequest(func() { firstAllowed++ })
+	if state.pendingClose != state.documentIndex(left) {
+		t.Fatal("first close did not wait for the left tab")
+	}
+	state.finishClose(true)
+	if firstAllowed != 0 || len(state.space.Documents) != 1 || state.pendingClose != state.documentIndex(right) || state.pendingClose < 0 {
+		t.Fatal("close did not advance to the right tab")
+	}
+	config.OnCloseRequest(func() { repeatedAllowed++ })
+	if firstAllowed != 0 || repeatedAllowed != 0 || state.pendingClose != state.documentIndex(right) {
+		t.Fatal("repeat request bypassed the open confirmation")
+	}
+	state.finishClose(true)
+	stored, err := session.Load(sessionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(stored.Paths, []string{left.Path, right.Path}) {
+		t.Fatalf("repeat close lost the original session paths: %v", stored.Paths)
+	}
+	if firstAllowed != 1 || repeatedAllowed != 0 {
+		t.Fatalf("close authorization calls: first=%d repeated=%d", firstAllowed, repeatedAllowed)
+	}
+	reopened := newStartupModel(nil, sessionPath)
+	restoredLeft, restoredRight := reopened.paneDocument(0), reopened.paneDocument(1)
+	if !reopened.splitEnabled || reopened.activePane != 0 || restoredLeft.Path != left.Path || restoredRight.Path != right.Path || reopened.paneOwner[restoredRight] != 1 || !reopened.isPinned(restoredLeft) || reopened.tabColors[restoredLeft] != 3 {
+		t.Fatal("repeat close lost the original split or tab settings")
+	}
+	if restoredLeft.Editor.String() != "saved" || restoredRight.Editor.String() != "saved" {
+		t.Fatal("discard changed the saved contents")
+	}
+}
