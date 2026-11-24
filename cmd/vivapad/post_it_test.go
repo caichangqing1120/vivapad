@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 )
@@ -84,6 +85,37 @@ func TestPostItF12InFullscreenKeepsExistingTopmost(t *testing.T) {
 	clickID(t, driver, postItRestoreID)
 	if !state.fullscreen || !driver.Fullscreen() || state.menuSelected(postItCommand) || !state.alwaysOnTop {
 		t.Fatal("Post-It exit changed the pre-existing fullscreen or topmost mode")
+	}
+}
+
+func TestPostItF12RefusesUnsupportedTopmostWithoutChangingEditors(t *testing.T) {
+	state, driver := startDriver(t)
+	left := state.space.Current()
+	left.Editor.Insert("left draft")
+	right := state.space.NewDocument()
+	right.Editor.Insert("right draft")
+	selection := text.Range{Start: 6, End: 11}
+	right.Editor.SetSelection(selection)
+	state.toggleSplit()
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	state.requestAlwaysOnTop = func(bool) error { return app.ErrUnsupported }
+	state.requestDecoration = func(bool, func(error)) error {
+		t.Error("attempted to change native decorations without topmost support")
+		return nil
+	}
+	frame := driver.Frame()
+	if err := driver.Key(gfx.KeyF12, 0); err != nil {
+		t.Fatal(err)
+	}
+	requireEditorCommandFocus(t, driver, rightEditorID)
+	if state.menuSelected(postItCommand) || state.postIt.pending || state.alwaysOnTop || driver.Frame() != frame ||
+		!strings.Contains(state.notice, app.ErrUnsupported.Error()) || right.Editor.Selection() != selection {
+		t.Fatalf("unsupported Post-It changed the window or selection: frame=%v notice=%q selection=%v", driver.Frame(), state.notice, right.Editor.Selection())
+	}
+	if err := driver.Type("x"); err != nil || left.Editor.String() != "left draft" || right.Editor.String() != "right x" {
+		t.Fatalf("first key after refusal: left=%q right=%q error=%v", left.Editor.String(), right.Editor.String(), err)
 	}
 }
 
