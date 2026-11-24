@@ -78,6 +78,7 @@ func (state *model) paintRunMenu(canvas *gfx.Canvas, size gfx.Size, origin float
 		if err := state.launchRunTemplate(state.namedRuns[chosen-1].Template); err != nil {
 			state.notice = "Run failed: " + err.Error()
 		}
+		state.requestEditorCommandFocus()
 	}
 }
 
