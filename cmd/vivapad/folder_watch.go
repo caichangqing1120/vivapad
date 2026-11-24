@@ -37,7 +37,7 @@ func (state *model) ensureFolderWatch(path string) {
 }
 
 func folderWatchIdentity(path string) (os.FileInfo, error) {
-	file, err := os.Open(path)
+	file, err := openFolderWatchDirectory(path)
 	if err != nil {
 		return nil, err
 	}
