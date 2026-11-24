@@ -3079,7 +3079,7 @@ func (state *model) command(command string) {
 		state.openHelp(aboutHelp)
 	case debugHelpCommand:
 		state.openHelp(debugHelp)
-	case projectPageHelpCommand, userGuideHelpCommand:
+	case projectPageHelpCommand, userGuideHelpCommand, commandLineHelpCommand:
 		state.openHelpLink(command, app.OpenURL)
 	case "Monitoring (tail -f)":
 		state.toggleMonitoring()
