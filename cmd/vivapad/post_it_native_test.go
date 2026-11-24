@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,7 +40,7 @@ func TestNativePostIt(t *testing.T) {
 	if os.Getenv("VIVAPAD_TEST_NATIVE_POST_IT") != "1" {
 		t.Skip("requires a native desktop session")
 	}
-	for _, scenario := range []string{"windowed", "fullscreen-topmost"} {
+	for _, scenario := range []string{"windowed", "windowed-topmost", "fullscreen", "fullscreen-topmost"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 			defer cancel()
@@ -55,6 +56,11 @@ func TestNativePostIt(t *testing.T) {
 }
 
 func runNativePostIt(scenario string) error {
+	mode, initiallyTopmost := strings.CutSuffix(scenario, "-topmost")
+	if mode != "windowed" && mode != "fullscreen" {
+		return fmt.Errorf("unknown native Post-It scenario %q", scenario)
+	}
+	fullscreen := mode == "fullscreen"
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	cleanup, err := prepareNativePostItDesktop()
@@ -84,7 +90,6 @@ func runNativePostIt(scenario string) error {
 		}
 		state.bindWindowModeControls(window)
 		focusNativePostItWindow()
-		fullscreen := scenario == "fullscreen-topmost"
 		phase := "ready"
 		deadline := time.Now().Add(25 * time.Second)
 		var original postItNativeWindow
@@ -107,8 +112,14 @@ func runNativePostIt(scenario string) error {
 				if !available || native.id == 0 || !native.focused || canvas.Focused() != rightEditorID {
 					break
 				}
-				if fullscreen {
+				if initiallyTopmost {
 					state.command("Always on Top")
+					if !state.alwaysOnTop {
+						finish(fmt.Errorf("initial topmost request failed: %q", state.notice))
+						return
+					}
+				}
+				if fullscreen {
 					if err := window.SetFullscreen(true); err != nil {
 						finish(err)
 						return
@@ -116,7 +127,7 @@ func runNativePostIt(scenario string) error {
 				}
 				phase = "enter"
 			case "enter":
-				if !available || !native.focused || state.fullscreen != fullscreen || native.topmost != fullscreen ||
+				if !available || !native.focused || state.fullscreen != fullscreen || native.topmost != initiallyTopmost ||
 					fullscreen && now.Width == 640 && now.Height == 400 {
 					break
 				}
@@ -131,7 +142,7 @@ func runNativePostIt(scenario string) error {
 				if !state.postIt.active || state.postIt.pending || !postItNativeHits(&canvas, postItRestoreID, editorID, rightEditorID) {
 					break
 				}
-				if !available || now != frame || native.id != original.id || !native.focused || !native.topmost ||
+				if !available || now != frame || native.id != original.id || !native.focused || !native.topmost || state.alwaysOnTop != initiallyTopmost ||
 					state.fullscreen != fullscreen || !fullscreen && native.decorated {
 					finish(fmt.Errorf("active Post-It changed native window: %+v %v, before %+v %v", native, now, original, frame))
 					return
@@ -142,7 +153,7 @@ func runNativePostIt(scenario string) error {
 				if state.postIt.active || state.postIt.pending || canvas.Focused() != rightEditorID {
 					break
 				}
-				if !available || now != frame || native != original || state.fullscreen != fullscreen ||
+				if !available || now != frame || native != original || state.fullscreen != fullscreen || state.alwaysOnTop != initiallyTopmost ||
 					!state.splitEnabled || state.activePane != 1 || state.paneDocument(0) != left || state.paneDocument(1) != right || right.Editor.Selection() != selection {
 					finish(fmt.Errorf("restore changed window or editor state: %+v %v, before %+v %v, selection=%v", native, now, original, frame, right.Editor.Selection()))
 					return
