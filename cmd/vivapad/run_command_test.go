@@ -297,6 +297,89 @@ func TestSavedRunMenuReturnsFocusToActiveEditor(t *testing.T) {
 	}
 }
 
+func TestRunDialogReturnsFocusToActiveEditor(t *testing.T) {
+	for _, action := range []string{"run", "cancel", "escape", "save", "launch failure"} {
+		t.Run(action, func(t *testing.T) {
+			state, driver := startDriver(t)
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			left := state.space.Current()
+			left.Editor.Insert("left")
+			right := state.space.NewDocument()
+			right.Editor.Insert("righ")
+			right.Editor.ClearHistory()
+			right.Editor.Insert("t")
+			state.toggleSplit()
+			state.runPath = filepath.Join(t.TempDir(), "run.json")
+			launches := 0
+			state.runLauncher = func(prepared runcommand.Prepared) error {
+				launches++
+				if !reflect.DeepEqual(prepared.Args, []string{"igh"}) {
+					t.Fatalf("Run used another pane or selection: %+v", prepared)
+				}
+				if action == "launch failure" {
+					return errors.New("program unavailable")
+				}
+				return nil
+			}
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, rightEditorID)
+			right.Editor.MoveTo(4, false)
+			right.Editor.MoveTo(1, true)
+			selection, caret := right.Editor.Selection(), right.Editor.Caret()
+			clickID(t, driver, menuScope.At(9))
+			clickID(t, driver, runOpenID)
+			if err := driver.Type("echo $(CURRENT_WORD)"); err != nil {
+				t.Fatal(err)
+			}
+			wantLaunches := 0
+			switch action {
+			case "run":
+				wantLaunches = 1
+				clickID(t, driver, runDialogExecuteID)
+			case "cancel":
+				clickID(t, driver, runDialogCancelID)
+			case "escape":
+				if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+					t.Fatal(err)
+				}
+			case "save":
+				clickID(t, driver, runDialogSaveID)
+				if err := driver.Type("Example"); err != nil {
+					t.Fatal(err)
+				}
+				clickID(t, driver, runDialogSaveID)
+				if len(state.namedRuns) != 1 || state.namedRuns[0].Name != "Example" {
+					t.Fatal("did not save the command")
+				}
+			case "launch failure":
+				if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+					t.Fatal(err)
+				}
+				if launches != 1 || !state.runDialogOpen || !strings.Contains(state.runDialogError, "program unavailable") || driver.Snapshot().Focused != runDialogInputID {
+					t.Fatal("failed launch did not keep the Run command field active")
+				}
+				return
+			}
+			if state.runDialogOpen || launches != wantLaunches || state.activePane != 1 || state.space.Current() != right ||
+				right.Editor.String() != "right" || right.Editor.Selection() != selection || right.Editor.Caret() != caret || !right.Editor.CanUndo() {
+				t.Fatal("closing Run changed the active editor state")
+			}
+			requireEditorCommandFocus(t, driver, rightEditorID)
+			if err := driver.Type("x"); err != nil || right.Editor.String() != "rxt" || left.Editor.String() != "left" {
+				t.Fatalf("first key after closing Run: left=%q right=%q err=%v", left.Editor.String(), right.Editor.String(), err)
+			}
+			if !right.Editor.Undo() || right.Editor.String() != "right" || !right.Editor.Undo() || right.Editor.String() != "righ" {
+				t.Fatal("closing Run lost the existing undo history")
+			}
+		})
+	}
+}
+
 func TestRunDialogEscapeAndDuplicateNameLeavePriorSaveUntouched(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "session.json")
