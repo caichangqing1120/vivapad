@@ -69,6 +69,11 @@ jobs:
         run: go build -o "$OUTPUT" ./cmd/vivapad
       - name: Run unit and integration tests
         run: go test ./... -count=1 -timeout=15m
+      - name: Exercise Post-It in a native window
+        if: runner.os == 'Windows' || runner.os == 'macOS'
+        env:
+          VIVAPAD_TEST_NATIVE_POST_IT: '1'
+        run: go test ./cmd/vivapad -run '^TestNativePostIt$' -count=1 -v -timeout=2m
       - name: Compare RTL, clipboard and multi-selection macros with Notepad++
         if: runner.os == 'Windows'
         shell: pwsh
