@@ -102,7 +102,7 @@ func TestMonitoringKeepsUnchangedBindingAndReloadsSameLengthEdits(t *testing.T) 
 		t.Fatalf("monitoring did not start: %q", state.notice)
 	}
 	doc.Editor.MoveTo(2, false)
-	watcher.changed.Store(true)
+	watcher.update.Store(monitorFileChanged)
 	state.consumeMonitorChanges()
 	if state.space.Current() != doc || doc.Editor.Caret() != 2 {
 		t.Fatal("unchanged bytes replaced the document or moved the caret")
@@ -111,7 +111,7 @@ func TestMonitoringKeepsUnchangedBindingAndReloadsSameLengthEdits(t *testing.T) 
 	if err := os.WriteFile(path, before, 0600); err != nil {
 		t.Fatal(err)
 	}
-	watcher.changed.Store(true)
+	watcher.update.Store(monitorFileChanged)
 	state.consumeMonitorChanges()
 	updated := state.space.Current()
 	if updated == doc || !strings.HasSuffix(updated.Editor.String(), "star!\n") ||
@@ -145,7 +145,7 @@ func TestMonitoringStopsWhenItsCanonicalPathIsRedirected(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspaceFixtureLink(t, target, path)
-	watcher.changed.Store(true)
+	watcher.update.Store(monitorFileChanged)
 	state.consumeMonitorChanges()
 	if len(state.monitors) != 0 || !strings.Contains(state.notice, "Monitoring stopped") {
 		t.Errorf("redirect left the monitor active: %q", state.notice)
@@ -175,7 +175,7 @@ func BenchmarkMonitoringUnchangedNotification(b *testing.B) {
 			state.monitors = map[*document.Document]*fileMonitor{doc: watcher}
 			b.ReportAllocs()
 			for b.Loop() {
-				watcher.changed.Store(true)
+				watcher.update.Store(monitorFileChanged)
 				state.consumeMonitorChanges()
 				if state.space.Current() != doc {
 					b.Fatal("unchanged bytes replaced the document")
