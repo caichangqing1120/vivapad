@@ -718,6 +718,7 @@ type model struct {
 	allowClose                    func()
 	sessionPath                   string
 	closingDocs                   []*document.Document
+	closingTabSettings            map[*document.Document]sessionTabSettings
 	closingActive                 *document.Document
 	closingPaneDocs               [2]*document.Document
 	closingOwners                 map[*document.Document]int
@@ -2235,6 +2236,7 @@ func newConfig(state *model) app.Config {
 			return
 		}
 		state.closingDocs = append(state.closingDocs[:0], state.space.Documents...)
+		state.closingTabSettings = nil
 		state.closingActive = state.space.Current()
 		state.closingPaneDocs, state.closingSplit = state.paneDocs, state.splitEnabled
 		state.closingActivePane, state.closingDivider = state.activePane, state.splitRatio
@@ -2617,6 +2619,12 @@ func (state *model) finishClose(discard bool) {
 		state.notice = err.Error()
 		return
 	}
+	if state.allowClose != nil && state.sessionPath != "" && closed.Path != "" {
+		if state.closingTabSettings == nil {
+			state.closingTabSettings = make(map[*document.Document]sessionTabSettings)
+		}
+		state.closingTabSettings[closed] = state.sessionSettingsForTab(closed)
+	}
 	state.recordClosed(closed)
 	state.releaseDocument(closed)
 	state.rebindClosedDocument(closed)
@@ -2645,6 +2653,7 @@ func (state *model) cancelClose() {
 	}
 	state.pendingClose, state.allowClose = -1, nil
 	state.closingDocs, state.closingActive = nil, nil
+	state.closingTabSettings = nil
 	state.closingOwners, state.closingPaneDocs = nil, [2]*document.Document{}
 	state.closingSplit = false
 	state.focusViewRequested, state.focusViewArmed = true, false
@@ -2674,25 +2683,29 @@ func (state *model) persistSession() {
 	for _, doc := range state.closingDocs {
 		if doc.Path != "" {
 			stored.Paths = append(stored.Paths, doc.Path)
-			if headers := state.foldHeaders(doc); len(headers) != 0 {
+			settings, closed := state.closingTabSettings[doc]
+			if !closed {
+				settings = state.sessionSettingsForTab(doc)
+			}
+			if len(settings.folds.Headers) != 0 {
 				if stored.Folds == nil {
 					stored.Folds = make(map[string]session.FoldState)
 				}
-				stored.Folds[doc.Path] = session.FoldState{Digest: doc.DiskDigest(), Headers: headers}
+				stored.Folds[doc.Path] = settings.folds
 			}
-			if mode, selected := state.languages[doc]; selected {
+			if settings.languageSelected {
 				if stored.Languages == nil {
 					stored.Languages = make(map[string]string)
 				}
-				stored.Languages[doc.Path] = mode
+				stored.Languages[doc.Path] = settings.language
 			}
-			if state.readOnly[doc] {
+			if settings.readOnly {
 				if stored.ReadOnly == nil {
 					stored.ReadOnly = make(map[string]bool)
 				}
 				stored.ReadOnly[doc.Path] = true
 			}
-			if state.isPinned(doc) {
+			if settings.pinned {
 				if stored.Pinned == nil {
 					stored.Pinned = make(map[string]bool)
 				}
@@ -2704,11 +2717,11 @@ func (state *model) persistSession() {
 				}
 				stored.RTL[doc.Path] = true
 			}
-			if color := state.tabColors[doc]; color > 0 {
+			if settings.color > 0 {
 				if stored.TabColors == nil {
 					stored.TabColors = make(map[string]uint8)
 				}
-				stored.TabColors[doc.Path] = color
+				stored.TabColors[doc.Path] = settings.color
 			}
 			if spec, ok := doc.SavedEncoding().LegacySpec(); ok {
 				if stored.Encodings == nil {
@@ -2748,7 +2761,29 @@ func (state *model) persistSession() {
 		state.notice = "Session not saved: " + err.Error()
 	}
 	state.closingDocs, state.closingActive = nil, nil
+	state.closingTabSettings = nil
 	state.closingOwners, state.closingPaneDocs = nil, [2]*document.Document{}
+}
+
+type sessionTabSettings struct {
+	folds            session.FoldState
+	language         string
+	languageSelected bool
+	readOnly, pinned bool
+	color            uint8
+}
+
+func (state *model) sessionSettingsForTab(doc *document.Document) sessionTabSettings {
+	mode, selected := state.languages[doc]
+	settings := sessionTabSettings{
+		language: mode, languageSelected: selected,
+		readOnly: state.readOnly[doc], pinned: state.isPinned(doc), color: state.tabColors[doc],
+	}
+	// Fold rows from a discarded draft cannot be paired with the saved digest.
+	if !doc.Dirty() {
+		settings.folds = session.FoldState{Digest: doc.DiskDigest(), Headers: state.foldHeaders(doc)}
+	}
+	return settings
 }
 
 func (state *model) find(backward bool) {
