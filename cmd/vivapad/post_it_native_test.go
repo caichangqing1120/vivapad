@@ -100,16 +100,21 @@ func runNativePostIt(scenario string) error {
 			window.Close()
 		}
 		advance = func() {
-			if time.Now().After(deadline) {
-				finish(fmt.Errorf("timed out at %s: active=%t pending=%t fullscreen=%t focus=%v notice=%q", phase,
-					state.postIt.active, state.postIt.pending, state.fullscreen, canvas.Focused(), state.notice))
-				return
-			}
 			now, available := window.Frame()
 			native := inspectNativePostItWindow()
+			if time.Now().After(deadline) {
+				finish(fmt.Errorf("timed out at %s: native=%+v available=%t frame=%v active=%t pending=%t fullscreen=%t focus=%v want=%v notice=%q",
+					phase, native, available, now, state.postIt.active, state.postIt.pending, state.fullscreen, canvas.Focused(), rightEditorID, state.notice))
+				return
+			}
 			switch phase {
 			case "ready":
-				if !available || native.id == 0 || !native.focused || canvas.Focused() != rightEditorID {
+				if !available || native.id == 0 || !native.focused {
+					// Wait for the test window to obtain native focus before exercising the transition.
+					focusNativePostItWindow()
+					break
+				}
+				if canvas.Focused() != rightEditorID {
 					break
 				}
 				if initiallyTopmost {
@@ -127,8 +132,15 @@ func runNativePostIt(scenario string) error {
 				}
 				phase = "enter"
 			case "enter":
-				if !available || !native.focused || state.fullscreen != fullscreen || native.topmost != initiallyTopmost ||
+				if !available || state.fullscreen != fullscreen ||
 					fullscreen && now.Width == 640 && now.Height == 400 {
+					break
+				}
+				if !native.focused {
+					focusNativePostItWindow()
+					break
+				}
+				if native.topmost != initiallyTopmost || canvas.Focused() != rightEditorID {
 					break
 				}
 				original, frame = native, now

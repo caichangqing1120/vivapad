@@ -4,7 +4,21 @@ import "github.com/ebitengine/purego/objc"
 
 func prepareNativePostItDesktop() (func(), error) { return func() {}, nil }
 
-func focusNativePostItWindow() {} // AppKit activates the window when it opens.
+func focusNativePostItWindow() {
+	nativeApp := objc.ID(objc.GetClass("NSApplication")).Send(objc.RegisterName("sharedApplication"))
+	windows := nativeApp.Send(objc.RegisterName("windows"))
+	title := objc.ID(objc.GetClass("NSString")).Send(objc.RegisterName("stringWithUTF8String:"), postItNativeTitle)
+	for index, count := uintptr(0), uintptr(windows.Send(objc.RegisterName("count"))); index < count; index++ {
+		window := windows.Send(objc.RegisterName("objectAtIndex:"), index)
+		if window.Send(objc.RegisterName("title")).Send(objc.RegisterName("isEqualToString:"), title) == 0 {
+			continue
+		}
+		nativeApp.Send(objc.RegisterName("activateIgnoringOtherApps:"), true)
+		window.Send(objc.RegisterName("makeKeyAndOrderFront:"), objc.ID(0))
+		window.Send(objc.RegisterName("makeFirstResponder:"), window.Send(objc.RegisterName("contentView")))
+		return
+	}
+}
 
 func inspectNativePostItWindow() postItNativeWindow {
 	nativeApp := objc.ID(objc.GetClass("NSApplication")).Send(objc.RegisterName("sharedApplication"))
