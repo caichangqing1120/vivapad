@@ -81,13 +81,9 @@ func monitoringUpdatedNotice(name string, historyErr error) string {
 func (state *model) consumeMonitorChanges() {
 	for doc, watcher := range state.monitors {
 		changed, missing, err := watcher.Consume()
-		if err != nil || missing {
+		if err != nil {
 			state.stopMonitor(doc)
-			if err != nil {
-				state.notice = "Monitoring stopped: " + err.Error()
-			} else {
-				state.notice = "Monitoring stopped: file missing or renamed"
-			}
+			state.notice = "Monitoring stopped: " + err.Error()
 			state.invalidator.Invalidate()
 			continue
 		}
@@ -101,11 +97,16 @@ func (state *model) consumeMonitorChanges() {
 			continue
 		}
 		if err := doc.CheckDiskPath(); err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				state.stopMonitor(doc)
+			if errors.Is(err, os.ErrNotExist) {
+				if !missing {
+					continue // Let the watcher confirm the absence.
+				}
+				state.notice = "Monitoring stopped: file missing or renamed"
+			} else {
 				state.notice = "Monitoring stopped: " + err.Error()
-				state.invalidator.Invalidate()
 			}
+			state.stopMonitor(doc)
+			state.invalidator.Invalidate()
 			continue
 		}
 		unchanged, err := doc.DiskMatchesSaved()
