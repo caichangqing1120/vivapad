@@ -46,6 +46,7 @@ func (state *model) closeRunDialog() {
 	state.runDialogOpen, state.runSaveMode, state.runVariablesOpen = false, false, false
 	state.runInput, state.runName = nil, nil
 	state.runDialogError = ""
+	state.requestEditorCommandFocus()
 }
 
 func runCurrentWord(doc *document.Document) string {
