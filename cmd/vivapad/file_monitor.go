@@ -14,11 +14,16 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+const (
+	monitorNoUpdate uint32 = iota
+	monitorFileChanged
+	monitorPathMissing
+)
+
 type fileMonitor struct {
 	source    *fsnotify.Watcher
 	path      string
-	changed   atomic.Bool
-	missing   atomic.Bool
+	update    atomic.Uint32
 	errors    chan error
 	stop      chan struct{}
 	done      chan struct{}
@@ -75,10 +80,12 @@ func (monitor *fileMonitor) run(previous os.FileInfo, interval time.Duration) {
 		case <-ticker.C:
 			info, err := os.Lstat(monitor.path)
 			if errors.Is(err, os.ErrNotExist) {
-				missingTicks++
-				if missingTicks >= 2 && !monitor.missing.Swap(true) {
-					monitor.changed.Store(true)
-					monitor.wake()
+				if missingTicks < 2 {
+					missingTicks++
+					if missingTicks == 2 {
+						monitor.update.Store(monitorPathMissing)
+						monitor.wake()
+					}
 				}
 				continue
 			}
@@ -98,7 +105,8 @@ func (monitor *fileMonitor) run(previous os.FileInfo, interval time.Duration) {
 				missingTicks = 0
 			}
 			if pending || info.Size() != previous.Size() || !info.ModTime().Equal(previous.ModTime()) || !os.SameFile(info, previous) {
-				monitor.changed.Store(true)
+				// A replacement supersedes any missing-path notification the editor has not consumed.
+				monitor.update.Store(monitorFileChanged)
 				monitor.wake()
 			}
 			pending, previous = false, info
@@ -109,12 +117,12 @@ func (monitor *fileMonitor) run(previous os.FileInfo, interval time.Duration) {
 }
 
 func (monitor *fileMonitor) Consume() (changed, missing bool, err error) {
-	changed, missing = monitor.changed.Swap(false), monitor.missing.Swap(false)
+	update := monitor.update.Swap(monitorNoUpdate)
 	select {
 	case err = <-monitor.errors:
 	default:
 	}
-	return changed, missing, err
+	return update != monitorNoUpdate, update == monitorPathMissing, err
 }
 
 func (monitor *fileMonitor) Close() error {
