@@ -119,6 +119,52 @@ func TestPostItF12RefusesUnsupportedTopmostWithoutChangingEditors(t *testing.T) 
 	}
 }
 
+func TestPostItRefusalPreservesLiveComposition(t *testing.T) {
+	for _, scenario := range []string{"unsupported-topmost", "rejected-decoration"} {
+		t.Run(scenario, func(t *testing.T) {
+			state := newModel()
+			doc := state.space.Current()
+			doc.Editor.Insert("abc")
+			doc.Editor.ClearHistory()
+			doc.Editor.MoveTo(1, false)
+			input := tentativeTextInput(t, state, 0)
+			sendComposition(t, input, text.CompositionUpdate, "x")
+			assertLiveComposition(t, doc)
+			selection, canUndo := doc.Editor.Selection(), doc.Editor.CanUndo()
+			before, committed := doc.Editor.String(), doc.Editor.CommittedString()
+			var complete func(error)
+			state.requestAlwaysOnTop = func(bool) error {
+				if scenario == "unsupported-topmost" {
+					return app.ErrUnsupported
+				}
+				return nil
+			}
+			state.requestDecoration = func(_ bool, done func(error)) error {
+				complete = done
+				return nil
+			}
+			state.command(postItCommand)
+			if scenario == "rejected-decoration" {
+				if complete == nil || !state.postIt.pending || !doc.Editor.CompositionActive() {
+					t.Fatal("submitting Post-It disturbed the live composition")
+				}
+				complete(errors.New("window manager refused"))
+			} else if complete != nil {
+				t.Fatal("requested decoration after topmost was refused")
+			}
+			if !doc.Editor.CompositionActive() || doc.Editor.String() != before || doc.Editor.CommittedString() != committed ||
+				doc.Editor.Selection() != selection || doc.Editor.CanUndo() != canUndo || state.postIt.active || state.postIt.pending {
+				t.Fatalf("refusal disturbed the live composition: text=%q committed=%q selection=%v canUndo=%t notice=%q",
+					doc.Editor.String(), doc.Editor.CommittedString(), doc.Editor.Selection(), doc.Editor.CanUndo(), state.notice)
+			}
+			sendComposition(t, input, text.CompositionCommit, "")
+			if doc.Editor.String() != "axbc" || !doc.Editor.Undo() || doc.Editor.String() != "abc" || doc.Editor.CanUndo() {
+				t.Fatalf("completing input after refusal did not produce one Undo unit: text=%q canUndo=%t", doc.Editor.String(), doc.Editor.CanUndo())
+			}
+		})
+	}
+}
+
 func TestPostItRollsBackFailedNativeRequests(t *testing.T) {
 	state, _ := startDriver(t)
 	var levels []bool

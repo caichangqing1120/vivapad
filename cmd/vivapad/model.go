@@ -2813,6 +2813,11 @@ func (state *model) goToLine() {
 }
 
 func (state *model) command(command string) {
+	// Post-It settles editor state only after the native transition is confirmed.
+	if command == postItCommand {
+		state.togglePostIt()
+		return
+	}
 	if command == textDirectionRTL || command == textDirectionLTR {
 		state.setTextDirection(command == textDirectionRTL)
 		return
@@ -3572,8 +3577,6 @@ func (state *model) command(command string) {
 		if !state.postIt.active && !state.postIt.pending {
 			state.toggleDistractionFree()
 		}
-	case postItCommand:
-		state.togglePostIt()
 	case "Always on Top":
 		if state.postIt.active || state.postIt.pending || state.postIt.raised {
 			break

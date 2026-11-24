@@ -22,8 +22,9 @@ func (state *model) togglePostIt() {
 	if mode.pending || state.distractionFree || state.distractionFreeEntering {
 		return
 	}
+	state.menuOpen, state.menuOverflowOpen = -1, false
 	if state.requestDecoration == nil || state.requestAlwaysOnTop == nil {
-		state.notice = "Post-It unavailable"
+		state.finishPostIt(mode.active, errors.New("unavailable"))
 		return
 	}
 	mode.pending, mode.failure = true, ""
@@ -96,6 +97,13 @@ func (state *model) changePostItDecoration(decorated bool, completed func(error)
 }
 
 func (state *model) finishPostIt(active bool, err error) {
+	if err == nil && active != state.postIt.active {
+		state.cancelLiveComposition()
+		state.wordCompletion, state.wordFocusPending = nil, false
+		if state.macroRecording {
+			state.cancelMacroUnsupported("command")
+		}
+	}
 	state.postIt.active, state.postIt.pending = active, false
 	if err != nil {
 		state.postIt.failure = "Post-It: " + err.Error()
