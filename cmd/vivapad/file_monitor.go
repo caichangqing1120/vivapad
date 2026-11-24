@@ -80,12 +80,10 @@ func (monitor *fileMonitor) run(previous os.FileInfo, interval time.Duration) {
 		case <-ticker.C:
 			info, err := os.Lstat(monitor.path)
 			if errors.Is(err, os.ErrNotExist) {
-				if missingTicks < 2 {
-					missingTicks++
-					if missingTicks == 2 {
-						monitor.update.Store(monitorPathMissing)
-						monitor.wake()
-					}
+				missingTicks = min(missingTicks+1, 2)
+				// The editor may have seen the file briefly return after consuming the previous update.
+				if missingTicks == 2 && monitor.update.Swap(monitorPathMissing) != monitorPathMissing {
+					monitor.wake()
 				}
 				continue
 			}
