@@ -112,7 +112,7 @@ func TestMonitoringFollowsOnlyItsOriginalPath(t *testing.T) {
 			if err := os.WriteFile(source, []byte("unrelated old-path update"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			watcher.changed.Store(true)
+			watcher.update.Store(monitorFileChanged)
 			state.consumeMonitorChanges()
 			if state.space.Current() != doc || doc.Editor.String() != "original\n" {
 				t.Fatal("an old-path change reloaded the rebound document")

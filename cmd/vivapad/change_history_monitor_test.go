@@ -71,7 +71,7 @@ func TestMonitoringCleanReloadNoticeHasNoFalseError(t *testing.T) {
 	state.showInActivePane(doc)
 	watcher := &fileMonitor{path: doc.Path}
 	state.monitors = map[*document.Document]*fileMonitor{doc: watcher}
-	watcher.changed.Store(true)
+	watcher.update.Store(monitorFileChanged)
 	if err := os.WriteFile(path, []byte("after"), 0600); err != nil {
 		t.Fatal(err)
 	}
