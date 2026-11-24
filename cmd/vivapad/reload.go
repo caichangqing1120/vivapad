@@ -91,6 +91,15 @@ func (state *model) rebindReloadedDocument(previous, current *document.Document)
 	}
 	current.Editor.MoveTo(min(previous.Editor.Caret(), current.Editor.RuneCount()), false)
 	state.replacePaneDocument(previous, current)
+	// Reload replaces the document object, but it is still the same tab in a pending batch close.
+	for index := range state.batchQueue {
+		if state.batchQueue[index].doc == previous {
+			state.batchQueue[index].doc = current
+		}
+	}
+	if state.batchKeep == previous {
+		state.batchKeep = current
+	}
 	if editor := state.editors[previous]; editor != nil {
 		state.editors[current] = editor
 	}
