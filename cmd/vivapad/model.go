@@ -2190,6 +2190,10 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	config.OnCloseRequest = func(allow func()) {
+		// The pending exit already owns the session snapshot and close callback.
+		if state.allowClose != nil {
+			return
+		}
 		if state.saveSessionOptionsOpen {
 			state.notice = "Finish or cancel Save Session before closing"
 			state.invalidator.Invalidate()
