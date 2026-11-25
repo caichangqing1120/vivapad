@@ -35,15 +35,22 @@ func TestNotepadPlusPlusSummaryWords(t *testing.T) {
 		{"empty selection", 0},
 		{"selected first word", 5},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		if !t.Run(tc.name, func(t *testing.T) {
 			send(2572, tc.end, 0)        // SCI_SETSELECTION
 			const summaryCommand = 44049 // IDM_VIEW_SUMMARY in Notepad++ v8.9.8.1
 			if ok, _, err := postMessage.Call(editor.hwnd, 0x0111, summaryCommand, 0); ok == 0 {
 				t.Fatalf("post Notepad++ Summary command: %v", err)
 			}
 			dialog, words := readNotepadSummary(t, editor.hwnd)
-			if ok, _, err := postMessage.Call(dialog, 0x0111, 1, 0); ok == 0 { // WM_COMMAND, IDOK
-				t.Fatalf("dismiss Notepad++ Summary: %v", err)
+			if words != "7" {
+				t.Errorf("Notepad++ Summary Words = %q, want 7", words)
+			}
+			button, _, err := user32.NewProc("GetDlgItem").Call(dialog, 1) // IDOK
+			if button == 0 {
+				t.Fatalf("find Notepad++ Summary OK button: %v", err)
+			}
+			if ok, _, err := postMessage.Call(button, 0x00f5, 0, 0); ok == 0 { // BM_CLICK
+				t.Fatalf("click Notepad++ Summary OK button: %v", err)
 			}
 			isWindow := user32.NewProc("IsWindow")
 			for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(25 * time.Millisecond) {
@@ -54,13 +61,12 @@ func TestNotepadPlusPlusSummaryWords(t *testing.T) {
 					t.Fatal("Notepad++ Summary did not close")
 				}
 			}
-			if words != "7" {
-				t.Errorf("Notepad++ Summary Words = %q, want 7", words)
-			}
 			if send(2585, 0, 0) != 0 || send(2587, 0, 0) != tc.end || send(2159, 0, 0) != 0 {
 				t.Fatal("Notepad++ Summary changed the selection or document")
 			}
-		})
+		}) {
+			return
+		}
 	}
 	editor.close(t)
 	awaitBytes(t, path, fixture)
