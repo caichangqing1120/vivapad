@@ -172,11 +172,11 @@ of these methods:
   and menu have headless screenshots. Windows file associations, `%ENV%`
   expansion, shortcuts and original pixel matching remain open.
 - Tools > MD5/SHA-1/SHA-256/SHA-512 can hash UTF-8 text or each line, stream
-  selected files and copy their digest report, or copy the current selection's
-  digest directly. Empty selections leave the clipboard untouched; hashing
-  does not modify or save editor buffers. Original Scintilla code-page bytes
-  for legacy-encoded selections and exact Windows dialog/picker behavior are
-  not yet accepted.
+  selected files and copy their digest report, or copy one selection's digest
+  directly. The selection uses UTF-8 buffer text with its original line endings.
+  Empty or multiple selections leave the clipboard untouched. Hashing does
+  not modify or save editor buffers. Native ANSI behavior and exact Windows
+  dialog and picker behavior are not yet accepted.
 
 - Multiple tabs; new/open/save/save as/save all/close; save, discard, or cancel when
   closing a modified document. The native file picker and file drop can open

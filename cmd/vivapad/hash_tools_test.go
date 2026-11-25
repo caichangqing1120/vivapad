@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
+	"vivapad/internal/document"
 	"vivapad/internal/hashops"
 )
 
@@ -234,6 +236,84 @@ func TestSelectionHashUsesExactUTF8Boundaries(t *testing.T) {
 	}
 }
 
+func TestSelectionHashUsesPhysicalLineEndings(t *testing.T) {
+	for _, tc := range []struct {
+		name, disk string
+		legacy     bool
+	}{
+		{"UTF-8 BOM", "\xef\xbb\xbfp\ncaf\xc3\xa9\r\nx\ry\nz", false},
+		{"explicit Windows-1252", "p\ncaf\xe9\r\nx\ry\nz", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "mixed.txt")
+			if err := os.WriteFile(path, []byte(tc.disk), 0600); err != nil {
+				t.Fatal(err)
+			}
+			state, driver := startDriver(t)
+			var err error
+			if tc.legacy {
+				err = state.space.OpenWithEncoding(path, document.Windows1252)
+			} else {
+				err = state.space.Open(path)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			doc := state.space.Current()
+			selection := text.Range{Start: 2, End: 11}
+			doc.Editor.SetSelection(selection)
+			state.hashAlgorithm = hashops.SHA256
+			state.command("Generate from selection into clipboard")
+			want := fmt.Sprintf("%x", sha256.Sum256([]byte("caf\xc3\xa9\r\nx\ry\n")))
+			if got := driver.Clipboard(); got != want {
+				t.Fatalf("selection hash = %q, want %q", got, want)
+			}
+			if doc.Editor.String() != "p\ncaf\xc3\xa9\nx\ny\nz" || doc.Editor.Selection() != selection || doc.Dirty() || doc.Editor.CanUndo() {
+				t.Fatal("selection hash changed document state")
+			}
+			if got, err := os.ReadFile(path); err != nil || string(got) != tc.disk {
+				t.Fatalf("file after selection hash = %x, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestSelectionHashUsesOnlyOneRange(t *testing.T) {
+	for _, mode := range []string{"multiple streams", "multiple rectangle rows", "one rectangle row"} {
+		t.Run(mode, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			value := "abc\ndef"
+			doc.Editor.Insert(value)
+			doc.Editor.ClearHistory()
+			want := "keep clipboard"
+			driver.SetClipboard(want)
+			switch mode {
+			case "multiple streams":
+				ranges := []text.Range{{Start: 0, End: 2}, {Start: 4, End: 6}}
+				doc.Editor.SetSelection(ranges[1])
+				state.multiSelections[0] = multiSelectionState{doc: doc, value: value, ranges: ranges, active: true}
+			case "multiple rectangle rows":
+				doc.Editor.MoveTo(6, false)
+				state.rectangles[0] = rectangleSelection{doc: doc, value: value, anchor: 0, caret: 6, active: true}
+			case "one rectangle row":
+				doc.Editor.MoveTo(2, false)
+				state.rectangles[0] = rectangleSelection{doc: doc, value: value, anchor: 0, caret: 2, active: true}
+				want = fmt.Sprintf("%x", sha256.Sum256([]byte("ab")))
+			}
+			selection, dirty := doc.Editor.Selection(), doc.Dirty()
+			state.hashAlgorithm = hashops.SHA256
+			state.command("Generate from selection into clipboard")
+			if got := driver.Clipboard(); got != want {
+				t.Fatalf("clipboard = %q, want %q", got, want)
+			}
+			if doc.Editor.String() != value || doc.Editor.Selection() != selection || doc.Dirty() != dirty || doc.Editor.CanUndo() {
+				t.Fatal("selection hash changed editor state")
+			}
+		})
+	}
+}
+
 func BenchmarkHashShortSelection(b *testing.B) {
 	state := newModel()
 	driver, err := app.NewDriver(newConfig(state), nil)
@@ -242,7 +322,7 @@ func BenchmarkHashShortSelection(b *testing.B) {
 	}
 	b.Cleanup(driver.Close)
 	doc := state.space.Current()
-	doc.Editor = text.NewEditor(strings.Repeat("\u6c34\U0001f680\n", 1<<18))
+	doc.Editor.Insert(strings.Repeat("\u6c34\U0001f680\n", 1<<18))
 	end := doc.Editor.RuneCount()
 	doc.Editor.SetSelection(text.Range{Start: end - 3, End: end})
 	state.hashAlgorithm = hashops.SHA256

@@ -41,13 +41,31 @@ func hashAlgorithmForName(name string) hashops.Algorithm {
 }
 
 func (state *model) hashSelectionToClipboard(doc *document.Document) {
+	if doc.Editor.SelectionCount() != 1 || state.hasMultipleStreamSelections(doc) {
+		state.notice = "Select a single text range to hash"
+		return
+	}
 	selection := doc.Editor.Selection()
+	if pane := state.activePane; state.rectangles[pane].active {
+		rect := state.rectangles[pane]
+		if rect.doc == doc && rect.value == doc.Editor.String() {
+			rows := doc.RectangleRows(state.rectangleForPane(pane))
+			if len(rows) != 1 {
+				state.notice = "Select a single text range to hash"
+				return
+			}
+			selection = rows[0].Range
+		}
+	}
 	if selection.Start == selection.End {
 		state.notice = "Select text to hash"
 		return
 	}
-	start, end := doc.Editor.ByteOffset(selection.Start), doc.Editor.ByteOffset(selection.End)
-	value := doc.Editor.String()[start:end]
+	value, err := doc.TextRangeWithLineEndings(selection)
+	if err != nil {
+		state.notice = "Hash copy failed: " + err.Error()
+		return
+	}
 	result, err := hashops.Digest(state.hashAlgorithm, []byte(value))
 	if err == nil {
 		err = app.SetClipboardText(result)
