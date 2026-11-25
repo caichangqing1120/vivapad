@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func creationTime(info os.FileInfo) (time.Time, bool) {
+func creationTime(_ string, info os.FileInfo) (time.Time, bool) {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || stat.Birthtimespec.Sec <= 0 {
 		return time.Time{}, false
