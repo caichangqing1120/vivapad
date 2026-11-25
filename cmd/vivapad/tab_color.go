@@ -9,14 +9,16 @@ import (
 
 var tabColorCommands = [...]string{"Apply Color 1", "Apply Color 2", "Apply Color 3", "Apply Color 4", "Apply Color 5", "Remove Color"}
 
+// Classic light colors from Notepad++ v8.9.8.1, in tabColourId order.
+// Store the Windows HLS results so the same defaults paint on every platform.
 var tabColorPastels = [...]gfx.Color{
-	gfx.RGB(249, 224, 205), gfx.RGB(245, 235, 203), gfx.RGB(219, 239, 218),
-	gfx.RGB(221, 232, 251), gfx.RGB(238, 222, 246),
+	gfx.RGB24(0xf3f0cb), gfx.RGB24(0xd6f3cb), gfx.RGB24(0xcbdbf3),
+	gfx.RGB24(0xf3dacb), gfx.RGB24(0xeecbf3),
 }
 
 var tabColorAccents = [...]gfx.Color{
-	gfx.RGB(207, 107, 53), gfx.RGB(173, 139, 42), gfx.RGB(66, 156, 81),
-	gfx.RGB(75, 120, 203), gfx.RGB(151, 88, 172),
+	gfx.RGB24(0xe4d945), gfx.RGB24(0x6de445), gfx.RGB24(0x4585e4),
+	gfx.RGB24(0xe48145), gfx.RGB24(0xd045e4),
 }
 
 func tabColorCommand(command string) uint8 {
