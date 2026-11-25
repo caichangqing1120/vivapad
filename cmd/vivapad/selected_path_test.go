@@ -191,8 +191,7 @@ func TestSelectedPathMenuActionsReachableAtCompactSize(t *testing.T) {
 	}
 	choose := func(index int) {
 		clickID(t, driver, menuScope.At(1))
-		revealEditMenuItem(t, driver, 24)
-		clickID(t, driver, menuItemScope.At(24))
+		clickEditMenuCommand(t, driver, "On Selection")
 		for row := range 3 {
 			found := false
 			for _, hit := range driver.Snapshot().Hits {
@@ -234,8 +233,7 @@ func TestCaptureSelectedPathMenuWhenRequested(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, session.Driver(), menuScope.At(1))
-	revealEditMenuItem(t, session.Driver(), 24)
-	clickID(t, session.Driver(), menuItemScope.At(24))
+	clickEditMenuCommand(t, session.Driver(), "On Selection")
 	if problems := headless.CheckLayout(session.Snapshot()); len(problems) != 0 {
 		t.Fatalf("On Selection menu layout: %+v", problems)
 	}

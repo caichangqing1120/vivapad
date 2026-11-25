@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/gfx"
+	"vivapad/internal/macro"
 )
 
 func TestDebugInfoUsesOnlyBuildAndPlatformFields(t *testing.T) {
@@ -134,12 +135,54 @@ func TestHelpLinksReportBrowserFailure(t *testing.T) {
 		{"Project Page", "Could not open the project page"},
 		{"User Guide", "Could not open the user guide"},
 		{"Command Line Arguments...", "Could not open command-line help"},
+		{"Column Mode Help", "Could not open the column selection guide"},
 	} {
 		t.Run(test.command, func(t *testing.T) {
 			state, _ := startDriver(t)
 			state.openHelpLink(test.command, func(string) error { return errors.New("no default browser") })
 			if state.notice != test.notice {
 				t.Fatalf("failure notice = %q, want %q", state.notice, test.notice)
+			}
+		})
+	}
+}
+
+func TestEditMenuOpensColumnModeHelpWithoutChangingTheDocument(t *testing.T) {
+	const target = "https://github.com/caichangqing1120/vivapad/blob/main/README.md#column-selection"
+	for _, layout := range []struct {
+		name          string
+		width, height int
+	}{{"desktop", 1280, 800}, {"compact", 640, 400}} {
+		t.Run(layout.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			doc.Editor.Insert("private draft")
+			doc.Editor.MoveTo(0, false)
+			doc.Editor.MoveTo(7, true)
+			selection := doc.Editor.Selection()
+			undo, redo := doc.Editor.CanUndo(), doc.Editor.CanRedo()
+			steps := []macro.Step{{Kind: macro.TextStep, Text: "previous input"}}
+			state.macroRecording, state.macroSource, state.macroSteps = true, doc, slices.Clone(steps)
+			driver.SetClipboard("private clipboard")
+			if err := driver.Resize(layout.width, layout.height); err != nil {
+				t.Fatal(err)
+			}
+			index := editMenuIndex(t, "Column Mode Help")
+			clickID(t, driver, menuScope.At(1))
+			revealEditMenuItem(t, driver, index)
+			if _, opened := driver.LastOpenedURL(); opened {
+				t.Fatal("opening or scrolling the Edit menu launched a browser")
+			}
+			clickID(t, driver, menuItemScope.At(index))
+			if got, opened := driver.LastOpenedURL(); !opened || got != target {
+				t.Fatalf("opened URL = %q, %t; want %q", got, opened, target)
+			}
+			if state.space.Current() != doc || doc.Editor.String() != "private draft" || doc.Editor.Selection() != selection ||
+				doc.Editor.CanUndo() != undo || doc.Editor.CanRedo() != redo || !doc.Dirty() || driver.Clipboard() != "private clipboard" {
+				t.Fatal("opening Column Mode Help changed the editor or clipboard")
+			}
+			if !state.macroRecording || state.macroSource != doc || !slices.Equal(state.macroSteps, steps) {
+				t.Fatal("opening Column Mode Help changed the macro recording")
 			}
 		})
 	}

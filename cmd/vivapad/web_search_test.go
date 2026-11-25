@@ -30,8 +30,7 @@ func TestInternetSearchCompactMenuAndSavedEngine(t *testing.T) {
 	doc.Editor.SetSelection(selection)
 	open := func(index int) {
 		clickID(t, driver, menuScope.At(1))
-		revealEditMenuItem(t, driver, 24)
-		clickID(t, driver, menuItemScope.At(24))
+		clickEditMenuCommand(t, driver, "On Selection")
 		clickID(t, driver, onSelectionScope.At(index))
 	}
 	open(5)
