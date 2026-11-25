@@ -259,6 +259,43 @@ func (doc *Document) restoreLineEndings(newline, sequence string) error {
 	return nil
 }
 
+// TextRangeWithLineEndings returns UTF-8 buffer text with the selected line
+// separators restored, without applying the file encoding or adding a BOM.
+func (doc *Document) TextRangeWithLineEndings(selection text.Range) (string, error) {
+	start, end := min(selection.Start, selection.End), max(selection.Start, selection.End)
+	if start < 0 || end > doc.Editor.RuneCount() {
+		return "", fmt.Errorf("selection is outside the document")
+	}
+	value := doc.Editor.String()
+	startByte, endByte := doc.Editor.ByteOffset(start), doc.Editor.ByteOffset(end)
+	selected := value[startByte:endByte]
+	firstBreak := strings.IndexByte(selected, '\n')
+	if firstBreak < 0 {
+		return selected, nil
+	}
+	labels, err := doc.currentLFLabels()
+	if err != nil {
+		return "", err
+	}
+	if doc.eolUniform {
+		return strings.ReplaceAll(selected, "\n", doc.newline), nil
+	}
+	line := strings.Count(value[:startByte], "\n")
+	var physical strings.Builder
+	physical.Grow(len(selected))
+	for next := firstBreak; next >= 0; next = strings.IndexByte(selected, '\n') {
+		if line >= len(labels) {
+			return "", fmt.Errorf("document EOL labels do not match selection")
+		}
+		physical.WriteString(selected[:next])
+		physical.WriteString(lineEndingFromCode(labels[line]))
+		line++
+		selected = selected[next+1:]
+	}
+	physical.WriteString(selected)
+	return physical.String(), nil
+}
+
 func (doc *Document) physicalValue(value string) (string, error) {
 	labels, err := doc.currentLFLabels()
 	if err != nil {
