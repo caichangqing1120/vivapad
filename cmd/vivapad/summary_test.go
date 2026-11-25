@@ -57,6 +57,25 @@ func TestDocumentSummaryCountsMixedLineEndingsAndUnicodeWords(t *testing.T) {
 	}
 }
 
+func TestDocumentSummaryMatchesWindowsReferenceWords(t *testing.T) {
+	// Also used in TestNotepadPlusPlusSummaryWords.
+	const fixture = "\ufeffalpha,beta\r\nx\u0301y _\n\U0001f642 \U0001f642\r\u732b\uff0f\u72ac"
+	path := filepath.Join(t.TempDir(), "summary-words.txt")
+	if err := os.WriteFile(path, []byte(fixture), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModelWithFiles([]string{path})
+	doc := state.space.Current()
+	for _, selection := range []text.Range{{}, {Start: 0, End: 5}} {
+		doc.Editor.SetSelection(selection)
+		state.command("Summary...")
+		if !state.summaryOpen || state.summary.words != 7 || doc.Editor.Selection() != selection {
+			t.Fatalf("Summary on selection %+v: open=%t, words=%d, selection=%+v", selection, state.summaryOpen, state.summary.words, doc.Editor.Selection())
+		}
+		state.summaryOpen = false
+	}
+}
+
 func TestSummaryCountsActiveSelectionAreas(t *testing.T) {
 	for _, tc := range []struct {
 		name, source        string
