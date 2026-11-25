@@ -500,8 +500,9 @@ of these methods:
   and physical Windows/Linux window-manager behavior remain unverified.
 - View > Summary... shows the active editor view's saved path and available
   file times, character/word/line counts, UTF-8 bytes with preserved physical
-  line endings, and the current selection. It is a read-only snapshot with
-  Escape/OK dismissal. Exact Scintilla code-page and multi-selection counts
+  line endings, and the size and number of selected areas, including multiple
+  stream selections and rectangular selections. It is a read-only snapshot
+  with Escape/OK dismissal. Exact Scintilla code-page and character counting
   remain unverified.
 - View > Monitoring (tail -f) watches a saved, clean document and reloads
   appends or replacements without changing its encoding. Monitored tabs are

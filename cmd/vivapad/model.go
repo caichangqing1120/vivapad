@@ -1716,6 +1716,7 @@ func newConfig(state *model) app.Config {
 		if state.summaryOpen {
 			if event.Key == gfx.KeyEscape || event.Key == gfx.KeyEnter {
 				state.summaryOpen = false
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
 			}
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
@@ -3075,7 +3076,7 @@ func (state *model) command(command string) {
 		if state.splitEnabled {
 			summaryDoc = state.paneDocument(state.activePane)
 		}
-		state.summary, state.summaryOpen = summaryFor(summaryDoc), true
+		state.summary, state.summaryOpen = state.summaryForPane(summaryDoc, state.activePane), true
 	case aboutHelpCommand:
 		state.openHelp(aboutHelp)
 	case debugHelpCommand:

@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/text"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 	"vivapad/internal/document"
@@ -17,17 +18,49 @@ type documentSummary struct {
 }
 
 func summaryFor(doc *document.Document) documentSummary {
-	selection := doc.Editor.Selection()
-	counts := doc.SummaryCounts(selection.Start, selection.End)
+	return summarizeSelections(doc, []text.Range{doc.Editor.Selection()}, false)
+}
+
+func (state *model) summaryForPane(doc *document.Document, pane int) documentSummary {
+	value := doc.Editor.String()
+	if rect := state.rectangles[pane]; rect.active && rect.doc == doc && rect.value == value {
+		rows := doc.RectangleRows(state.rectangleForPane(pane))
+		if len(rows) > 0 {
+			ranges := make([]text.Range, 0, len(rows))
+			for _, row := range rows {
+				ranges = append(ranges, row.Range)
+			}
+			return summarizeSelections(doc, ranges, true)
+		}
+	}
+	if multi := state.multiSelections[pane]; multi.active && multi.doc == doc && multi.value == value &&
+		len(multi.ranges) > 0 && multi.ranges[len(multi.ranges)-1] == doc.Editor.Selection() {
+		return summarizeSelections(doc, multi.ranges, false)
+	}
+	return summaryFor(doc)
+}
+
+func summarizeSelections(doc *document.Document, ranges []text.Range, rectangle bool) documentSummary {
+	counts := doc.SummaryCountsForRanges(ranges)
+	characters := 0
+	for _, r := range ranges {
+		characters += max(r.Start, r.End) - min(r.Start, r.End)
+	}
+	areas := len(ranges)
+	if areas == 1 && characters == 0 {
+		areas = 0
+	} else if rectangle && areas > 1 {
+		areas = 1
+	}
 	summary := documentSummary{
 		path:               doc.Path,
 		characters:         counts.Characters,
 		words:              counts.Words,
 		lines:              counts.Lines,
 		bytes:              counts.Bytes,
-		selectedCharacters: selection.End - selection.Start,
+		selectedCharacters: characters,
 		selectedBytes:      counts.SelectedBytes,
-		ranges:             1,
+		ranges:             areas,
 	}
 	if doc.Path != "" {
 		if info, err := os.Stat(doc.Path); err == nil {
@@ -82,6 +115,7 @@ func (state *model) paintSummary(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.LabelCenter("OK", closeBounds, gfx.TextStyle{Size: 12, Color: palette.text})
 	if hitButton(canvas, summaryCloseID, closeBounds, "Close Summary") {
 		state.summaryOpen = false
+		canvas.RequestFocus(state.commandEditorFocusID())
 	}
 	canvas.PopLayer()
 	canvas.PopLayer()
