@@ -9,6 +9,7 @@ import (
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
+	"vivapad/internal/document"
 	"vivapad/internal/hashops"
 	"vivapad/tools/windows"
 )
@@ -17,18 +18,34 @@ func TestSelectionHashWritesWindowsClipboard(t *testing.T) {
 	if os.Getenv("VIVAPAD_WINDOWS_CLIPBOARD_TEST") != "1" {
 		t.Skip("requires an isolated Windows desktop clipboard")
 	}
+	t.Run("UTF8_BOM", func(t *testing.T) {
+		checkSelectionHashWritesWindowsClipboard(t, windows.SelectionHashSource, document.UTF8BOM)
+	})
+	t.Run("Windows1252", func(t *testing.T) {
+		checkSelectionHashWritesWindowsClipboard(t, windows.SelectionHashWindows1252Source, document.Windows1252)
+	})
+}
+
+func checkSelectionHashWritesWindowsClipboard(t *testing.T, source string, encoding document.Encoding) {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "mixed-selection-hash.txt")
-	if err := os.WriteFile(path, []byte(windows.SelectionHashSource), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
 	state := newModel()
-	if err := state.space.Open(path); err != nil {
-		t.Fatal(err)
+	var openErr error
+	if encoding == document.Windows1252 {
+		openErr = state.space.OpenWithEncoding(path, encoding)
+	} else {
+		openErr = state.space.Open(path)
+	}
+	if openErr != nil {
+		t.Fatal(openErr)
 	}
 	doc := state.space.Current()
 	const original = "caf\u00e9 caf\u00e9\nxy\nZ\n"
-	if got := doc.Editor.String(); got != original {
-		t.Fatalf("decoded buffer = %q, want %q", got, original)
+	if got := doc.Editor.String(); got != original || doc.Encoding() != encoding {
+		t.Fatalf("decoded buffer = %q (%s), want %q (%v)", got, doc.EncodingLabel(), original, encoding)
 	}
 	state.hashAlgorithm = hashops.SHA256
 	var canvas gfx.Canvas
@@ -46,8 +63,8 @@ func TestSelectionHashWritesWindowsClipboard(t *testing.T) {
 			doc.Editor.SetSelection(whole)
 			sequence := windows.ClipboardSequence()
 			state.command(command)
-			if windows.ClipboardSequence() == sequence || doc.Editor.Selection() != whole {
-				checkErr = fmt.Errorf("single range did not preserve selection and publish digest: %s", state.notice)
+			if windows.ClipboardSequence() == sequence || doc.Editor.Selection() != whole || doc.Editor.String() != original || doc.Dirty() || doc.Editor.CanUndo() {
+				checkErr = fmt.Errorf("single range did not publish digest and preserve editor state: %s", state.notice)
 				return
 			}
 			if checkErr = windows.CheckSelectionHashClipboard(); checkErr != nil {
@@ -70,7 +87,7 @@ func TestSelectionHashWritesWindowsClipboard(t *testing.T) {
 	if err != nil || checkErr != nil || !checked {
 		t.Fatalf("Windows selection hash: app=%v, checks=%v, completed=%v", err, checkErr, checked)
 	}
-	if got, err := os.ReadFile(path); err != nil || string(got) != windows.SelectionHashSource {
+	if got, err := os.ReadFile(path); err != nil || string(got) != source {
 		t.Fatalf("source after hash = %x, read error %v", got, err)
 	}
 }

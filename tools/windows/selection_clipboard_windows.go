@@ -14,8 +14,10 @@ import (
 // SelectionClipboardSource is a mixed-EOL fixture shared by both editors.
 const SelectionClipboardSource = "a\r\nb\nc\rd"
 
-// SelectionHashSource includes a file BOM that is not part of the selection.
-const SelectionHashSource = "\ufeffcaf\u00e9 caf\u00e9\r\nxy\rZ\n"
+// Both on-disk fixtures decode to the same selection, with no BOM in the digest.
+const SelectionHashBuffer = "caf\u00e9 caf\u00e9\r\nxy\rZ\n"
+const SelectionHashSource = "\ufeff" + SelectionHashBuffer
+const SelectionHashWindows1252Source = "caf\xe9 caf\xe9\r\nxy\rZ\n"
 const SelectionHashSHA256 = "f7345909f561b145ff55ab82fe11cb3808b5b55a35eae29ae172dd2eed182e19"
 
 func ClipboardSequence() uintptr {
