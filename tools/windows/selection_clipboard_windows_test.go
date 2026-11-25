@@ -14,6 +14,53 @@ import (
 const clipboardReceiverSource = "111\r\n222\r\n333\r\n444\r\n555\r\n"
 const clipboardReceiverPasted = "1c11\r\n2d22\r\n333\r\n4a44\r\n555\r\n"
 
+func TestNotepadPlusPlusSelectionHash(t *testing.T) {
+	reference := os.Getenv("VIVAPAD_RTL_REFERENCE_EXE")
+	if reference == "" {
+		t.Skip("requires pinned portable Notepad++ on an isolated Windows desktop")
+	}
+	path := filepath.Join(t.TempDir(), "mixed-selection-hash.txt")
+	if err := os.WriteFile(path, []byte(windows.SelectionHashSource), 0600); err != nil {
+		t.Fatal(err)
+	}
+	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", path)
+	editor.focusText(t)
+	send := focusedScintilla(t, editor)
+	const hashCommand = 48506 // IDM_TOOL_SHA256_GENERATEINTOCLIPBOARD in Notepad++ v8.9.8.1
+	const bufferSize = uintptr(len(windows.SelectionHashSource) - len("\ufeff"))
+	if length, codePage := send(2006, 0, 0), send(2137, 0, 0); length != bufferSize || codePage != 65001 {
+		t.Fatalf("reference buffer length=%d code page=%d, want %d bytes of UTF-8 without BOM", length, codePage, bufferSize)
+	}
+	send(2572, bufferSize, 0) // SCI_SETSELECTION
+	sequence := windows.ClipboardSequence()
+	invokeNotepadCommand(t, editor, hashCommand)
+	if windows.ClipboardSequence() == sequence {
+		t.Fatal("Notepad++ did not publish a digest")
+	}
+	if err := windows.CheckSelectionHashClipboard(); err != nil {
+		t.Fatal(err)
+	}
+	if send(2585, 0, 0) != 0 || send(2587, 0, 0) != bufferSize {
+		t.Fatal("Notepad++ changed the single selection while hashing")
+	}
+	send(2563, 1, 0) // SCI_SETMULTIPLESELECTION
+	send(2572, uintptr(len("caf\u00e9")), 0)
+	send(2573, uintptr(len("caf\u00e9 caf\u00e9")), uintptr(len("caf\u00e9 ")))
+	if got := send(2570, 0, 0); got != 2 { // SCI_GETSELECTIONS
+		t.Fatalf("Notepad++ selections = %d, want 2", got)
+	}
+	sequence = windows.ClipboardSequence()
+	invokeNotepadCommand(t, editor, hashCommand)
+	if windows.ClipboardSequence() != sequence || send(2570, 0, 0) != 2 || send(2159, 0, 0) != 0 {
+		t.Fatal("Notepad++ changed the clipboard, selections, or document on multiple ranges")
+	}
+	if err := windows.CheckSelectionHashClipboard(); err != nil {
+		t.Fatal(err)
+	}
+	editor.close(t)
+	awaitBytes(t, path, windows.SelectionHashSource)
+}
+
 func TestNotepadPlusPlusMultiSelectionClipboard(t *testing.T) {
 	reference, app := os.Getenv("VIVAPAD_RTL_REFERENCE_EXE"), os.Getenv("VIVAPAD_RTL_DESKTOP_EXE")
 	if reference == "" && app == "" {
