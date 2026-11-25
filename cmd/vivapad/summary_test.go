@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -53,6 +54,50 @@ func TestDocumentSummaryCountsMixedLineEndingsAndUnicodeWords(t *testing.T) {
 	summary := summaryFor(doc)
 	if summary.characters != 9 || summary.words != 5 || summary.lines != 4 || summary.bytes != 22 || summary.selectedCharacters != 5 || summary.selectedBytes != 13 {
 		t.Fatalf("mixed summary = %+v", summary)
+	}
+}
+
+func TestSummaryCountsActiveSelectionAreas(t *testing.T) {
+	for _, tc := range []struct {
+		name, source        string
+		selections          []text.Range
+		rectangle           bool
+		anchor, caret       int
+		chars, bytes, areas int
+	}{
+		{name: "empty caret", source: "abc"},
+		{name: "multiple carets", source: "abc", selections: []text.Range{{Start: 2, End: 2}, {Start: 0, End: 0}}, areas: 2},
+		{name: "mixed endings and Unicode", source: "aé\r\n猫b\nz\rc🙂", selections: []text.Range{{Start: 8, End: 10}, {Start: 0, End: 1}, {Start: 6, End: 6}, {Start: 1, End: 3}}, chars: 5, bytes: 10, areas: 4},
+		{name: "rectangle with empty row", source: "aé\r\n\n猫b", rectangle: true, anchor: 0, caret: 5, chars: 3, bytes: 6, areas: 1},
+		{name: "thin rectangle", source: "abc\ndef", rectangle: true, anchor: 0, caret: 4, areas: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "sample.txt")
+			if err := os.WriteFile(path, []byte(tc.source), 0600); err != nil {
+				t.Fatal(err)
+			}
+			state := newModelWithFiles([]string{path})
+			doc := state.space.Current()
+			if len(tc.selections) > 0 {
+				doc.Editor.SetSelection(tc.selections[len(tc.selections)-1])
+				state.multiSelections[0] = multiSelectionState{doc: doc, value: doc.Editor.String(), ranges: slices.Clone(tc.selections), active: true}
+			}
+			if tc.rectangle {
+				doc.Editor.MoveTo(tc.caret, false)
+				state.rectangles[0] = rectangleSelection{doc: doc, value: doc.Editor.String(), anchor: tc.anchor, caret: tc.caret, active: true}
+			}
+			selection, rectangle := doc.Editor.Selection(), state.rectangles[0]
+			before := doc.Editor.String()
+			state.command("Summary...")
+			got := state.summary
+			if !state.summaryOpen || got.selectedCharacters != tc.chars || got.selectedBytes != tc.bytes || got.ranges != tc.areas {
+				t.Fatalf("summary open=%v: %d characters, %d bytes, %d ranges; want %d, %d, %d", state.summaryOpen, got.selectedCharacters, got.selectedBytes, got.ranges, tc.chars, tc.bytes, tc.areas)
+			}
+			if doc.Editor.String() != before || doc.Editor.Selection() != selection || doc.Editor.CanUndo() || doc.Dirty() ||
+				!slices.Equal(state.multiSelections[0].ranges, tc.selections) || state.rectangles[0] != rectangle {
+				t.Fatal("summary changed editor state")
+			}
+		})
 	}
 }
 

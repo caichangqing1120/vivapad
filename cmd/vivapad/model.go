@@ -3075,7 +3075,7 @@ func (state *model) command(command string) {
 		if state.splitEnabled {
 			summaryDoc = state.paneDocument(state.activePane)
 		}
-		state.summary, state.summaryOpen = summaryFor(summaryDoc), true
+		state.summary, state.summaryOpen = state.summaryForPane(summaryDoc, state.activePane), true
 	case aboutHelpCommand:
 		state.openHelp(aboutHelp)
 	case debugHelpCommand:
