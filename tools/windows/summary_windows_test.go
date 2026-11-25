@@ -45,13 +45,8 @@ func TestNotepadPlusPlusSummaryWords(t *testing.T) {
 			if words != "7" {
 				t.Errorf("Notepad++ Summary Words = %q, want 7", words)
 			}
-			button, _, err := user32.NewProc("GetDlgItem").Call(dialog, 1) // IDOK
-			if button == 0 {
-				t.Fatalf("find Notepad++ Summary OK button: %v", err)
-			}
-			if ok, _, err := postMessage.Call(button, 0x00f5, 0, 0); ok == 0 { // BM_CLICK
-				t.Fatalf("click Notepad++ Summary OK button: %v", err)
-			}
+			// The dark task dialog and standard message box need not expose the same control IDs.
+			(&desktopEditor{hwnd: dialog}).keys(t, 0x0d) // VK_RETURN
 			isWindow := user32.NewProc("IsWindow")
 			for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(25 * time.Millisecond) {
 				if open, _, _ := isWindow.Call(dialog); open == 0 {
@@ -61,6 +56,7 @@ func TestNotepadPlusPlusSummaryWords(t *testing.T) {
 					t.Fatal("Notepad++ Summary did not close")
 				}
 			}
+			send = focusedScintilla(t, editor)
 			if send(2585, 0, 0) != 0 || send(2587, 0, 0) != tc.end || send(2159, 0, 0) != 0 {
 				t.Fatal("Notepad++ Summary changed the selection or document")
 			}
