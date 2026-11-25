@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0
       - name: Reject local documents, plans and screenshots
         run: node tools/github/check-public-files.cjs
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
         with:
           go-version-file: go.mod
       - name: Check Go formatting
@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
         with:
           go-version-file: go.mod
       - name: Build native executable
@@ -67,6 +67,27 @@ jobs:
         env:
           OUTPUT: build/vivapad${{ runner.os == 'Windows' && '.exe' || '' }}
         run: go build -o "$OUTPUT" ./cmd/vivapad
+      - name: Check command-line help
+        timeout-minutes: 1
+        env:
+          OUTPUT: build/vivapad${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: |
+          usage=$("$OUTPUT" --help)
+          [[ "$usage" == "Usage: vivapad "* ]]
+      - name: Check command-line help in a Windows GUI build
+        if: runner.os == 'Windows'
+        timeout-minutes: 2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gui = Join-Path $env:RUNNER_TEMP 'vivapad-gui.exe'
+          $output = Join-Path $env:RUNNER_TEMP 'vivapad-cli-help.txt'
+          go build -ldflags '-H=windowsgui' -o $gui ./cmd/vivapad
+          if ($LASTEXITCODE -ne 0) { throw 'Build Windows GUI executable failed' }
+          $child = Start-Process -FilePath $gui -ArgumentList '--help' -RedirectStandardOutput $output -PassThru -Wait
+          if ($child.ExitCode -ne 0 -or (Get-Content -Raw -LiteralPath $output) -notlike 'Usage: vivapad *') {
+            throw 'Windows GUI executable did not print command-line help'
+          }
       - name: Run unit and integration tests
         run: go test ./... -count=1 -timeout=15m
       - name: Compare RTL, clipboard and multi-selection macros with Notepad++
@@ -116,7 +137,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
         with:
           go-version-file: go.mod
       - run: go test -race ./... -count=1 -timeout=20m

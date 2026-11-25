@@ -96,6 +96,19 @@ VIVA_HEADLESS=1 /tmp/vivapad-head
 # Then enter: click "Text editor", type hello, shot /tmp/vivapad.png, layout, quit
 ```
 
+### Command Line Arguments
+
+```sh
+vivapad notes.txt "another file.txt"
+vivapad --help
+vivapad -- --help
+```
+
+Pass file paths to open them at startup. With no file arguments, VivaPad
+reopens its previous session if available. A leading `-h` or `--help` prints
+usage and exits without opening a window. Use a leading `--` to open a file
+whose name would otherwise be interpreted as help, as in the last example.
+
 ## Current behavior
 
 - Documents track an explicit saved Undo boundary. New edits that return to the
