@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +46,31 @@ func TestPrepareDoesNotInterpretUntrustedVariableAsShellSyntax(t *testing.T) {
 	}
 }
 
+func TestPrepareExpandsEnvironmentAfterTokenization(t *testing.T) {
+	values := map[string]string{
+		"TOOL":              `C:\Program Files\Tool\helper.exe`,
+		"ProgramFiles(x86)": `C:\Program Files (x86)`,
+		"VALUE":             `one & "two" %OTHER% $(CURRENT_WORD)`,
+		"EMPTY":             "",
+		"CONTROL":           "bad\rvalue",
+	}
+	lookup := func(name string) (string, bool) { value, ok := values[name]; return value, ok }
+	vars := Variables{Word: "%OTHER%"}
+	prepared, err := prepare(`%TOOL% "%ProgramFiles(x86)%" "pre:%VALUE%" "%EMPTY%" "$(CURRENT_WORD)" "50% and 90%"`, vars, lookup)
+	want := []string{values["ProgramFiles(x86)"], "pre:" + values["VALUE"], "", vars.Word, "50% and 90%"}
+	if err != nil || prepared.Executable != values["TOOL"] || !reflect.DeepEqual(prepared.Args, want) {
+		t.Fatalf("prepare = %+v, %v; want executable %q and args %q", prepared, err, values["TOOL"], want)
+	}
+	for _, template := range []string{`echo %MISSING%`, `echo %CONTROL%`, `%EMPTY% echo`} {
+		if _, err := prepare(template, vars, lookup); err == nil {
+			t.Errorf("accepted invalid environment expansion in %q", template)
+		}
+	}
+	if got, err := prepare(`echo %VALUE%`, vars, nil); err != nil || !reflect.DeepEqual(got.Args, []string{"%VALUE%"}) {
+		t.Fatalf("disabled environment expansion = %+v, %v", got, err)
+	}
+}
+
 func TestLaunchStartsProcessWithArgumentsAndWorkingDirectory(t *testing.T) {
 	executable, err := os.Executable()
 	if err != nil {
@@ -53,7 +79,19 @@ func TestLaunchStartsProcessWithArgumentsAndWorkingDirectory(t *testing.T) {
 	root := t.TempDir()
 	output := filepath.Join(root, "result.json")
 	t.Setenv("VIVAPAD_RUN_HELPER", "1")
-	err = Launch(Prepared{Executable: executable, Args: []string{"-test.run=^TestRunLaunchHelper$", "--", output, "argument with spaces"}, Dir: root})
+	wantArg := "argument with spaces"
+	prepared := Prepared{Executable: executable, Args: []string{"-test.run=^TestRunLaunchHelper$", "--", output, wantArg}, Dir: root}
+	if runtime.GOOS == "windows" {
+		wantArg = `argument with spaces & "quotes" %VIVAPAD_RUN_HELPER%`
+		t.Setenv("VIVAPAD_RUN_TEST_EXE", executable)
+		t.Setenv("VIVAPAD_RUN_TEST_OUTPUT", output)
+		t.Setenv("VIVAPAD_RUN_TEST_ARGUMENT", wantArg)
+		prepared, err = Prepare(`%vivapad_run_test_exe% -test.run=^TestRunLaunchHelper$ -- "%VIVAPAD_RUN_TEST_OUTPUT%" %VIVAPAD_RUN_TEST_ARGUMENT%`, Variables{Path: filepath.Join(root, "source.txt")})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = Launch(prepared)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +106,7 @@ func TestLaunchStartsProcessWithArgumentsAndWorkingDirectory(t *testing.T) {
 			if err := json.Unmarshal(data, &actual); err != nil {
 				t.Fatal(err)
 			}
-			if actual.Dir != root || !reflect.DeepEqual(actual.Args, []string{"argument with spaces"}) {
+			if actual.Dir != root || !reflect.DeepEqual(actual.Args, []string{wantArg}) {
 				t.Fatalf("launched process = %+v", actual)
 			}
 			break

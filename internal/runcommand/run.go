@@ -2,8 +2,11 @@ package runcommand
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"unicode"
@@ -13,6 +16,8 @@ import (
 )
 
 const MaxTemplateBytes = 4096
+
+var windowsEnvironmentReference = regexp.MustCompile(`%[\pL\pN_][\pL\pN_.()-]*%`)
 
 type Variables struct {
 	Path, Word, LineText, AppPath string
@@ -69,13 +74,23 @@ func ExpandVariables(value string, vars Variables) string {
 }
 
 func Prepare(template string, vars Variables) (Prepared, error) {
+	if runtime.GOOS == "windows" {
+		return prepare(template, vars, os.LookupEnv)
+	}
+	return prepare(template, vars, nil)
+}
+
+func prepare(template string, vars Variables, lookupEnv func(string) (string, bool)) (Prepared, error) {
 	parts, err := splitTemplate(template)
 	if err != nil {
 		return Prepared{}, err
 	}
 	replacements, directory := variableReplacer(vars)
 	for index := range parts {
-		parts[index] = replacements.Replace(parts[index])
+		parts[index], err = expandRunArgument(parts[index], replacements, lookupEnv)
+		if err != nil {
+			return Prepared{}, err
+		}
 		if strings.IndexByte(parts[index], 0) >= 0 {
 			return Prepared{}, fmt.Errorf("Run argument contains NUL")
 		}
@@ -84,6 +99,35 @@ func Prepare(template string, vars Variables) (Prepared, error) {
 		return Prepared{}, fmt.Errorf("Run executable is empty in this document")
 	}
 	return Prepared{Executable: parts[0], Args: parts[1:], Dir: directory}, nil
+}
+
+func expandRunArgument(argument string, vars *strings.Replacer, lookupEnv func(string) (string, bool)) (string, error) {
+	if lookupEnv == nil {
+		return vars.Replace(argument), nil
+	}
+	references := windowsEnvironmentReference.FindAllStringIndex(argument, -1)
+	if len(references) == 0 {
+		return vars.Replace(argument), nil
+	}
+	var expanded strings.Builder
+	previous := 0
+	for _, reference := range references {
+		start, end := reference[0], reference[1]
+		name := argument[start+1 : end-1]
+		value, ok := lookupEnv(name)
+		if !ok {
+			return "", fmt.Errorf("unknown Run environment variable %%%s%%", name)
+		}
+		if !utf8.ValidString(value) || strings.IndexFunc(value, unicode.IsControl) >= 0 {
+			return "", fmt.Errorf("invalid value for Run environment variable %%%s%%", name)
+		}
+		// Only template text is eligible for context expansion; inserted values are literal.
+		expanded.WriteString(vars.Replace(argument[previous:start]))
+		expanded.WriteString(value)
+		previous = end
+	}
+	expanded.WriteString(vars.Replace(argument[previous:]))
+	return expanded.String(), nil
 }
 
 func Launch(prepared Prepared) error {

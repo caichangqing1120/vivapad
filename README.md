@@ -169,8 +169,10 @@ of these methods:
   variables after tokenization and starts the process only on explicit Run or
   Enter. Saved commands persist in private storage and replay from a bounded,
   scrollable menu. Cancel and invalid commands never launch; the 640x400 dialog
-  and menu have headless screenshots. Windows file associations, `%ENV%`
-  expansion, shortcuts and original pixel matching remain open.
+  and menu have headless screenshots. On Windows, `%NAME%` variables expand
+  within parsed arguments on launch or saved replay. An unknown variable
+  prevents launch. Windows file associations, shortcuts and original pixel
+  matching remain open.
 - Tools > MD5/SHA-1/SHA-256/SHA-512 can hash UTF-8 text or each line, stream
   selected files and copy their digest report, or copy one selection's digest
   directly. The selection uses UTF-8 buffer text with its original line endings.
