@@ -12,7 +12,7 @@ require (
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/rivo/uniseg v0.4.7
 	github.com/vivaui/viva v0.6.8
-	golang.org/x/image v0.12.0
+	golang.org/x/image v0.48.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/text v0.44.0
 )
