@@ -502,8 +502,9 @@ of these methods:
   file times, character/word/line counts, UTF-8 bytes with preserved physical
   line endings, and the size and number of selected areas, including multiple
   stream selections and rectangular selections. It is a read-only snapshot
-  with Escape/OK dismissal. Exact Scintilla code-page and character counting
-  remain unverified.
+  with Escape/OK dismissal. Word counts follow the Notepad++ Summary
+  separator rule. Exact Scintilla code-page and character counting remain
+  unverified.
 - View > Monitoring (tail -f) watches a saved, clean document and reloads
   appends or replacements without changing its encoding. Monitored tabs are
   read-only, follow the file's end and stop on persistent deletion or rename;

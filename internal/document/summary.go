@@ -3,7 +3,6 @@ package document
 import (
 	"cmp"
 	"slices"
-	"unicode"
 
 	"github.com/vivaui/viva/text"
 )
@@ -62,12 +61,15 @@ func (doc *Document) SummaryCountsForRanges(ranges []text.Range) SummaryCounts {
 		case '\r':
 			counts.Characters--
 			insideWord = false
+		// Notepad++ Summary counts runs outside this fixed separator set.
+		case ' ', '\t', '\\', '.', ',', ';', ':', '!', '?', '(', ')', '+', '-', '*', '/', '=',
+			'[', ']', '{', '}', '&', '~', '"', '\'', '`', '|', '@', '$', '%', '<', '>', '^':
+			insideWord = false
 		default:
-			word := character == '_' || unicode.IsLetter(character) || unicode.IsNumber(character)
-			if word && !insideWord {
+			if !insideWord {
 				counts.Words++
+				insideWord = true
 			}
-			insideWord = word
 		}
 	}
 	return counts

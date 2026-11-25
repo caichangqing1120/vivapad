@@ -52,7 +52,7 @@ func TestDocumentSummaryCountsMixedLineEndingsAndUnicodeWords(t *testing.T) {
 	}
 	doc.Editor.SetSelection(text.Range{Start: 2, End: 7})
 	summary := summaryFor(doc)
-	if summary.characters != 9 || summary.words != 5 || summary.lines != 4 || summary.bytes != 22 || summary.selectedCharacters != 5 || summary.selectedBytes != 13 {
+	if summary.characters != 9 || summary.words != 4 || summary.lines != 4 || summary.bytes != 22 || summary.selectedCharacters != 5 || summary.selectedBytes != 13 {
 		t.Fatalf("mixed summary = %+v", summary)
 	}
 }
