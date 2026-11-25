@@ -14,6 +14,24 @@ import (
 	"vivapad/internal/session"
 )
 
+func TestClassicLightTabColors(t *testing.T) {
+	// Notepad++ v8.9.8.1 classic light colors, in tabColourId order.
+	want := [...]struct{ fill, bar uint32 }{
+		{0xf3f0cb, 0xe4d945}, {0xd6f3cb, 0x6de445}, {0xcbdbf3, 0x4585e4},
+		{0xf3dacb, 0xe48145}, {0xeecbf3, 0xd045e4},
+	}
+	state := newModel()
+	doc := state.space.Current()
+	for i, color := range want {
+		state.command(tabColorCommands[i])
+		inactive, _ := state.tabColorPaint(doc, false)
+		active, bar := state.tabColorPaint(doc, true)
+		if inactive != gfx.RGB24(color.fill) || bar != gfx.RGB24(color.bar) || active != palette.white {
+			t.Errorf("color %d: inactive fill = %+v, selected fill = %+v, bar = %+v; want #%06x, white, #%06x", i+1, inactive, active, bar, color.fill, color.bar)
+		}
+	}
+}
+
 func TestTabColorsViewMenuAndCloneShareBufferWithoutEditing(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()
