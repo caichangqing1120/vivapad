@@ -1716,6 +1716,7 @@ func newConfig(state *model) app.Config {
 		if state.summaryOpen {
 			if event.Key == gfx.KeyEscape || event.Key == gfx.KeyEnter {
 				state.summaryOpen = false
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
 			}
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}

@@ -115,6 +115,7 @@ func (state *model) paintSummary(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.LabelCenter("OK", closeBounds, gfx.TextStyle{Size: 12, Color: palette.text})
 	if hitButton(canvas, summaryCloseID, closeBounds, "Close Summary") {
 		state.summaryOpen = false
+		canvas.RequestFocus(state.commandEditorFocusID())
 	}
 	canvas.PopLayer()
 	canvas.PopLayer()

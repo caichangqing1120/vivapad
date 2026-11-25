@@ -168,6 +168,57 @@ func TestSummaryModalUsesActiveSplitViewAndPreservesEditingState(t *testing.T) {
 	}
 }
 
+func TestSummaryDismissalReturnsFocusToActivePane(t *testing.T) {
+	for _, method := range []string{"OK", "Escape", "Enter"} {
+		t.Run(method, func(t *testing.T) {
+			state, driver := startDriver(t)
+			left := state.space.Current()
+			left.Editor.Insert("left")
+			right := state.space.NewDocument()
+			right.Editor.Insert("alpha beta")
+			right.Editor.ClearHistory()
+			state.paneOwner[left], state.paneOwner[right] = 0, 1
+			state.paneDocs = [2]*document.Document{left, right}
+			state.splitEnabled = true
+			state.activatePane(1)
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, rightEditorID)
+			selection := text.Range{Start: 0, End: 5}
+			right.Editor.SetSelection(selection)
+			clickID(t, driver, menuScope.At(3))
+			clickID(t, driver, menuItemScope.At(viewCommandIndex("Summary...")))
+			if !state.summaryOpen {
+				t.Fatal("View menu did not open Summary")
+			}
+			switch method {
+			case "OK":
+				clickID(t, driver, summaryCloseID)
+			case "Escape":
+				if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+					t.Fatal(err)
+				}
+			case "Enter":
+				if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if state.summaryOpen || right.Editor.Selection() != selection || right.Editor.CanUndo() {
+				t.Fatal("Summary dismissal changed editor state")
+			}
+			requireEditorCommandFocus(t, driver, rightEditorID)
+			if err := driver.Type("q"); err != nil || right.Editor.String() != "q beta" || left.Editor.String() != "left" {
+				t.Fatalf("first input after Summary = %q, left %q, error %v", right.Editor.String(), left.Editor.String(), err)
+			}
+			if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || right.Editor.String() != "alpha beta" || right.Editor.CanUndo() {
+				t.Fatalf("Undo after Summary = %q, handled %v, error %v", right.Editor.String(), handled, err)
+			}
+		})
+	}
+}
+
 func TestSummarySnapshotMissingFileAndModalInputSafety(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	if err := os.WriteFile(path, []byte("original"), 0600); err != nil {
