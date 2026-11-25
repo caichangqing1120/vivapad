@@ -14,9 +14,26 @@ import (
 // SelectionClipboardSource is a mixed-EOL fixture shared by both editors.
 const SelectionClipboardSource = "a\r\nb\nc\rd"
 
+// SelectionHashSource includes a file BOM that is not part of the selection.
+const SelectionHashSource = "\ufeffcaf\u00e9 caf\u00e9\r\nxy\rZ\n"
+const SelectionHashSHA256 = "f7345909f561b145ff55ab82fe11cb3808b5b55a35eae29ae172dd2eed182e19"
+
 func ClipboardSequence() uintptr {
 	value, _, _ := syscall.NewLazyDLL("user32.dll").NewProc("GetClipboardSequenceNumber").Call()
 	return value
+}
+
+func CheckSelectionHashClipboard() error {
+	return retryBusyClipboard(func() error {
+		value, err := app.ClipboardText()
+		if err != nil {
+			return err
+		}
+		if value != SelectionHashSHA256 {
+			return fmt.Errorf("clipboard digest = %q, want %q", value, SelectionHashSHA256)
+		}
+		return nil
+	})
 }
 
 // CheckSelectionClipboard verifies the UTF-16 payload and both column formats.
