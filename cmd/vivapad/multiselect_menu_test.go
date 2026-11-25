@@ -20,12 +20,13 @@ func TestMultiSelectEditMenusReachAllOptionsAtCompactSize(t *testing.T) {
 	doc.Editor.Insert("cat cat CAT")
 	doc.Editor.SetSelection(text.Range{Start: 0, End: 3})
 	clickID(t, driver, menuScope.At(1))
-	for _, index := range []int{25, 26, 27, 28} {
+	for _, label := range []string{"Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select"} {
+		index := editMenuIndex(t, label)
 		if bounds := revealEditMenuItem(t, driver, index); bounds.Y < menuHeight || bounds.Y+bounds.Height > 400-statusHeight {
 			t.Fatalf("multi-select row %d clipped: %+v", index, bounds)
 		}
 	}
-	clickID(t, driver, menuItemScope.At(25))
+	clickEditMenuCommand(t, driver, "Multi-select All")
 	for index := range 4 {
 		found := false
 		for _, hit := range driver.Snapshot().Hits {
@@ -45,20 +46,17 @@ func TestMultiSelectEditMenusReachAllOptionsAtCompactSize(t *testing.T) {
 		t.Fatalf("All whole-word selection = %+v, flags=%+v", got, state.multiSelectOptions)
 	}
 	clickID(t, driver, menuScope.At(1))
-	revealEditMenuItem(t, driver, 27)
-	clickID(t, driver, menuItemScope.At(27))
+	clickEditMenuCommand(t, driver, "Undo Latest Multi-Select")
 	if len(state.multiSelections[0].ranges) != 2 {
 		t.Fatalf("Undo latest from Edit menu = %+v", state.multiSelections[0].ranges)
 	}
 	clickID(t, driver, menuScope.At(1))
-	revealEditMenuItem(t, driver, 28)
-	clickID(t, driver, menuItemScope.At(28))
+	clickEditMenuCommand(t, driver, "Skip Current Multi-Select")
 	if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, []text.Range{{Start: 0, End: 3}, {Start: 8, End: 11}}) {
 		t.Fatalf("Skip using previous flags = %+v", got)
 	}
 	clickID(t, driver, menuScope.At(1))
-	revealEditMenuItem(t, driver, 26)
-	clickID(t, driver, menuItemScope.At(26))
+	clickEditMenuCommand(t, driver, "Multi-select Next")
 	clickID(t, driver, multiSelectNextScope.At(0))
 	if len(state.multiSelections[0].ranges) != 3 || doc.Editor.String() != "cat cat CAT" {
 		t.Fatalf("Next menu selection = %+v, text=%q", state.multiSelections[0].ranges, doc.Editor.String())
@@ -83,8 +81,7 @@ func TestCaptureMultiSelectWhenRequested(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, session.Driver(), menuScope.At(1))
-	revealEditMenuItem(t, session.Driver(), 25)
-	clickID(t, session.Driver(), menuItemScope.At(25))
+	clickEditMenuCommand(t, session.Driver(), "Multi-select All")
 	if problems := headless.CheckLayout(session.Snapshot()); len(problems) != 0 {
 		t.Fatalf("multi-select menu layout: %+v", problems)
 	}
@@ -123,8 +120,7 @@ func TestMultiSelectMenuReturnsFocusForImmediateTyping(t *testing.T) {
 	clickID(t, driver, editorID)
 	doc.Editor.SetSelection(text.Range{Start: 0, End: 3})
 	clickID(t, driver, menuScope.At(1))
-	revealEditMenuItem(t, driver, 25)
-	clickID(t, driver, menuItemScope.At(25))
+	clickEditMenuCommand(t, driver, "Multi-select All")
 	clickID(t, driver, multiSelectAllScope.At(0))
 	if err := driver.Type("X"); err != nil || doc.Editor.String() != "X X" {
 		t.Fatalf("typing after Multi-select All = %q, %v", doc.Editor.String(), err)

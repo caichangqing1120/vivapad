@@ -23,9 +23,11 @@ const (
 	projectPageHelpCommand = "Project Page"
 	userGuideHelpCommand   = "User Guide"
 	commandLineHelpCommand = "Command Line Arguments..."
+	columnModeHelpCommand  = "Column Mode Help"
 	projectPageURL         = "https://github.com/caichangqing1120/vivapad"
 	userGuideURL           = projectPageURL + "/blob/main/README.md#current-behavior"
 	commandLineHelpURL     = projectPageURL + "/blob/main/README.md#command-line-arguments"
+	columnModeHelpURL      = projectPageURL + "/blob/main/README.md#column-selection"
 )
 
 var buildVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.+-]{1,64})?$`)
@@ -113,6 +115,8 @@ func (state *model) openHelpLink(command string, openURL func(string) error) {
 		target, failure = userGuideURL, "Could not open the user guide"
 	case commandLineHelpCommand:
 		target, failure = commandLineHelpURL, "Could not open command-line help"
+	case columnModeHelpCommand:
+		target, failure = columnModeHelpURL, "Could not open the column selection guide"
 	default:
 		return
 	}

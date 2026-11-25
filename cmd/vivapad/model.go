@@ -2868,16 +2868,17 @@ func (state *model) command(command string) {
 		// notice, which a bookmark synchronization must not overwrite.
 		historyNotice = true
 	}
+	columnHelp := command == columnModeHelpCommand
 	checksComposition := command == "Replace All in Open Documents" ||
 		command == "Next Search Result" || command == "Previous Search Result" || isCompletionCommand(command) ||
 		command == "Auto-Completion" || command == webSearchCommand || isCalltipCommand(command) ||
-		command == pasteSpecialCommand || isPasteSourceCommand(command)
+		command == pasteSpecialCommand || isPasteSourceCommand(command) || columnHelp
 	if !checksComposition {
 		state.cancelLiveComposition()
 	}
 	// Batch replacement and result navigation validate composition before acting.
 	// Do not map bookmarks or selection anchors against a provisional buffer.
-	trackActiveSource := !isPasteSourceCommand(command) && (!checksComposition || !doc.Editor.CompositionActive())
+	trackActiveSource := !columnHelp && !isPasteSourceCommand(command) && (!checksComposition || !doc.Editor.CompositionActive())
 	if trackActiveSource {
 		state.bookmarkLines(doc)
 	}
@@ -2937,7 +2938,7 @@ func (state *model) command(command string) {
 		state.invalidator.Invalidate()
 		return
 	}
-	if state.macroRecording && !macroMenuSupported(command) && !isCalltipCommand(command) {
+	if state.macroRecording && !columnHelp && !macroMenuSupported(command) && !isCalltipCommand(command) {
 		state.cancelMacroUnsupported("command")
 	}
 	if language, ok := languageExtension(command); ok {
@@ -3079,7 +3080,7 @@ func (state *model) command(command string) {
 		state.openHelp(aboutHelp)
 	case debugHelpCommand:
 		state.openHelp(debugHelp)
-	case projectPageHelpCommand, userGuideHelpCommand, commandLineHelpCommand:
+	case projectPageHelpCommand, userGuideHelpCommand, commandLineHelpCommand, columnModeHelpCommand:
 		state.openHelpLink(command, app.OpenURL)
 	case "Monitoring (tail -f)":
 		state.toggleMonitoring()

@@ -39,11 +39,10 @@ func TestRedactSelectionShiftMenuUsesLegacyASCIIAndCompactReachability(t *testin
 	doc.SetEncoding(document.DOS720)
 	doc.Editor.SetSelection(text.Range{Start: 0, End: 2})
 	clickID(t, driver, menuScope.At(1))
-	item := revealEditMenuItem(t, driver, 24)
+	item := clickEditMenuCommand(t, driver, "On Selection")
 	if item.Y < menuHeight || item.Y+item.Height > 400-statusHeight {
 		t.Fatalf("On Selection row clipped: %+v", item)
 	}
-	clickID(t, driver, menuItemScope.At(24))
 	if err := driver.KeyDown(gfx.KeyShiftLeft, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -123,8 +122,7 @@ func TestCaptureRedactSelectionWhenRequested(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, session.Driver(), menuScope.At(1))
-	revealEditMenuItem(t, session.Driver(), 24)
-	clickID(t, session.Driver(), menuItemScope.At(24))
+	clickEditMenuCommand(t, session.Driver(), "On Selection")
 	if problems := headless.CheckLayout(session.Snapshot()); len(problems) != 0 {
 		t.Fatalf("redaction menu layout: %+v", problems)
 	}
@@ -149,8 +147,7 @@ func TestRedactSubmenuClosesWhenSwitchingTopLevelMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(1))
-	revealEditMenuItem(t, driver, 24)
-	clickID(t, driver, menuItemScope.At(24))
+	clickEditMenuCommand(t, driver, "On Selection")
 	if !state.onSelectionMenuOpen {
 		t.Fatal("On Selection submenu did not open")
 	}

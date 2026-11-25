@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -153,6 +154,23 @@ func revealEditMenuItem(t *testing.T, driver *app.Driver, index int) gfx.Rect {
 	}
 	t.Fatalf("Edit item %d did not become visible", index)
 	return gfx.Rect{}
+}
+
+func editMenuIndex(t *testing.T, label string) int {
+	t.Helper()
+	index := slices.Index(menuCommands[1], label)
+	if index < 0 {
+		t.Fatalf("Edit menu does not offer %s", label)
+	}
+	return index
+}
+
+func clickEditMenuCommand(t *testing.T, driver *app.Driver, label string) gfx.Rect {
+	t.Helper()
+	index := editMenuIndex(t, label)
+	bounds := revealEditMenuItem(t, driver, index)
+	clickID(t, driver, menuItemScope.At(index))
+	return bounds
 }
 
 func viewMenuControls(driver *app.Driver) bool {

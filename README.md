@@ -109,6 +109,21 @@ reopens its previous session if available. A leading `-h` or `--help` prints
 usage and exits without opening a window. Use a leading `--` to open a file
 whose name would otherwise be interpreted as help, as in the last example.
 
+### Column selection
+
+Column selection marks the same range of columns on several lines. Use any
+of these methods:
+
+- Hold Alt (Option on macOS) and drag across the lines.
+- On Windows or Linux, hold Alt+Shift and use the arrow keys. On macOS,
+  first choose **Edit > Begin/End Select in Column Mode** or press
+  Option+Shift+B, then use Option+Shift+arrow keys.
+- Place the caret at the first corner and choose **Edit > Begin/End Select
+  in Column Mode**. Move the caret to the opposite corner and choose the
+  same command again.
+
+**Edit > Column Mode Help** opens this section.
+
 ## Current behavior
 
 - Documents track an explicit saved Undo boundary. New edits that return to the
@@ -134,11 +149,11 @@ whose name would otherwise be interpreted as help, as in the last example.
   per-line content targets, excluding EOL bytes, rather than rewriting the
   entire suffix or pretending they are point insertions. Selection movement
   matches 1260 original Scintilla cases; exact original Undo caret mode remains
-  unverified. Edit > Begin/End Select in Column Mode,
-  Alt drag and armed Alt+Shift navigation select rectangles; text, IME commits,
-  single-line paste and deletion affect each row. Raw per-row column Copy/Cut
-  and multiline paste work across rows; Tab-interior positions snap to the
-  nearer boundary. Local Undo/Redo restores the matching rectangle state.
+  unverified. See [Column selection](#column-selection) for how to select a
+  rectangle. Text, IME commits, single-line paste and deletion affect each
+  row. Raw per-row column Copy/Cut and multiline paste work across rows;
+  Tab-interior positions snap to the nearer boundary. Local Undo/Redo
+  restores the matching rectangle state.
   Shared-clone edits keep selection ownership in each view. On Windows,
   rectangular Copy/Cut writes Scintilla's clipboard markers; a marked paste
   at an ordinary caret distributes rows. Cross-process Notepad++ and font-pixel
