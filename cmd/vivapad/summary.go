@@ -65,7 +65,7 @@ func summarizeSelections(doc *document.Document, ranges []text.Range, rectangle 
 	if doc.Path != "" {
 		if info, err := os.Stat(doc.Path); err == nil {
 			summary.modified = info.ModTime().Local().Format("2006-01-02 15:04:05")
-			if created, ok := creationTime(info); ok {
+			if created, ok := creationTime(doc.Path, info); ok {
 				summary.created = created.Local().Format("2006-01-02 15:04:05")
 			}
 		}
