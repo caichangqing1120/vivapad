@@ -19,15 +19,29 @@ func TestNotepadPlusPlusSelectionHash(t *testing.T) {
 	if reference == "" {
 		t.Skip("requires pinned portable Notepad++ on an isolated Windows desktop")
 	}
+	t.Run("UTF8_BOM", func(t *testing.T) {
+		checkNotepadPlusPlusSelectionHash(t, reference, windows.SelectionHashSource, false)
+	})
+	t.Run("Windows1252", func(t *testing.T) {
+		checkNotepadPlusPlusSelectionHash(t, reference, windows.SelectionHashWindows1252Source, true)
+	})
+}
+
+func checkNotepadPlusPlusSelectionHash(t *testing.T, reference, source string, windows1252 bool) {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "mixed-selection-hash.txt")
-	if err := os.WriteFile(path, []byte(windows.SelectionHashSource), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
 	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", path)
+	if windows1252 {
+		const encodingCommand = 45022 // IDM_FORMAT_WIN_1252 in Notepad++ v8.9.8.1
+		invokeNotepadCommand(t, editor, encodingCommand)
+	}
 	editor.focusText(t)
 	send := focusedScintilla(t, editor)
 	const hashCommand = 48506 // IDM_TOOL_SHA256_GENERATEINTOCLIPBOARD in Notepad++ v8.9.8.1
-	const bufferSize = uintptr(len(windows.SelectionHashSource) - len("\ufeff"))
+	const bufferSize = uintptr(len(windows.SelectionHashBuffer))
 	if length, codePage := send(2006, 0, 0), send(2137, 0, 0); length != bufferSize || codePage != 65001 {
 		t.Fatalf("reference buffer length=%d code page=%d, want %d bytes of UTF-8 without BOM", length, codePage, bufferSize)
 	}
@@ -40,8 +54,8 @@ func TestNotepadPlusPlusSelectionHash(t *testing.T) {
 	if err := windows.CheckSelectionHashClipboard(); err != nil {
 		t.Fatal(err)
 	}
-	if send(2585, 0, 0) != 0 || send(2587, 0, 0) != bufferSize {
-		t.Fatal("Notepad++ changed the single selection while hashing")
+	if send(2570, 0, 0) != 1 || send(2585, 0, 0) != 0 || send(2587, 0, 0) != bufferSize || send(2159, 0, 0) != 0 || send(2174, 0, 0) != 0 {
+		t.Fatal("Notepad++ changed the single selection or document state while hashing")
 	}
 	send(2563, 1, 0) // SCI_SETMULTIPLESELECTION
 	send(2572, uintptr(len("caf\u00e9")), 0)
@@ -58,7 +72,7 @@ func TestNotepadPlusPlusSelectionHash(t *testing.T) {
 		t.Fatal(err)
 	}
 	editor.close(t)
-	awaitBytes(t, path, windows.SelectionHashSource)
+	awaitBytes(t, path, source)
 }
 
 func TestNotepadPlusPlusMultiSelectionClipboard(t *testing.T) {
