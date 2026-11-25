@@ -50,7 +50,7 @@ var menuCommands = [...][]string{
 	{"Run..."},
 	{},
 	{"Sort By", "Windows...", "Recent Window"},
-	{aboutHelpCommand, debugHelpCommand, projectPageHelpCommand, userGuideHelpCommand},
+	{aboutHelpCommand, debugHelpCommand, projectPageHelpCommand, userGuideHelpCommand, commandLineHelpCommand},
 }
 
 func fileMenuCount() int {
