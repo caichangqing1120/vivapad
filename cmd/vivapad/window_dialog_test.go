@@ -42,6 +42,61 @@ func TestWindowsDialogActivatesAndSortsCurrentView(t *testing.T) {
 	clickID(t, driver, windowsOKID)
 }
 
+func TestWindowsDialogDisplaysContainingDirectory(t *testing.T) {
+	for _, size := range []struct {
+		name          string
+		width, height int
+	}{{"compact", 640, 400}, {"desktop", 1280, 800}} {
+		t.Run(size.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			saved := state.space.Current()
+			saved.Name = "draft.txt"
+			saved.Path = filepath.Join("notes", saved.Name)
+			untitled := state.space.NewDocument()
+			state.openWindowsDialog()
+			if err := driver.Resize(size.width, size.height); err != nil {
+				t.Fatal(err)
+			}
+			snapshot := driver.Snapshot()
+			var pathHeader gfx.Rect
+			var rows [2]gfx.Hit
+			for _, hit := range snapshot.Hits {
+				switch hit.ID {
+				case windowsHeaderScope.At(1):
+					pathHeader = hit.Bounds
+				case windowsRowScope.At(0):
+					rows[0] = hit
+				case windowsRowScope.At(1):
+					rows[1] = hit
+				}
+			}
+			if pathHeader.Width == 0 || rows[0].Bounds.Height == 0 || rows[1].Bounds.Height == 0 {
+				t.Fatal("path header or document rows not visible")
+			}
+			var paths [2]string
+			for _, text := range snapshot.Texts {
+				if text.Bounds.X < pathHeader.X || text.Bounds.X >= pathHeader.X+pathHeader.Width {
+					continue
+				}
+				for i, row := range rows {
+					if text.Bounds.Y >= row.Bounds.Y && text.Bounds.Y < row.Bounds.Y+row.Bounds.Height {
+						paths[i] += text.Value
+					}
+				}
+			}
+			if want := [2]string{"notes" + string(filepath.Separator), ""}; paths != want {
+				t.Errorf("Path cells = %q, want %q", paths, want)
+			}
+			if rows[0].Hint != saved.Path || rows[1].Hint != "" {
+				t.Errorf("row hints = %q, %q; want %q and empty", rows[0].Hint, rows[1].Hint, saved.Path)
+			}
+			if state.space.Current() != untitled || !reflect.DeepEqual(state.space.Documents, []*document.Document{saved, untitled}) {
+				t.Fatal("showing path cells changed the active document or tab order")
+			}
+		})
+	}
+}
+
 func TestWindowLengthsUseLiveUTF8BytesAndFollowUndo(t *testing.T) {
 	state, driver := startDriver(t)
 	unicode := state.space.Current()
