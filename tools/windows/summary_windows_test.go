@@ -36,7 +36,16 @@ func TestNotepadPlusPlusSummaryWords(t *testing.T) {
 		{"selected first word", 5},
 	} {
 		if !t.Run(tc.name, func(t *testing.T) {
-			send(2572, tc.end, 0)        // SCI_SETSELECTION
+			type viewState struct{ anchor, caret, length, modified uintptr }
+			readView := func() viewState {
+				return viewState{send(2009, 0, 0), send(2008, 0, 0), send(2006, 0, 0), send(2159, 0, 0)}
+			}
+			send(2572, tc.end, 0) // SCI_SETSELECTION(caret, anchor)
+			before := readView()
+			want := viewState{caret: tc.end, length: uintptr(len(source))}
+			if before != want {
+				t.Fatalf("selection fixture before Summary = %+v, want %+v", before, want)
+			}
 			const summaryCommand = 44049 // IDM_VIEW_SUMMARY in Notepad++ v8.9.8.1
 			if ok, _, err := postMessage.Call(editor.hwnd, 0x0111, summaryCommand, 0); ok == 0 {
 				t.Fatalf("post Notepad++ Summary command: %v", err)
@@ -45,8 +54,10 @@ func TestNotepadPlusPlusSummaryWords(t *testing.T) {
 			if words != "7" {
 				t.Errorf("Notepad++ Summary Words = %q, want 7", words)
 			}
-			// The dark task dialog and standard message box need not expose the same control IDs.
-			(&desktopEditor{hwnd: dialog}).keys(t, 0x0d) // VK_RETURN
+			// Both Notepad++ Summary dialog styles support closing the dialog itself.
+			if ok, _, err := postMessage.Call(dialog, 0x0010, 0, 0); ok == 0 { // WM_CLOSE
+				t.Fatalf("close Notepad++ Summary: %v", err)
+			}
 			isWindow := user32.NewProc("IsWindow")
 			for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(25 * time.Millisecond) {
 				if open, _, _ := isWindow.Call(dialog); open == 0 {
@@ -56,9 +67,8 @@ func TestNotepadPlusPlusSummaryWords(t *testing.T) {
 					t.Fatal("Notepad++ Summary did not close")
 				}
 			}
-			send = focusedScintilla(t, editor)
-			if send(2585, 0, 0) != 0 || send(2587, 0, 0) != tc.end || send(2159, 0, 0) != 0 {
-				t.Fatal("Notepad++ Summary changed the selection or document")
+			if after := readView(); after != before {
+				t.Fatalf("Notepad++ Summary changed the selection or document: before %+v; after %+v", before, after)
 			}
 		}) {
 			return
