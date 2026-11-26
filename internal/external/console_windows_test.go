@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
@@ -19,8 +20,9 @@ func TestWindowsConsoleProcessUsesFreshConsoleAndLiteralDirectory(t *testing.T) 
 		t.Fatal(err)
 	}
 	t.Setenv("VIVAPAD_TEST_CONSOLE_PROBE", "1")
-	runConsoleProbe(t, exe, dir, "-test.run=^TestWindowsConsoleProbeChild$")
-	got, err := os.ReadFile(filepath.Join(dir, "probe-cwd.txt"))
+	result := filepath.Join(dir, "probe-cwd.txt")
+	runConsoleProbe(t, exe, dir, result, "-test.run=^TestWindowsConsoleProbeChild$")
+	got, err := os.ReadFile(result)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,23 +58,27 @@ func TestWindowsConfiguredShellsStartInContainingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
+		name string
 		kind ConsoleKind
 		file string
 		args []string
 	}{
-		{CommandPrompt, "cmd-cwd.txt", []string{"/d", "/c", "cd>cmd-cwd.txt"}},
-		{WindowsPowerShell, "ps-cwd.txt", []string{"-NoProfile", "-NonInteractive", "-Command", "[IO.File]::WriteAllText('ps-cwd.txt',[Environment]::CurrentDirectory)"}},
+		{"cmd", CommandPrompt, "cmd-cwd.txt", []string{"/d", "/c", "cd>cmd-cwd.txt"}},
+		{"PowerShell", WindowsPowerShell, "ps-cwd.txt", []string{"-NoProfile", "-NonInteractive", "-Command", "[IO.File]::WriteAllText('ps-cwd.txt',[Environment]::CurrentDirectory)"}},
 	} {
-		program, err := windowsConsoleProgram(tc.kind)
-		if err != nil {
-			t.Fatal(err)
-		}
-		runConsoleProbe(t, program, dir, tc.args...)
-		got, err := os.ReadFile(filepath.Join(dir, tc.file))
-		if err != nil {
-			t.Fatal(err)
-		}
-		requireSameConsoleDirectory(t, strings.TrimSpace(string(got)), dir)
+		t.Run(tc.name, func(t *testing.T) {
+			program, err := windowsConsoleProgram(tc.kind)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := filepath.Join(dir, tc.file)
+			runConsoleProbe(t, program, dir, result, tc.args...)
+			got, err := os.ReadFile(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			requireSameConsoleDirectory(t, strings.TrimSpace(string(got)), dir)
+		})
 	}
 }
 
@@ -91,18 +97,32 @@ func requireSameConsoleDirectory(t *testing.T, reported, expected string) {
 	}
 }
 
-func runConsoleProbe(t *testing.T, program, dir string, args ...string) {
+func runConsoleProbe(t *testing.T, program, dir, result string, args ...string) {
 	t.Helper()
+	started := time.Now()
 	process, err := startWindowsConsole(program, dir, args...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer windows.CloseHandle(process)
+	t.Logf("%s started in %s", filepath.Base(program), time.Since(started).Round(time.Millisecond))
 	status, err := windows.WaitForSingleObject(process, 15000)
+	elapsed := time.Since(started).Round(time.Millisecond)
 	if err != nil || status != windows.WAIT_OBJECT_0 {
-		_ = windows.TerminateProcess(process, 1)
-		t.Fatalf("console process wait = %#x, %v", status, err)
+		info, resultErr := os.Stat(result)
+		if resultErr == nil {
+			t.Logf("console result file exists (%d bytes)", info.Size())
+		} else {
+			t.Logf("console result file unavailable: %v", resultErr)
+		}
+		if terminateErr := windows.TerminateProcess(process, 1); terminateErr != nil {
+			t.Logf("terminate console probe: %v", terminateErr)
+		} else if cleanupStatus, cleanupErr := windows.WaitForSingleObject(process, 5000); cleanupErr != nil || cleanupStatus != windows.WAIT_OBJECT_0 {
+			t.Logf("wait after ending console probe = %#x, %v", cleanupStatus, cleanupErr)
+		}
+		t.Fatalf("console process wait after %s = %#x, %v", elapsed, status, err)
 	}
+	t.Logf("%s exited after %s", filepath.Base(program), elapsed)
 	var code uint32
 	if err := windows.GetExitCodeProcess(process, &code); err != nil || code != 0 {
 		t.Fatalf("console process exit = %d, %v", code, err)
