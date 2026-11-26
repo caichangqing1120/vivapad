@@ -94,6 +94,12 @@ func (state *model) goToFunction(doc *document.Document, symbol syntax.Symbol) b
 	return true
 }
 
+func (state *model) functionQuery() string {
+	return strings.ToLower(strings.TrimSpace(state.functionFilter.String()))
+}
+
+const functionRowIndexMask = 1<<31 - 1 // gfx.Index uses 31 bits for row identities.
+
 func (state *model) functionListKey(event gfx.KeyEvent) (gfx.EventResult, bool) {
 	switch event.Key {
 	case gfx.KeyDown:
@@ -112,7 +118,7 @@ func (state *model) functionListKey(event gfx.KeyEvent) (gfx.EventResult, bool) 
 			if state.splitEnabled {
 				doc = state.paneDocument(state.activePane)
 			}
-			if state.functionPaintDoc != doc || state.functionPaintValue != doc.Editor.String() || state.functionPaintMode != state.languageFor(doc) {
+			if state.functionPaintDoc != doc || state.functionPaintValue != doc.Editor.String() || state.functionPaintMode != state.languageFor(doc) || state.functionLastQuery != state.functionQuery() {
 				state.notice = "Function List result changed; select it again"
 				return gfx.EventResult{Handled: true, Repaint: true}, true
 			}
@@ -245,8 +251,12 @@ func (state *model) paintFunctionPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 		doc = state.paneDocument(state.activePane)
 	}
 	cached := state.symbolsFor(doc)
-	query := strings.ToLower(strings.TrimSpace(state.functionFilter.String()))
-	stale := state.functionPaintDoc != nil && (state.functionPaintDoc != doc || state.functionPaintValue != cached.value || state.functionPaintMode != cached.mode || state.functionLastQuery != query)
+	query := state.functionQuery()
+	stale := state.functionPaintDoc != doc || state.functionPaintValue != cached.value || state.functionPaintMode != cached.mode || state.functionLastQuery != query
+	if stale {
+		// A held press must not identify a different symbol after repaint.
+		state.functionRowIDBase = (state.functionRowIDBase + len(state.functionMatches)) & functionRowIndexMask
+	}
 	if state.functionPaintDoc != doc || state.functionPaintMode != cached.mode || state.functionLastQuery != query {
 		state.functionSelected, state.functionOffset = 0, 0
 	}
@@ -273,7 +283,7 @@ func (state *model) paintFunctionPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 	for position := state.functionOffset; position < len(state.functionMatches) && position-state.functionOffset < state.functionPageRows; position++ {
 		symbol := cached.symbols[state.functionMatches[position]]
 		item := gfx.Rect{X: 4, Y: rowArea.Y + float32(position-state.functionOffset)*23, Width: rowArea.Width - 7, Height: 23}
-		id := functionSymbolScope.At(position)
+		id := functionSymbolScope.At((state.functionRowIDBase + position) & functionRowIndexMask)
 		if position == state.functionSelected || canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
