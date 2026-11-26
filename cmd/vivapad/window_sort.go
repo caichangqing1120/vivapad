@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"vivapad/internal/document"
 )
@@ -40,8 +42,25 @@ func lowerASCII(character byte) byte {
 	return character
 }
 
+func windowSortCodeUnits(value string) (first, second rune, width int) {
+	if value[0] < utf8.RuneSelf {
+		return rune(lowerASCII(value[0])), 0, 1
+	}
+	character, width := utf8.DecodeRuneInString(value)
+	if character == utf8.RuneError && width == 1 {
+		// Preserve distinct invalid bytes in Unix filenames as lone low surrogates.
+		return 0xDC00 + rune(value[0]), 0, width
+	}
+	if character <= 0xFFFF {
+		return character, 0, width
+	}
+	first, second = utf16.EncodeRune(character)
+	return first, second, width
+}
+
 func windowNaturalCompare(first, second string) int {
-	for left, right := 0, 0; left < len(first) && right < len(second); {
+	left, right := 0, 0
+	for left < len(first) && right < len(second) {
 		if first[left] >= '0' && first[left] <= '9' && second[right] >= '0' && second[right] <= '9' {
 			leftEnd, rightEnd := left, right
 			for leftEnd < len(first) && first[leftEnd] >= '0' && first[leftEnd] <= '9' {
@@ -63,13 +82,18 @@ func windowNaturalCompare(first, second string) int {
 			left, right = leftEnd, rightEnd
 			continue
 		}
-		if a, b := lowerASCII(first[left]), lowerASCII(second[right]); a != b {
+		a, aNext, aWidth := windowSortCodeUnits(first[left:])
+		b, bNext, bWidth := windowSortCodeUnits(second[right:])
+		if a != b {
 			return sign(int(a) - int(b))
 		}
-		left++
-		right++
+		if aNext != bNext {
+			return sign(int(aNext) - int(bNext))
+		}
+		left += aWidth
+		right += bWidth
 	}
-	return sign(len(first) - len(second))
+	return sign((len(first) - left) - (len(second) - right))
 }
 
 func sign(value int) int {
