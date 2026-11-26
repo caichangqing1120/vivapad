@@ -505,6 +505,7 @@ type model struct {
 	folderOffset                  int
 	folderRowHits                 []folderRowHit
 	folderNextRowID               int
+	folderFocusPath               string
 	folderWatcher                 *foldertree.Watcher
 	folderWatching                map[string]os.FileInfo
 	folderWatchUnavailable        bool
@@ -2025,6 +2026,9 @@ func newConfig(state *model) app.Config {
 		}
 		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
 			return gfx.EventResult{Handled: true}
+		}
+		if result := state.folderWorkspaceKey(event); result.Handled {
+			return result
 		}
 		if event.Key == gfx.KeyF7 && event.Modifiers == 0 {
 			if state.distractionFree {

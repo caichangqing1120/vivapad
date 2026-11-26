@@ -12,6 +12,115 @@ import (
 	"vivapad/internal/session"
 )
 
+func TestFolderWorkspaceKeyboardNavigationAndOpen(t *testing.T) {
+	root := t.TempDir()
+	child := filepath.Join(root, "src")
+	if err := os.Mkdir(child, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 30 {
+		if err := os.WriteFile(filepath.Join(child, fmt.Sprintf("file%02d.txt", i)), []byte("source"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state, driver := startDriver(t)
+	draft := state.space.Current()
+	draft.Editor.Insert("keep draft")
+	if err := state.addFolderRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	canonical := state.folderRoots[0]
+	canonicalChild := filepath.Join(canonical, "src")
+	clickLabeledControl(t, driver, "Toggle folder "+filepath.Base(canonical))
+	key := func(key gfx.Key, want string) {
+		t.Helper()
+		if err := driver.Key(key, 0); err != nil {
+			t.Fatal(err)
+		}
+		snapshot := driver.Snapshot()
+		if state.folderSelected != want || snapshot.Focused.Scope() != folderRowScope || state.space.Current() != draft {
+			t.Fatalf("key %v: selected %q, want %q; focus=%v", key, state.folderSelected, want, snapshot.Focused)
+		}
+		for _, hit := range snapshot.Hits {
+			if hit.ID == snapshot.Focused && strings.HasSuffix(hit.Label, " "+filepath.Base(want)) {
+				return
+			}
+		}
+		t.Fatalf("focus does not name the selected row %q", want)
+	}
+	key(gfx.KeyRight, canonicalChild)
+	key(gfx.KeyRight, canonicalChild)
+	key(gfx.KeyDown, filepath.Join(canonicalChild, "file00.txt"))
+	key(gfx.KeyEnd, filepath.Join(canonicalChild, "file29.txt"))
+	if state.folderOffset == 0 {
+		t.Fatal("End did not scroll the selected file into view")
+	}
+	key(gfx.KeyHome, canonical)
+	key(gfx.KeyDown, canonicalChild)
+	key(gfx.KeyDown, filepath.Join(canonicalChild, "file00.txt"))
+	key(gfx.KeyLeft, canonicalChild)
+	key(gfx.KeyLeft, canonicalChild)
+	if state.folderExpanded[canonicalChild] {
+		t.Fatal("Left did not collapse the selected folder")
+	}
+	key(gfx.KeyEnter, canonicalChild)
+	key(gfx.KeyDown, filepath.Join(canonicalChild, "file00.txt"))
+	key(gfx.KeyDown, filepath.Join(canonicalChild, "file01.txt"))
+	key(gfx.KeyUp, filepath.Join(canonicalChild, "file00.txt"))
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+		t.Fatal(err)
+	}
+	opened := state.space.Current()
+	if opened.Path != filepath.Join(canonicalChild, "file00.txt") || driver.Snapshot().Focused != editorID {
+		t.Fatalf("Enter opened %q with focus %v", opened.Path, driver.Snapshot().Focused)
+	}
+	if err := driver.Type("X"); err != nil {
+		t.Fatal(err)
+	}
+	if opened.Editor.String() == "source" || draft.Editor.String() != "keep draft" || !draft.Dirty() {
+		t.Fatal("the editor did not receive input or the draft changed")
+	}
+}
+
+func TestFolderWorkspaceRejectsEnterForRemovedFocusedRow(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"first.txt", "second.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state, driver := startDriver(t)
+	draft := state.space.Current()
+	draft.Editor.Insert("keep draft")
+	if err := state.addFolderRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	canonical := state.folderRoots[0]
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickLabeledControl(t, driver, "Toggle folder "+filepath.Base(canonical))
+	if err := driver.Key(gfx.KeyDown, 0); err != nil {
+		t.Fatal(err)
+	}
+	target := driver.Snapshot().Focused
+	if target.Scope() != folderRowScope || state.folderSelected != filepath.Join(canonical, "first.txt") {
+		t.Fatal("fixture did not focus the first file")
+	}
+	if err := os.Remove(filepath.Join(root, "first.txt")); err != nil {
+		t.Fatal(err)
+	}
+	// Dispatch the queued key against the old hit before the refreshed tree paints.
+	state.refreshFolderTree()
+	result := state.folderWorkspaceKey(gfx.KeyEvent{Key: gfx.KeyEnter, Target: target})
+	if !result.Handled || !result.Focus.IsZero() || len(state.space.Documents) != 1 || state.space.Current() != draft || draft.Editor.String() != "keep draft" {
+		t.Fatalf("old focused row activated a different file: result=%+v, active=%q", result, state.space.Current().Name)
+	}
+}
+
 func TestFolderWorkspacePickerTreeOpenRefreshAndHide(t *testing.T) {
 	root := t.TempDir()
 	child := filepath.Join(root, "src")

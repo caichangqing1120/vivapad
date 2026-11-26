@@ -78,6 +78,13 @@ func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 	canvas.HitWithOptions(folderPanelID, rowArea, "Folder as Workspace", gfx.HitOptions{Role: gfx.RoleGroup})
 	rows := state.folderRows()
 	visible := max(1, int(rowArea.Height/22))
+	focusPath := state.folderFocusPath
+	state.folderFocusPath = ""
+	if focusPath != "" {
+		if index := slices.IndexFunc(rows, func(row folderRow) bool { return row.path == focusPath }); index >= 0 {
+			state.folderOffset = min(max(state.folderOffset, index-visible+1), index)
+		}
+	}
 	state.folderOffset = min(max(0, state.folderOffset), max(0, len(rows)-visible))
 	visibleRows := rows[state.folderOffset:min(len(rows), state.folderOffset+visible)]
 	hits := state.folderHitsFor(visibleRows)
@@ -106,6 +113,9 @@ func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 			roleLabel = "Toggle folder " + row.name
 		}
 		canvas.HitWithOptions(id, item, roleLabel, gfx.HitOptions{Role: gfx.RoleButton})
+		if row.path == focusPath {
+			canvas.RequestFocus(id)
+		}
 		if canvas.Clicked(id) {
 			chosen = &row
 		}
