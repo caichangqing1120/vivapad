@@ -107,6 +107,11 @@ jobs:
       - name: Run Windows console and external action tests
         if: runner.os == 'Windows'
         run: go test ./internal/external -count=1 -v -timeout=2m
+      - name: Verify native Windows Recycle Bin
+        if: runner.os == 'Windows' && runner.environment == 'github-hosted'
+        env:
+          VIVAPAD_TEST_WINDOWS_RECYCLE_BIN: '1'
+        run: go test ./internal/external -run '^TestWindowsNativeTrashRecyclesHostedRunnerFixture$' -count=1 -v -timeout=1m
       - name: Exercise Post-It in a native window
         if: runner.os == 'Windows' || runner.os == 'macOS'
         env:
