@@ -218,3 +218,37 @@ func TestDocumentMapViewportKeepsMiniatureRowsVisible(t *testing.T) {
 		t.Fatalf("viewport covered its miniature lines: fill=%d sample=%d", fillIndex, sampleIndex)
 	}
 }
+
+func TestDocumentMapDrawsOneMarkForOneLongVisualRow(t *testing.T) {
+	state := newModel()
+	state.space.Current().Editor.Insert(strings.Repeat("a", 256<<10))
+	state.space.Current().Editor.MoveTo(0, false)
+	state.wrap = false
+	state.documentMapVisible = true
+	var canvas gfx.Canvas
+	state.paint(&canvas, gfx.Size{Width: 640, Height: 400})
+	marks := 0
+	for _, rectangle := range canvas.Rectangles() {
+		if rectangle.Color == gfx.RGB(158, 165, 172) {
+			marks++
+		}
+	}
+	if marks != 1 {
+		t.Fatalf("map drew %d miniature marks for one visual row", marks)
+	}
+}
+
+func BenchmarkDocumentMapLongUnwrappedLine(b *testing.B) {
+	state := newModel()
+	state.space.Current().Editor.Insert(strings.Repeat("a", 1<<20))
+	state.space.Current().Editor.MoveTo(0, false)
+	state.wrap = false
+	var canvas gfx.Canvas
+	state.paint(&canvas, gfx.Size{Width: 640, Height: 400})
+	bounds := gfx.Rect{X: 510, Width: 130, Height: 360}
+	b.ReportAllocs()
+	for b.Loop() {
+		canvas.Reset()
+		state.paintDocumentMap(&canvas, bounds, bounds.Height)
+	}
+}

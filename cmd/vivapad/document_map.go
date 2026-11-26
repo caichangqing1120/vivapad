@@ -85,17 +85,17 @@ func (state *model) paintDocumentMap(canvas *gfx.Canvas, bounds gfx.Rect, editor
 		samples := max(1, int(content.Height/3))
 		step := content.Height / float32(samples)
 		visualHeight := editor.MaxScrollY() + editorHeight
-		previousOffset := -1
+		previousRow := -1
 		for index := 0; index < samples; index++ {
-			offset, ok := editor.OffsetAtY(float32(index) / float32(samples) * visualHeight)
-			if !ok || offset >= len(value) {
+			row, ok := editor.VisualRowAtY(float32(index) / float32(samples) * visualHeight)
+			if !ok || row.End > len(value) {
 				break
 			}
-			if offset == previousOffset {
+			if row.Start == previousRow {
 				continue
 			}
-			previousOffset = offset
-			line := documentMapPreview(value, offset)
+			previousRow = row.Start
+			line := documentMapPreview(value[:row.End], row.Start)
 			if strings.TrimSpace(line) == "" {
 				continue
 			}
