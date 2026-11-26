@@ -73,6 +73,8 @@ var (
 	windowsNextID              = tree.ID(page, "windows-next")
 	leftFoldScope              = tree.Sub(page, tree.Name("left-fold-markers"))
 	rightFoldScope             = tree.Sub(page, tree.Name("right-fold-markers"))
+	leftFoldBadgeScope         = tree.Sub(page, tree.Name("left-fold-badges"))
+	rightFoldBadgeScope        = tree.Sub(page, tree.Name("right-fold-badges"))
 	hideLineScope              = tree.Sub(page, tree.Name("left-hidden-line-markers"))
 	rightHideLineScope         = tree.Sub(page, tree.Name("right-hidden-line-markers"))
 	foldLevelScope             = tree.Sub(page, tree.Name("fold-levels"))
