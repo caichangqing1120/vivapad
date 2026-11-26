@@ -73,24 +73,7 @@ func TestFigmaToolbarRetainsEditingCommandsAndFitsCompactWindows(t *testing.T) {
 }
 
 func TestToolbarTintKeepsDisabledCommandsDistinct(t *testing.T) {
-	for _, test := range []struct {
-		id      gfx.ID
-		canUndo bool
-		canRedo bool
-		want    gfx.Color
-	}{
-		{id: newID, want: gfx.RGB(52, 61, 67)},
-		{id: openID, want: gfx.RGB(52, 61, 67)},
-		{id: copyID, want: gfx.RGB(52, 61, 67)},
-		{id: pasteID, want: gfx.RGB(52, 61, 67)},
-		{id: saveID, want: gfx.RGB(52, 61, 67)},
-		{id: undoID, want: gfx.RGB(166, 175, 182)},
-		{id: undoID, canUndo: true, want: gfx.RGB(52, 61, 67)},
-		{id: redoID, want: gfx.RGB(166, 175, 182)},
-		{id: redoID, canRedo: true, want: gfx.RGB(52, 61, 67)},
-	} {
-		if got := toolbarTint(test.id, test.canUndo, test.canRedo); got != test.want {
-			t.Errorf("icon %v tint = %+v, want %+v", test.id, got, test.want)
-		}
+	if enabled, disabled := toolbarTint(true), toolbarTint(false); enabled == disabled {
+		t.Fatalf("enabled and disabled toolbar icons have the same tint: %+v", enabled)
 	}
 }

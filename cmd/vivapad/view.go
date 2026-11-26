@@ -386,13 +386,11 @@ func toolbarButton(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, icon gfx.Icon
 	return enabled && canvas.Clicked(id)
 }
 
-func toolbarTint(id gfx.ID, canUndo, canRedo bool) gfx.Color {
-	switch {
-	case id == undoID && !canUndo || id == redoID && !canRedo:
+func toolbarTint(enabled bool) gfx.Color {
+	if !enabled {
 		return gfx.RGB(166, 175, 182)
-	default:
-		return gfx.RGB(52, 61, 67)
 	}
+	return gfx.RGB(52, 61, 67)
 }
 
 func (state *model) paintToolbar(canvas *gfx.Canvas, width float32) {
@@ -400,11 +398,8 @@ func (state *model) paintToolbar(canvas *gfx.Canvas, width float32) {
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: toolbarHeight}, gfx.RGB(251, 252, 252))
 	canvas.Fill(gfx.Rect{Y: y + toolbarHeight - 1, Width: width, Height: 1}, palette.border)
 	x := float32(8)
-	button := func(id gfx.ID, icon gfx.Icon, label string) bool {
-		doc := state.space.Current()
-		canUndo, canRedo := doc.Editor.CanUndo(), doc.Editor.CanRedo()
-		tint := toolbarTint(id, canUndo, canRedo)
-		enabled := !(id == undoID && !canUndo || id == redoID && !canRedo)
+	button := func(id gfx.ID, icon gfx.Icon, label string, enabled bool) bool {
+		tint := toolbarTint(enabled)
 		selected := id == searchID && state.searchOpen
 		if selected {
 			tint = gfx.RGB(8, 105, 87)
@@ -413,15 +408,15 @@ func (state *model) paintToolbar(canvas *gfx.Canvas, width float32) {
 		x += 30
 		return clicked
 	}
-	if button(newID, newIcon, "New") {
+	if button(newID, newIcon, "New", true) {
 		state.cancelMacroForCommand()
 		state.showInActivePane(state.space.NewDocument())
 	}
-	if button(openID, openIcon, "Open") {
+	if button(openID, openIcon, "Open", true) {
 		state.cancelMacroForCommand()
 		state.openFiles()
 	}
-	if button(saveID, saveIcon, "Save") {
+	if button(saveID, saveIcon, "Save", true) {
 		state.cancelMacroForCommand()
 		state.save(state.space.Active, false)
 	}
@@ -429,25 +424,27 @@ func (state *model) paintToolbar(canvas *gfx.Canvas, width float32) {
 		canvas.Fill(gfx.Rect{X: x + 4, Y: y + 10, Width: 1, Height: 14}, gfx.RGB(125, 138, 145))
 		x += 13
 	}
+	doc := state.space.Current()
+	editable := !state.isReadOnly(doc)
 	separator()
-	if button(undoID, undoIcon, "Undo") {
+	if button(undoID, undoIcon, "Undo", editable && doc.Editor.CanUndo()) {
 		state.command("Undo")
 	}
-	if button(redoID, redoIcon, "Redo") {
+	if button(redoID, redoIcon, "Redo", editable && doc.Editor.CanRedo()) {
 		state.command("Redo")
 	}
 	separator()
-	if button(cutID, cutIcon, "Cut") {
+	if button(cutID, cutIcon, "Cut", editable) {
 		state.command("Cut")
 	}
-	if button(copyID, copyIcon, "Copy") {
+	if button(copyID, copyIcon, "Copy", true) {
 		state.command("Copy")
 	}
-	if button(pasteID, pasteIcon, "Paste") {
+	if button(pasteID, pasteIcon, "Paste", editable) {
 		state.command("Paste")
 	}
 	separator()
-	if button(searchID, searchIcon, "Find") {
+	if button(searchID, searchIcon, "Find", true) {
 		state.cancelMacroForCommand()
 		state.closeIncrementalSearch()
 		state.markDialogOpen = false

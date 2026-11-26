@@ -67,6 +67,61 @@ func TestReadOnlyBlocksNativeToolbarMenuAndMacroEditsButAllowsCopy(t *testing.T)
 	}
 }
 
+func TestToolbarReadOnlyFollowsActivePaneAndPreservesHistory(t *testing.T) {
+	state, driver := startDriver(t)
+	left := state.space.Current()
+	right := state.space.NewDocument()
+	for _, doc := range []*document.Document{left, right} {
+		doc.Editor.Insert("before")
+		doc.Editor.BreakUndoGroup()
+		doc.Editor.Insert(" after")
+		if !doc.Editor.Undo() || !doc.Editor.CanUndo() || !doc.Editor.CanRedo() {
+			t.Fatal("fixture needs both undo and redo history")
+		}
+	}
+	state.splitEnabled = true
+	state.paneDocs = [2]*document.Document{left, right}
+	state.paneOwner[left], state.paneOwner[right] = 0, 1
+	state.activatePane(0)
+	state.command("Read-Only on Current Document")
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	checkButtons := func(stage string, readOnly bool) {
+		t.Helper()
+		want := map[gfx.ID]bool{
+			undoID: readOnly, redoID: readOnly, cutID: readOnly, pasteID: readOnly,
+			copyID: false, searchID: false, saveID: false, newID: false, openID: false,
+		}
+		for _, hit := range driver.Snapshot().Hits {
+			if disabled, ok := want[hit.ID]; ok {
+				if hit.Role != gfx.RoleButton || hit.Disabled != disabled {
+					t.Errorf("%s: %s role=%v disabled=%v; want a button with disabled=%v", stage, hit.Label, hit.Role, hit.Disabled, disabled)
+				}
+				delete(want, hit.ID)
+			}
+		}
+		if len(want) != 0 {
+			t.Errorf("%s: toolbar is missing controls %v", stage, want)
+		}
+	}
+	checkButtons("read-only left", true)
+	clickID(t, driver, rightEditorID)
+	checkButtons("editable right", false)
+	clickID(t, driver, editorID)
+	checkButtons("return to read-only left", true)
+	state.command("Read-Only on Current Document")
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	checkButtons("left after clearing read-only", false)
+	clickID(t, driver, redoID)
+	if left.Editor.String() != "before after" || right.Editor.String() != "before" {
+		t.Fatalf("redo changed the wrong history: left=%q, right=%q", left.Editor.String(), right.Editor.String())
+	}
+}
+
 func TestReadOnlyBlocksFindReplaceAndOpenDocumentBatchAtomically(t *testing.T) {
 	state, driver := startDriver(t)
 	first := state.space.Current()
