@@ -95,7 +95,8 @@ func (state *model) sortWindowsDialogBy(column int) {
 		return
 	}
 	state.windowsSort, state.windowsHasSort = command, true
-	state.windowsOffset, state.windowsMessage = 0, ""
+	state.windowsMessage = ""
+	state.revealWindowsRow(slices.Index(state.windowsRows, state.windowsFocused))
 }
 
 func (state *model) activateWindowsDialogDocument() bool {
@@ -163,6 +164,7 @@ func (state *model) applyWindowsDialogSort() {
 	state.windowsSort, state.windowsHasSort = command, true
 	state.windowsMessage = "Tabs sorted"
 	state.refreshWindowsRows()
+	state.revealWindowsRow(slices.Index(state.windowsRows, state.windowsFocused))
 }
 
 func (state *model) scrollWindowsDialog(event gfx.ScrollEvent) gfx.EventResult {
