@@ -24,6 +24,15 @@ var linuxPrintFont []byte
 //go:embed fonts/NotoMusic-Regular.ttf
 var linuxMusicFont []byte
 
+//go:embed fonts/NotoSansSC-Bold.ttf
+var linuxPrintBold []byte
+
+//go:embed fonts/NotoSans-Italic.ttf
+var linuxPrintItalic []byte
+
+//go:embed fonts/NotoSans-BoldItalic.ttf
+var linuxPrintBoldItalic []byte
+
 const portalName = "org.freedesktop.portal.Desktop"
 const portalPath = dbus.ObjectPath("/org/freedesktop/portal/desktop")
 
@@ -37,8 +46,14 @@ type Printer struct {
 	cups     bool
 }
 
+func newLinuxPDFRenderer(fontSize float64, tabWidth int) (*pdfRenderer, error) {
+	return newPDFRendererWithBandFonts(linuxPrintFont, fontSize, tabWidth, pdfBandFonts{
+		bold: linuxPrintBold, italic: linuxPrintItalic, boldItalic: linuxPrintBoldItalic,
+	}, linuxMusicFont)
+}
+
 func ChoosePrinter(job Job, fontSize float64, tabWidth int) (*Printer, error) {
-	renderer, err := newPDFRendererWithFallback(linuxPrintFont, fontSize, tabWidth, linuxMusicFont)
+	renderer, err := newLinuxPDFRenderer(fontSize, tabWidth)
 	if err != nil {
 		return nil, err
 	}
