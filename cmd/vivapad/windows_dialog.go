@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 
@@ -230,17 +231,14 @@ func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 		if selected {
 			canvas.DrawIcon(checkIcon, box.Inset(gfx.All(1)), palette.blue)
 		}
-		path := doc.Path
-		if path == "" {
-			path = "-"
-		}
+		directory, _ := filepath.Split(doc.Path)
 		modified := "-"
 		if doc.Path != "" {
 			if info, err := os.Stat(doc.Path); err == nil {
 				modified = info.ModTime().Format("01/02 15:04")
 			}
 		}
-		cells := [5]string{doc.Name, path, state.languageLabel(doc), strconv.Itoa(windowContentLength(doc)), modified}
+		cells := [5]string{doc.Name, directory, state.languageLabel(doc), strconv.Itoa(windowContentLength(doc)), modified}
 		cellX := item.X
 		for column, content := range cells {
 			indent := float32(3)
@@ -251,7 +249,7 @@ func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 			smallLabel(canvas, fit, gfx.Rect{X: cellX + indent, Y: item.Y, Width: columns[column] - indent - 4, Height: item.Height}, palette.text, 10)
 			cellX += columns[column]
 		}
-		canvas.HitWithOptions(id, item, "Select "+doc.Name, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: selected, Hint: path})
+		canvas.HitWithOptions(id, item, "Select "+doc.Name, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: selected, Hint: doc.Path})
 		if canvas.Clicked(id) {
 			if selected {
 				delete(state.windowsSelected, doc)
