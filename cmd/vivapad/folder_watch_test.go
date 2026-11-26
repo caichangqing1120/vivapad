@@ -151,6 +151,61 @@ func TestFolderRefreshWorksAfterWatcherFailure(t *testing.T) {
 	state.stopFolderWatching()
 }
 
+func TestManualFolderRefreshRebindsReplacedExpandedDirectory(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	branch := filepath.Join(root, "branch")
+	if err := os.MkdirAll(branch, 0700); err != nil {
+		t.Fatal(err)
+	}
+	state := newModel()
+	if err := state.addFolderRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(state.stopFolderWatching)
+	root = state.folderRoots[0]
+	branch = filepath.Join(root, "branch")
+	state.folderExpanded[root], state.folderExpanded[branch] = true, true
+	state.folderSelected = branch
+	doc := state.space.Current()
+	state.folderRows()
+	old := state.folderWatching[branch]
+	if old == nil {
+		t.Fatal("expanded branch has no watch")
+	}
+
+	if err := os.Rename(branch, filepath.Join(base, "parked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(branch, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Refresh before the event loop consumes any notifications from the old watch.
+	state.refreshFolderTree()
+	state.folderRows()
+	current := state.folderWatching[branch]
+	if current == nil || os.SameFile(old, current) {
+		t.Fatal("manual refresh left the expanded branch without a watch on its replacement")
+	}
+	if state.folderSelected != branch || !state.folderExpanded[root] || !state.folderExpanded[branch] || state.space.Current() != doc {
+		t.Fatal("refresh changed selection, expansion, or the open document")
+	}
+
+	file := filepath.Join(branch, "after-refresh.txt")
+	if err := os.WriteFile(file, []byte("saved"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		state.consumeFolderChanges()
+		for _, row := range state.folderRows() {
+			if row.path == file {
+				return
+			}
+		}
+	}
+	t.Fatal("the replacement watch did not refresh the listing after file creation")
+}
+
 func TestWorkspaceReopenRefreshesChangesWhileUnwatched(t *testing.T) {
 	root := t.TempDir()
 	oldPath, newPath := filepath.Join(root, "old.txt"), filepath.Join(root, "new.txt")
