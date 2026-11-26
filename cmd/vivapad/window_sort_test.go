@@ -29,6 +29,46 @@ func TestWindowNaturalSortMatchesOriginalNumericAndASCIICaseRules(t *testing.T) 
 	}
 }
 
+func TestWindowNameSortUsesNotepadPlusPlusUTF16Order(t *testing.T) {
+	state := newModel()
+	bmpHigh := state.space.Current()
+	bmpHigh.Name = "\uE000.txt"
+	supplementaryLater := state.space.NewDocument()
+	supplementaryLater.Name = "\U00020001.txt"
+	supplementary := state.space.NewDocument()
+	supplementary.Name = "\U00020000.txt"
+	bmpLow := state.space.NewDocument()
+	bmpLow.Name = "\uD7FF.txt"
+	supplementary.Editor.Insert("unsaved")
+	state.space.Select(state.documentIndex(supplementary))
+
+	state.command("Name A to Z")
+	ascending := []*document.Document{bmpLow, supplementary, supplementaryLater, bmpHigh}
+	if !reflect.DeepEqual(state.space.Documents, ascending) {
+		t.Fatalf("ascending names = %q, want %q", windowSortTestNames(state.space.Documents), windowSortTestNames(ascending))
+	}
+	state.openWindowsDialog()
+	state.sortWindowsDialogBy(0)
+	state.sortWindowsDialogBy(0)
+	descending := []*document.Document{bmpHigh, supplementaryLater, supplementary, bmpLow}
+	if !reflect.DeepEqual(state.windowsRows, descending) {
+		t.Fatalf("Windows dialog descending names = %q, want %q", windowSortTestNames(state.windowsRows), windowSortTestNames(descending))
+	}
+	state.applyWindowsDialogSort()
+	if !reflect.DeepEqual(state.space.Documents, descending) || state.space.Current() != supplementary ||
+		supplementary.Editor.String() != "unsaved" || !supplementary.Editor.CanUndo() {
+		t.Fatalf("applying dialog sort changed order or active document: %q", windowSortTestNames(state.space.Documents))
+	}
+}
+
+func windowSortTestNames(documents []*document.Document) []string {
+	names := make([]string, 0, len(documents))
+	for _, doc := range documents {
+		names = append(names, doc.Name)
+	}
+	return names
+}
+
 func BenchmarkWindowKeyAfterEdit(b *testing.B) {
 	state := newModel()
 	doc := state.space.Current()
