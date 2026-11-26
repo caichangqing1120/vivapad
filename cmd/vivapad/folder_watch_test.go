@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestExpandedWorkspaceAutoRefreshesCreateRenameAndRemove(t *testing.T) {
@@ -77,6 +78,75 @@ func TestExpandedWorkspaceAutoRefreshesCreateRenameAndRemove(t *testing.T) {
 	}
 	if state.folderWatcher == nil || state.folderWatching[canonical] == nil {
 		t.Fatal("reopened dock did not resume watching")
+	}
+}
+
+func TestFolderWorkspaceRejectsReleaseAfterWatchedRowIsReplaced(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "z-last.txt"), []byte("target"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newModel()
+	draft := state.space.Current()
+	draft.Editor.Insert("keep draft")
+	if err := state.addFolderRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	canonical := state.folderRoots[0]
+	state.folderExpanded[canonical] = true
+	driver, err := app.NewDriver(newConfig(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(driver.Close)
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	bounds := func(label string) gfx.Rect {
+		for _, hit := range driver.Snapshot().Hits {
+			if hit.ID.Scope() == folderRowScope && hit.Label == label {
+				return hit.Bounds
+			}
+		}
+		return gfx.Rect{}
+	}
+	pressed := bounds("Open z-last.txt")
+	if pressed.Width == 0 || state.folderWatching[canonical] == nil {
+		t.Fatal("fixture did not show and watch the pressed row")
+	}
+	x, y := pressed.X+pressed.Width/2, pressed.Y+pressed.Height/2
+	if err := driver.Press(x, y, gfx.PointerButtonPrimary); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a-first.txt"), []byte("replacement"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for bounds("Open a-first.txt") != pressed && time.Now().Before(deadline) {
+		if err := driver.Pump(); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if bounds("Open a-first.txt") != pressed {
+		t.Fatal("filesystem notification did not replace the pressed row")
+	}
+	if err := driver.Release(x, y, gfx.PointerButtonPrimary); err != nil {
+		t.Fatal(err)
+	}
+	if state.space.Current() != draft || len(state.space.Documents) != 1 || draft.Editor.String() != "keep draft" || !draft.Dirty() {
+		t.Fatalf("stale release opened %q or changed the draft", state.space.Current().Name)
+	}
+	clickLabeledControl(t, driver, "Open z-last.txt")
+	opened := state.space.Current()
+	if opened.Path != filepath.Join(canonical, "z-last.txt") || driver.Snapshot().Focused != editorID {
+		t.Fatalf("fresh click opened %q with focus %v", opened.Path, driver.Snapshot().Focused)
+	}
+	if err := driver.Type("X"); err != nil {
+		t.Fatal(err)
+	}
+	if opened.Editor.String() == "target" || draft.Editor.String() != "keep draft" {
+		t.Fatal("the first edit after a fresh click did not reach the opened document")
 	}
 }
 
