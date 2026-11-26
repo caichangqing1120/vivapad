@@ -21,10 +21,8 @@ import (
 func nppBytePosition(doc *document.Document, index int) int64 {
 	value := doc.Editor.String()
 	sourceOffset := doc.Editor.ByteOffset(index)
-	physicalOffset, err := doc.SavedEncoding().EncodedLength(value[:sourceOffset])
-	if err != nil {
-		return -1
-	}
+	// Scintilla records positions in its decoded UTF-8 buffer, including CRLF.
+	physicalOffset := sourceOffset
 	line := 0
 	for position := 0; position < sourceOffset; position++ {
 		if value[position] == '\n' {
@@ -39,33 +37,11 @@ func nppBytePosition(doc *document.Document, index int) int64 {
 
 func nppSelectionAt(doc *document.Document, start, end int64) text.Range {
 	lo, hi := min(start, end), max(start, end)
-	format := doc.SavedEncoding()
-	legacy := format.IsLegacy()
-	// Remember widths only for this scan. The bound keeps unusual documents
-	// with many distinct characters from growing another document-sized index.
-	var widths map[rune]int
-	if legacy {
-		widths = make(map[rune]int)
-	}
 	var selection text.Range
 	var offset int64
 	line := 0
 	for _, character := range doc.Editor.String() {
 		width := utf8.RuneLen(character)
-		if legacy {
-			var ok bool
-			width, ok = widths[character]
-			if !ok {
-				var err error
-				width, err = format.EncodedLength(string(character))
-				if err != nil {
-					break
-				}
-				if len(widths) < 1024 {
-					widths[character] = width
-				}
-			}
-		}
 		if character == '\n' {
 			if doc.LineEndingAt(line) == "\r\n" {
 				width = 2
@@ -359,7 +335,7 @@ func (state *model) loadNPPSession() {
 					return
 				}
 			}
-			// Session byte positions refer to the saved encoding, not a pending conversion.
+			// Compare the stored code page with the actual decoder, even after a pending conversion.
 			savedEncoding := doc.SavedEncoding()
 			if explicit && savedEncoding != format || !explicit && savedEncoding.IsLegacy() {
 				state.notice = "Session file is already open with another encoding: " + canonical

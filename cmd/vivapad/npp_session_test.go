@@ -52,7 +52,7 @@ func TestSaveNPPSessionCapturesSplitViewsWithoutChangingTabs(t *testing.T) {
 	clickID(t, driver, sessionScope.At(1))
 	clickID(t, driver, saveSessionConfirmID)
 	stored, err := session.LoadNPP(path)
-	if err != nil || len(stored.Main) != 1 || len(stored.Sub) != 1 || stored.ActiveView != 1 || stored.Sub[0].Encoding != 54936 || stored.Sub[0].EndPos != 2 || len(stored.Main[0].Marks) != 1 || stored.Main[0].Marks[0] != 0 || len(stored.Sub[0].Marks) != 1 || stored.Sub[0].Marks[0] != 0 || !stored.Main[0].ReadOnly {
+	if err != nil || len(stored.Main) != 1 || len(stored.Sub) != 1 || stored.ActiveView != 1 || stored.Sub[0].Encoding != 54936 || stored.Sub[0].EndPos != int64(len("\u4e2d")) || len(stored.Main[0].Marks) != 1 || stored.Main[0].Marks[0] != 0 || len(stored.Sub[0].Marks) != 1 || stored.Sub[0].Marks[0] != 0 || !stored.Main[0].ReadOnly {
 		t.Fatalf("saved split session = %+v, %v", stored, err)
 	}
 	if state.space.Current() != right || state.paneDocs[0] != left || right.Dirty() {
