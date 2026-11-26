@@ -3,8 +3,11 @@ package windows_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 
 	"vivapad/internal/session"
 )
@@ -29,15 +32,18 @@ func TestNotepadPlusPlusLegacySessionSelection(t *testing.T) {
 	if err := session.SaveNPP(xml, stored); err != nil {
 		t.Fatal(err)
 	}
-	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", "-openSession", xml)
-	sci := focusedScintilla(t, editor)
-	// Notepad++ can show its window before loading the startup session.
-	length := sci(2006, 0, 0)
-	for deadline := time.Now().Add(5 * time.Second); length == 0 && time.Now().Before(deadline); {
-		time.Sleep(25 * time.Millisecond)
-		length = sci(2006, 0, 0)
+	settings := filepath.Join(root, "settings")
+	if err := os.Mkdir(settings, 0700); err != nil {
+		t.Fatal(err)
 	}
-	if codePage := sci(2137, 0, 0); length != uintptr(len(buffer)) || codePage != 65001 {
+	const config = `<NotepadPlus><GUIConfigs><GUIConfig name="NewDocDefaultSettings" addNewDocumentOnStartup="no" /></GUIConfigs></NotepadPlus>`
+	if err := os.WriteFile(filepath.Join(settings, "config.xml"), []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
+	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", "-settingsDir="+settings, "-openSession", xml)
+	awaitSessionDocument(t, editor, filepath.Base(path))
+	sci := focusedScintilla(t, editor)
+	if length, codePage := sci(2006, 0, 0), sci(2137, 0, 0); length != uintptr(len(buffer)) || codePage != 65001 {
 		t.Fatalf("reference buffer length=%d code page=%d, want %d bytes of UTF-8", length, codePage, len(buffer))
 	}
 	if gotAnchor, gotCaret := sci(2009, 0, 0), sci(2008, 0, 0); gotAnchor != uintptr(anchor) || gotCaret != uintptr(caret) {
@@ -45,4 +51,24 @@ func TestNotepadPlusPlusLegacySessionSelection(t *testing.T) {
 	}
 	editor.close(t)
 	awaitBytes(t, path, disk)
+}
+
+func awaitSessionDocument(t *testing.T, editor *desktopEditor, name string) {
+	t.Helper()
+	var title string
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(25 * time.Millisecond) {
+		select {
+		case <-editor.done:
+			t.Fatalf("Notepad++ exited before activating session document %q: %v", name, editor.err)
+		default:
+		}
+		var text [512]uint16
+		getWindowText.Call(editor.hwnd, uintptr(unsafe.Pointer(&text[0])), uintptr(len(text)))
+		title = syscall.UTF16ToString(text[:])
+		if strings.Contains(title, name) {
+			t.Logf("session document active: %q", title)
+			return
+		}
+	}
+	t.Fatalf("Notepad++ never activated session document %q; final window title %q", name, title)
 }
