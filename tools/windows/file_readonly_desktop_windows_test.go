@@ -1,10 +1,14 @@
 package windows_test
 
 import (
+	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
@@ -108,5 +112,48 @@ func TestVivaPadWindowsDesktopReadOnlyModes(t *testing.T) {
 	typeAtStart('Y')
 	editor.keys(t, keyLeftControl, 'S')
 	awaitBytes(t, path, "y"+original)
+
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := "*" + user.User.Sid.String()
+	icacls := func(args ...string) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if output, err := exec.CommandContext(ctx, "icacls.exe", append([]string{path}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("set temporary fixture ACL: %v\n%s", err, output)
+		}
+	}
+	beforeDenial := attributes()
+	icacls("/deny", sid+":(WA)") // Write Attributes only; the temporary file remains readable.
+	denied := true
+	t.Cleanup(func() {
+		if denied {
+			icacls("/remove:d", sid)
+		}
+	})
+	handle, err := windows.CreateFile(nativePath, windows.FILE_WRITE_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err == nil {
+		_ = windows.CloseHandle(handle)
+		t.Fatal("fixture ACL did not deny Write Attributes")
+	}
+	if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+		t.Fatalf("verify fixture ACL: %v", err)
+	}
+	toggle(attributeCommand)
+	if got := attributes(); got != beforeDenial {
+		t.Fatalf("denied toggle changed attributes: got %#x, want %#x", got, beforeDenial)
+	}
+	typeAtStart('Z')
+	awaitBytes(t, path, "y"+original)
+	icacls("/remove:d", sid)
+	denied = false
+	editor.keys(t, keyLeftControl, 'S')
+	awaitBytes(t, path, "zy"+original)
+	t.Log("Write Attributes was denied; the toggle left flags unchanged and editing remained available")
 	editor.close(t)
 }
