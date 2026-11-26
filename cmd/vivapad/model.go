@@ -503,6 +503,8 @@ type model struct {
 	folderCache                   map[string][]foldertree.Entry
 	folderSelected                string
 	folderOffset                  int
+	folderRowHits                 []folderRowHit
+	folderNextRowID               int
 	folderWatcher                 *foldertree.Watcher
 	folderWatching                map[string]os.FileInfo
 	folderWatchUnavailable        bool

@@ -1,6 +1,34 @@
 package main
 
-import "github.com/vivaui/viva/gfx"
+import (
+	"slices"
+
+	"github.com/vivaui/viva/gfx"
+)
+
+type folderRowHit struct {
+	path      string
+	directory bool
+	id        gfx.ID
+}
+
+func (state *model) folderHitsFor(rows []folderRow) []folderRowHit {
+	hits := state.folderRowHits
+	if len(hits) > len(rows) {
+		clear(hits[len(rows):])
+	}
+	hits = slices.Grow(hits, max(0, len(rows)-len(hits)))[:len(rows)]
+	for index, row := range rows {
+		hit := &hits[index]
+		if hit.path != row.path || hit.directory != row.directory {
+			// A click in flight must not carry over to a new occupant of this slot.
+			*hit = folderRowHit{path: row.path, directory: row.directory, id: folderRowScope.At(state.folderNextRowID)}
+			state.folderNextRowID = (state.folderNextRowID + 1) & ((1 << 31) - 1)
+		}
+	}
+	state.folderRowHits = hits
+	return hits
+}
 
 func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 	canvas.Fill(bounds, gfx.RGB(250, 250, 250))
@@ -51,12 +79,14 @@ func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 	rows := state.folderRows()
 	visible := max(1, int(rowArea.Height/22))
 	state.folderOffset = min(max(0, state.folderOffset), max(0, len(rows)-visible))
+	visibleRows := rows[state.folderOffset:min(len(rows), state.folderOffset+visible)]
+	hits := state.folderHitsFor(visibleRows)
 	canvas.Clip(rowArea)
 	var chosen *folderRow
-	for index := state.folderOffset; index < len(rows) && index-state.folderOffset < visible; index++ {
-		row := rows[index]
-		item := gfx.Rect{X: 2, Y: rowArea.Y + float32(index-state.folderOffset)*22, Width: rowArea.Width - 3, Height: 22}
-		if row.path == state.folderSelected || canvas.Hovered() == folderRowScope.At(index) {
+	for index, row := range visibleRows {
+		id := hits[index].id
+		item := gfx.Rect{X: 2, Y: rowArea.Y + float32(index)*22, Width: rowArea.Width - 3, Height: 22}
+		if row.path == state.folderSelected || canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
 		indent := min(float32(row.depth*13), bounds.Width-64)
@@ -75,8 +105,8 @@ func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 		if row.directory {
 			roleLabel = "Toggle folder " + row.name
 		}
-		canvas.HitWithOptions(folderRowScope.At(index), item, roleLabel, gfx.HitOptions{Role: gfx.RoleButton})
-		if canvas.Clicked(folderRowScope.At(index)) {
+		canvas.HitWithOptions(id, item, roleLabel, gfx.HitOptions{Role: gfx.RoleButton})
+		if canvas.Clicked(id) {
 			chosen = &row
 		}
 	}
