@@ -86,23 +86,35 @@ func (h *lineHighlighter[S]) ForText(value string) func(string, int, string, []c
 }
 
 func (h *lineHighlighter[S]) highlightLine(_ string, index int, line string, dst []components.CodeEditorRun) []components.CodeEditorRun {
-	if index < 0 || len(line) > components.CodeEditorMaxHighlightedLine {
+	if len(line) > components.CodeEditorMaxHighlightedLine {
 		return dst
+	}
+	state, ok := h.stateAt(index)
+	if !ok {
+		return dst
+	}
+	h.scan(line, state, func(start, end int, kind chroma.TokenType) {
+		if color, ok := h.color(kind); ok {
+			dst = append(dst, components.CodeEditorRun{Start: start, End: end, Color: color})
+		}
+	})
+	return dst
+}
+
+func (h *lineHighlighter[S]) stateAt(index int) (S, bool) {
+	var zero S
+	if index < 0 {
+		return zero, false
 	}
 	for index >= len(h.lines) {
 		prev := h.lines[len(h.lines)-1]
 		remaining := h.value[prev.start:]
 		end := strings.IndexByte(remaining, '\n')
 		if end < 0 {
-			return dst
+			return zero, false
 		}
 		state := h.scan(remaining[:end], prev.state, nil)
 		h.lines = append(h.lines, syntaxLine[S]{prev.start + end + 1, state})
 	}
-	h.scan(line, h.lines[index].state, func(start, end int, kind chroma.TokenType) {
-		if color, ok := h.color(kind); ok {
-			dst = append(dst, components.CodeEditorRun{Start: start, End: end, Color: color})
-		}
-	})
-	return dst
+	return h.lines[index].state, true
 }

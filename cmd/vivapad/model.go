@@ -401,6 +401,7 @@ type model struct {
 	escriptHighlighters           map[*document.Document]*syntax.ESCRIPTHighlighter
 	baanHighlighters              map[*document.Document]*syntax.BaanCHighlighter
 	serverPageHighlighters        map[*document.Document]*syntax.ServerPageHighlighter
+	resourceHighlighters          map[*document.Document]*syntax.ResourceHighlighter
 	ansiBackgrounds               map[*document.Document]*syntax.ANSIBackground
 	query                         *text.Editor
 	incrementQuery                *text.Editor
@@ -2522,6 +2523,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.escriptHighlighters, doc)
 	delete(state.baanHighlighters, doc)
 	delete(state.serverPageHighlighters, doc)
+	delete(state.resourceHighlighters, doc)
 	delete(state.ansiBackgrounds, doc)
 	delete(state.bookmarks, doc)
 	delete(state.changeView, doc)
