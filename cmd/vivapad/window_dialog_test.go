@@ -11,6 +11,7 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 )
 
@@ -281,6 +282,71 @@ func TestWindowsDialogActivationKeepsFocusAndTabOwnership(t *testing.T) {
 			}
 			if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || target.Editor.String() != "target" || peer.Editor.String() != "peer" {
 				t.Fatalf("undo after activation: target=%q peer=%q handled=%v err=%v", target.Editor.String(), peer.Editor.String(), handled, err)
+			}
+		})
+	}
+}
+
+func TestWindowsDialogDismissalReturnsFocusWithoutActivatingOtherTab(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		split, button bool
+	}{
+		{name: "single Escape"}, {name: "single OK", button: true},
+		{name: "split Escape", split: true}, {name: "split OK", split: true, button: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			active := state.space.Current()
+			active.Name = "active.txt"
+			active.Editor.Insert("original")
+			active.Editor.BreakUndoGroup()
+			active.Editor.SetSelection(text.Range{Start: 4, End: 0})
+			selection, caret := active.Editor.Selection(), active.Editor.Caret()
+			other := state.space.NewDocument()
+			other.Name = "other.txt"
+			other.Editor.Insert("other")
+			focus := editorID
+			var left *document.Document
+			if tc.split {
+				left = state.space.NewDocument()
+				left.Editor.Insert("left")
+				state.splitEnabled, state.activePane = true, 1
+				state.paneDocs = [2]*document.Document{left, active}
+				state.paneOwner[left], state.paneOwner[active], state.paneOwner[other] = 0, 1, 1
+				focus = rightEditorID
+			}
+			state.space.Select(state.documentIndex(active))
+			tabs := append([]*document.Document(nil), state.space.Documents...)
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuOverflowID)
+			clickID(t, driver, hiddenMenuScope.At(11))
+			clickID(t, driver, menuItemScope.At(1))
+			clickLabeledControl(t, driver, "Select other.txt")
+			if tc.button {
+				clickID(t, driver, windowsOKID)
+			} else if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+				t.Fatal(err)
+			}
+			if state.windowsDialogOpen || state.space.Current() != active || !reflect.DeepEqual(state.space.Documents, tabs) {
+				t.Fatal("dismissing the window list activated or changed a tab")
+			}
+			if active.Editor.Selection() != selection || active.Editor.Caret() != caret {
+				t.Fatal("dismissing the window list changed the editor selection")
+			}
+			if got := driver.Snapshot().Focused; got != focus {
+				t.Fatalf("dismissing the window list focused %v; want %v", got, focus)
+			}
+			if err := driver.Type("x"); err != nil {
+				t.Fatal(err)
+			}
+			if active.Editor.String() != "xinal" || other.Editor.String() != "other" || left != nil && left.Editor.String() != "left" {
+				t.Fatal("the first key did not replace only the original editor selection")
+			}
+			if handled, err := driver.ShortcutChord(primary(), 'z'); err != nil || !handled || active.Editor.String() != "original" {
+				t.Fatalf("undo after dismissal: text=%q handled=%v err=%v", active.Editor.String(), handled, err)
 			}
 		})
 	}

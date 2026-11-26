@@ -205,6 +205,7 @@ func (state *model) windowsDialogKey(event gfx.KeyEvent) gfx.EventResult {
 	switch event.Key {
 	case gfx.KeyEscape:
 		state.closeWindowsDialog()
+		return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
 	case gfx.KeySpace:
 		return state.windowsDialogSpace(event)
 	case gfx.KeyEnter:
@@ -359,6 +360,7 @@ func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 				state.applyWindowsDialogSort()
 			case windowsOKID:
 				state.closeWindowsDialog()
+				canvas.RequestFocus(state.commandEditorFocusID())
 			}
 		}
 	}
