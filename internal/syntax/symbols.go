@@ -39,6 +39,7 @@ func goSymbols(filename, value string) ([]Symbol, error) {
 	if file == nil {
 		return nil, parseError
 	}
+	// Function List positions refer to the open buffer, so ignore //line mappings.
 	var result []Symbol
 	for _, declaration := range file.Decls {
 		switch node := declaration.(type) {
@@ -48,7 +49,7 @@ func goSymbols(filename, value string) ([]Symbol, error) {
 			}
 			for _, declaration := range node.Specs {
 				if spec, ok := declaration.(*ast.TypeSpec); ok {
-					position := set.Position(spec.Name.Pos())
+					position := set.PositionFor(spec.Name.Pos(), false)
 					result = append(result, Symbol{Kind: "type", Name: spec.Name.Name, Line: position.Line, ByteOffset: position.Offset})
 				}
 			}
@@ -63,7 +64,7 @@ func goSymbols(filename, value string) ([]Symbol, error) {
 					name = "(" + receiver.String() + ")." + name
 				}
 			}
-			position := set.Position(node.Name.Pos())
+			position := set.PositionFor(node.Name.Pos(), false)
 			result = append(result, Symbol{Kind: "function", Name: name, Line: position.Line, ByteOffset: position.Offset})
 		}
 	}
