@@ -630,6 +630,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	if snapshot.Language == ".nfo" {
 		snapshot.MonoFace, snapshot.Highlight = gfx.MonoClassic, nil
 	}
+	if snapshot.Language == ".go" {
+		highlighter := state.goHighlighters[doc]
+		if highlighter == nil {
+			if state.goHighlighters == nil {
+				state.goHighlighters = make(map[*document.Document]*syntax.GoHighlighter)
+			}
+			highlighter = syntax.NewGoHighlighter(&state.syntax)
+			state.goHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.goHighlighters, doc)
+	}
 	if strings.EqualFold(snapshot.Language, ".json5") || strings.EqualFold(snapshot.Language, ".jsonc") {
 		highlighter := state.json5Highlighters[doc]
 		if highlighter == nil {

@@ -13,6 +13,7 @@ type cacheKey struct {
 	language string
 	line     string
 	prefix   string
+	suffix   string
 }
 
 type Highlighter struct {
@@ -25,13 +26,17 @@ func (highlighter *Highlighter) Highlight(language, line string, dst []component
 }
 
 func (highlighter *Highlighter) highlight(language, line, prefix string, dst []components.CodeEditorRun) []components.CodeEditorRun {
+	return highlighter.highlightContext(language, line, prefix, "", dst)
+}
+
+func (highlighter *Highlighter) highlightContext(language, line, prefix, suffix string, dst []components.CodeEditorRun) []components.CodeEditorRun {
 	if language == "" || len(line) > components.CodeEditorMaxHighlightedLine {
 		return dst
 	}
 	if strings.EqualFold(language, ".ans") {
 		return highlightANSI(line, dst)
 	}
-	key := cacheKey{language: language, line: line, prefix: prefix}
+	key := cacheKey{language: language, line: line, prefix: prefix, suffix: suffix}
 	if cached, ok := highlighter.lines[key]; ok {
 		return append(dst, cached...)
 	}
@@ -50,7 +55,7 @@ func (highlighter *Highlighter) highlight(language, line, prefix string, dst []c
 	if lexer == nil {
 		return dst
 	}
-	source := prefix + line
+	source := prefix + line + suffix
 	// Chroma's TeX comment rule consumes the newline, which the editor omits.
 	if lexer.Config().Name == "TeX" && strings.Contains(line, "%") && !strings.HasSuffix(line, "\n") {
 		source += "\n"

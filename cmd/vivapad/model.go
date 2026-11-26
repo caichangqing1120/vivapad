@@ -384,6 +384,7 @@ type model struct {
 	splitWidth                    float32
 	languages                     map[*document.Document]string
 	syntax                        syntax.Highlighter
+	goHighlighters                map[*document.Document]*syntax.GoHighlighter
 	json5Highlighters             map[*document.Document]*syntax.JSON5Highlighter
 	innoHighlighters              map[*document.Document]*syntax.InnoHighlighter
 	asn1Highlighters              map[*document.Document]*syntax.ASN1Highlighter
@@ -2506,6 +2507,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.secondEditors, doc)
 	delete(state.paneOwner, doc)
 	delete(state.languages, doc)
+	delete(state.goHighlighters, doc)
 	delete(state.json5Highlighters, doc)
 	delete(state.innoHighlighters, doc)
 	delete(state.asn1Highlighters, doc)
