@@ -415,6 +415,55 @@ func TestWindowsDialogOpensWithActiveDocumentVisible(t *testing.T) {
 	}
 }
 
+func TestWindowsDialogSpaceTogglesOnlyTheFocusedRow(t *testing.T) {
+	state, driver := startDriver(t)
+	active := state.space.Current()
+	active.Name = "active.txt"
+	byKeyboard := state.space.NewDocument()
+	byKeyboard.Name = "keyboard.txt"
+	unchecked := state.space.NewDocument()
+	unchecked.Name = "unchecked.txt"
+	byMouse := state.space.NewDocument()
+	byMouse.Name = "mouse.txt"
+	state.space.Select(state.documentIndex(active))
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuOverflowID)
+	clickID(t, driver, hiddenMenuScope.At(11))
+	clickID(t, driver, menuItemScope.At(1))
+
+	press := func(key gfx.Key, modifiers gfx.Modifiers) {
+		t.Helper()
+		if err := driver.Key(key, modifiers); err != nil {
+			t.Fatal(err)
+		}
+	}
+	press(gfx.KeyDown, 0)
+	press(gfx.KeySpace, 0)
+	if !state.windowsSelected[byKeyboard] || len(state.windowsSelected) != 1 || state.windowsFocused != byKeyboard {
+		t.Fatal("Space did not check only the focused row")
+	}
+	press(gfx.KeyDown, 0)
+	press(gfx.KeySpace, 0)
+	press(gfx.KeySpace, gfx.ModifierControl)
+	if !state.windowsSelected[unchecked] || !state.windowsSelected[byKeyboard] || state.windowsFocused != unchecked {
+		t.Fatal("moving focus or modified Space changed the checked rows")
+	}
+	press(gfx.KeySpace, 0)
+	if state.windowsSelected[unchecked] || !state.windowsSelected[byKeyboard] || state.windowsFocused != unchecked {
+		t.Fatal("Space did not uncheck only the focused row")
+	}
+	clickLabeledControl(t, driver, "Select mouse.txt")
+	clickID(t, driver, windowsCloseID)
+	if state.windowsDialogOpen || state.space.Current() != active || active.Editor.String() != "" || active.Editor.CanUndo() {
+		t.Fatal("keyboard selection or batch close changed the active editor")
+	}
+	if !reflect.DeepEqual(state.space.Documents, []*document.Document{active, unchecked}) {
+		t.Fatalf("batch close left %q", windowSortTestNames(state.space.Documents))
+	}
+}
+
 func TestWindowsDialogMultiCloseStopsAtDirtyCancel(t *testing.T) {
 	state, driver := startDriver(t)
 	keep := state.space.Current()

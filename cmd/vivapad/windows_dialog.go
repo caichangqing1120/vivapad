@@ -185,10 +185,28 @@ func (state *model) revealWindowsRow(index int) {
 	}
 }
 
+func (state *model) toggleWindowsSelection(doc *document.Document) {
+	if state.windowsSelected[doc] {
+		delete(state.windowsSelected, doc)
+	} else {
+		state.windowsSelected[doc] = true
+	}
+}
+
+func (state *model) windowsDialogSpace(event gfx.KeyEvent) gfx.EventResult {
+	if event.Modifiers != 0 || event.Repeat || event.Release || state.windowsFocused == nil {
+		return gfx.EventResult{Handled: true}
+	}
+	state.toggleWindowsSelection(state.windowsFocused)
+	return gfx.EventResult{Handled: true, Repaint: true}
+}
+
 func (state *model) windowsDialogKey(event gfx.KeyEvent) gfx.EventResult {
 	switch event.Key {
 	case gfx.KeyEscape:
 		state.closeWindowsDialog()
+	case gfx.KeySpace:
+		return state.windowsDialogSpace(event)
 	case gfx.KeyEnter:
 		if state.activateWindowsDialogDocument() {
 			return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
@@ -288,11 +306,7 @@ func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 		}
 		canvas.HitWithOptions(id, item, "Select "+doc.Name, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: selected, Hint: doc.Path})
 		if canvas.Clicked(id) {
-			if selected {
-				delete(state.windowsSelected, doc)
-			} else {
-				state.windowsSelected[doc] = true
-			}
+			state.toggleWindowsSelection(doc)
 			state.windowsFocused = doc
 		}
 	}

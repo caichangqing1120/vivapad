@@ -1430,6 +1430,9 @@ func newConfig(state *model) app.Config {
 			return gfx.EventResult{Handled: event.Target != webSearchTemplateID}
 		}
 		if state.windowsDialogOpen {
+			if event.Key == gfx.KeyUnknown && event.Text == " " {
+				return state.windowsDialogSpace(event)
+			}
 			return gfx.EventResult{Handled: true}
 		}
 		if state.functionListVisible && state.activeDock() == "functions" && event.Target == functionFilterID {
