@@ -17,7 +17,7 @@ import (
 func TestFunctionListFilterAndNavigationKeepCleanSourceUntouched(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "symbols.go")
-	value := "package sample\ntype Server struct{}\nfunc (s *Server) ServeHTTP() {}\nfunc main() {}\n"
+	value := "package sample\n//line source.template:700\ntype Server struct{}\nfunc (s *Server) ServeHTTP() {}\nfunc main() {}\n"
 	if err := os.WriteFile(path, []byte(value), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -31,6 +31,22 @@ func TestFunctionListFilterAndNavigationKeepCleanSourceUntouched(t *testing.T) {
 	clickID(t, driver, menuItemScope.At(18))
 	if !state.functionListVisible {
 		t.Fatal("View command did not open Function List")
+	}
+	wantHints := map[string]string{
+		"Server":              "type on line 3",
+		"(*Server).ServeHTTP": "function on line 4",
+		"main":                "function on line 5",
+	}
+	for _, hit := range driver.Snapshot().Hits {
+		if want, ok := wantHints[hit.Label]; hit.ID.Scope() == functionSymbolScope && ok {
+			if hit.Hint != want {
+				t.Errorf("%s hint = %q, want %q", hit.Label, hit.Hint, want)
+			}
+			delete(wantHints, hit.Label)
+		}
+	}
+	if len(wantHints) != 0 {
+		t.Fatalf("missing Function List results: %v", wantHints)
 	}
 	clickLabeledControl(t, driver, "(*Server).ServeHTTP")
 	doc := state.space.Current()
