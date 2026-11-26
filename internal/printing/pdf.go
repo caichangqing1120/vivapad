@@ -17,9 +17,10 @@ import (
 )
 
 type pdfFont struct {
-	name string
-	data []byte
-	face *sfnt.Font
+	name  string
+	data  []byte
+	face  *sfnt.Font
+	style pdfFontStyle
 }
 
 type pdfFontRun struct {
@@ -31,6 +32,8 @@ type pdfFontRun struct {
 
 type pdfRenderer struct {
 	fonts      []pdfFont
+	bodyCount  int
+	fontOrder  [4][]int
 	measure    *fpdf.Fpdf
 	mu         sync.Mutex
 	fontSize   float64
@@ -67,7 +70,9 @@ func newPDFRendererWithFallback(font []byte, fontSize float64, tabWidth int, fal
 	if lineHeight <= fontSize || lineHeight > fontSize*3 {
 		return nil, fmt.Errorf("printing: invalid PDF font line height")
 	}
-	return &pdfRenderer{fonts: fonts, measure: measure, fontSize: fontSize, lineHeight: lineHeight, tabWidth: tabWidth}, nil
+	renderer := &pdfRenderer{fonts: fonts, bodyCount: len(fonts), measure: measure, fontSize: fontSize, lineHeight: lineHeight, tabWidth: tabWidth}
+	renderer.prepareFontOrder()
+	return renderer, nil
 }
 
 func newPDFDocument(fonts []pdfFont, size float64) *fpdf.Fpdf {
@@ -106,6 +111,14 @@ func (renderer *pdfRenderer) BandHeight(font BandFont) float64 {
 }
 
 func (renderer *pdfRenderer) fontRuns(value string) ([]pdfFontRun, error) {
+	return renderer.fontRunsForStyle(value, 0)
+}
+
+func (renderer *pdfRenderer) fontRunsForStyle(value string, style pdfFontStyle) ([]pdfFontRun, error) {
+	if value == "" {
+		return nil, nil
+	}
+	candidates := renderer.fontOrder[style]
 	var buffer sfnt.Buffer
 	var runs []pdfFontRun
 	var current strings.Builder
@@ -120,7 +133,8 @@ func (renderer *pdfRenderer) fontRuns(value string) ([]pdfFontRun, error) {
 	for graphemes := uniseg.NewGraphemes(value); graphemes.Next(); {
 		cluster := graphemes.Str()
 		selected := -1
-		for index, font := range renderer.fonts {
+		for _, index := range candidates {
+			font := renderer.fonts[index]
 			covered := true
 			for _, character := range cluster {
 				if character == '\n' || character == '\r' {
@@ -140,7 +154,8 @@ func (renderer *pdfRenderer) fontRuns(value string) ([]pdfFontRun, error) {
 		if selected < 0 {
 			for _, character := range cluster {
 				covered := false
-				for _, font := range renderer.fonts {
+				for _, index := range candidates {
+					font := renderer.fonts[index]
 					glyph, err := font.face.GlyphIndex(&buffer, character)
 					covered = covered || err == nil && glyph != 0
 				}
@@ -183,6 +198,16 @@ func (renderer *pdfRenderer) vectorAdvance(run pdfFontRun, size float64) (float6
 	return float64(advance) / 64, nil
 }
 
+func (renderer *pdfRenderer) setRunFont(pdf *fpdf.Fpdf, run pdfFontRun, size float64) {
+	font := renderer.fonts[run.font]
+	if run.font >= renderer.bodyCount {
+		// fpdf handles repeated registrations by name. Register a band face
+		// only if a band actually uses it, so ordinary spools stay small.
+		pdf.AddUTF8FontFromBytes(font.name, "", font.data)
+	}
+	pdf.SetFont(font.name, "", size)
+}
+
 func (renderer *pdfRenderer) runWidth(pdf *fpdf.Fpdf, runs []pdfFontRun, size float64) (float64, error) {
 	var width float64
 	for _, run := range runs {
@@ -194,7 +219,7 @@ func (renderer *pdfRenderer) runWidth(pdf *fpdf.Fpdf, runs []pdfFontRun, size fl
 			width += advance
 			continue
 		}
-		pdf.SetFont(renderer.fonts[run.font].name, "", size)
+		renderer.setRunFont(pdf, run, size)
 		width += pdf.GetStringWidth(run.text)
 	}
 	return width, nil
@@ -202,7 +227,7 @@ func (renderer *pdfRenderer) runWidth(pdf *fpdf.Fpdf, runs []pdfFontRun, size fl
 
 func (renderer *pdfRenderer) paintRun(pdf *fpdf.Fpdf, run pdfFontRun, x, y, size float64, bold bool) (float64, error) {
 	if !run.vector {
-		pdf.SetFont(renderer.fonts[run.font].name, "", size)
+		renderer.setRunFont(pdf, run, size)
 		pdf.Text(x, y, run.text)
 		return pdf.GetStringWidth(run.text), nil
 	}
@@ -277,7 +302,7 @@ func (renderer *pdfRenderer) writePDF(output io.Writer, job Job, pages []Page, d
 	if _, err := BodyBounds(job, device); err != nil {
 		return err
 	}
-	pdf := newPDFDocument(renderer.fonts, renderer.fontSize)
+	pdf := newPDFDocument(renderer.fonts[:renderer.bodyCount], renderer.fontSize)
 	if err := pdf.Error(); err != nil {
 		return err
 	}
@@ -342,6 +367,7 @@ func (renderer *pdfRenderer) drawPDFBand(pdf *fpdf.Fpdf, band TextBand, font Ban
 		return nil
 	}
 	size := float64(font.Points())
+	style := pdfBandStyle(font)
 	pdf.SetFontSize(size)
 	defer pdf.SetFont(renderer.fonts[0].name, "", renderer.fontSize)
 	values := []string{band.Left, band.Middle, band.Right}
@@ -349,7 +375,7 @@ func (renderer *pdfRenderer) drawPDFBand(pdf *fpdf.Fpdf, band TextBand, font Ban
 	var widths [3]float64
 	for index, value := range values {
 		var err error
-		runs[index], err = renderer.fontRuns(value)
+		runs[index], err = renderer.fontRunsForStyle(value, style)
 		if err != nil {
 			return err
 		}
@@ -366,38 +392,22 @@ func (renderer *pdfRenderer) drawPDFBand(pdf *fpdf.Fpdf, band TextBand, font Ban
 	pdf.SetFont(renderer.fonts[0].name, "", size)
 	baseline += float64(pdf.GetFontDesc("", "").Ascent) * size / 1000
 	pdf.SetTextColor(0, 0, 0)
-	if font.Bold {
-		pdf.SetLineWidth(0.25)
-		pdf.SetDrawColor(0, 0, 0)
-		pdf.SetTextRenderingMode(2)
-	}
 	for _, item := range []struct {
 		runs []pdfFontRun
-		text string
 		x    float64
 	}{
-		{runs[0], band.Left, bounds.Left},
-		{runs[1], band.Middle, (bounds.Left + bounds.Right - widths[1]) / 2},
-		{runs[2], band.Right, bounds.Right - widths[2]},
+		{runs[0], bounds.Left},
+		{runs[1], (bounds.Left + bounds.Right - widths[1]) / 2},
+		{runs[2], bounds.Right - widths[2]},
 	} {
-		if font.Italic && item.text != "" {
-			pdf.TransformBegin()
-			pdf.TransformSkewX(12, item.x, baseline)
-		}
 		x := item.x
 		for _, run := range item.runs {
-			advance, err := renderer.paintRun(pdf, run, x, baseline, size, font.Bold)
+			advance, err := renderer.paintBandRun(pdf, run, x, baseline, size, style)
 			if err != nil {
 				return err
 			}
 			x += advance
 		}
-		if font.Italic && item.text != "" {
-			pdf.TransformEnd()
-		}
-	}
-	if font.Bold {
-		pdf.SetTextRenderingMode(0)
 	}
 	pdf.SetDrawColor(0, 0, 0)
 	pdf.Line(bounds.Left, pdfBandRuleY(bounds, top), bounds.Right, pdfBandRuleY(bounds, top))

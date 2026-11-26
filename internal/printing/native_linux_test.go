@@ -6,8 +6,58 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
+
+func TestLinuxPDFBandStylesCoverMixedText(t *testing.T) {
+	renderer, err := newLinuxPDFRenderer(12, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := "A\u4e2d\U0001d11eB"
+	for _, tc := range []struct {
+		name    string
+		style   pdfFontStyle
+		faces   []string
+		missing []pdfFontStyle
+	}{
+		{"bold", pdfBold, []string{"VivaPadBandBold", "VivaPadFallback1", "VivaPadBandBold"}, []pdfFontStyle{0, pdfBold, 0}},
+		{"italic", pdfItalic, []string{"VivaPadBandItalic", "VivaPad", "VivaPadFallback1", "VivaPadBandItalic"}, []pdfFontStyle{0, pdfItalic, pdfItalic, 0}},
+		{"bold italic", pdfBold | pdfItalic, []string{"VivaPadBandBoldItalic", "VivaPadBandBold", "VivaPadFallback1", "VivaPadBandBoldItalic"}, []pdfFontStyle{0, pdfItalic, pdfBold | pdfItalic, 0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runs, err := renderer.fontRunsForStyle(text, tc.style)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var faces []string
+			var missing []pdfFontStyle
+			var joined string
+			for _, run := range runs {
+				font := renderer.fonts[run.font]
+				faces = append(faces, font.name)
+				missing = append(missing, tc.style&^font.style)
+				joined += run.text
+			}
+			if joined != text || !reflect.DeepEqual(faces, tc.faces) || !reflect.DeepEqual(missing, tc.missing) {
+				t.Fatalf("text=%q faces=%v missing=%v", joined, faces, missing)
+			}
+		})
+	}
+	plain := newPDFDocument(renderer.fonts[:renderer.bodyCount], 12)
+	plain.AddPage()
+	if err := renderer.drawPDFBand(plain, TextBand{Left: text}, BandFont{}, PageBounds{Left: 20, Top: 50, Right: 500, Bottom: 750}, true); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := plain.Output(&output); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(output.Bytes(), []byte("/BaseFont /utf8vivapadband")) {
+		t.Fatal("unstyled PDF registered unused band fonts")
+	}
+}
 
 func TestLinuxPortalPDFContainsOnlyRequestedPages(t *testing.T) {
 	renderer, err := newPDFRenderer(linuxPrintFont, 12, 4)
@@ -98,7 +148,7 @@ set -eu
 	if err := os.WriteFile(filepath.Join(bin, "lp"), []byte(fakeLP), 0700); err != nil {
 		t.Fatal(err)
 	}
-	renderer, err := newPDFRenderer(linuxPrintFont, 12, 4)
+	renderer, err := newLinuxPDFRenderer(12, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +158,10 @@ set -eu
 	}
 	t.Cleanup(printer.Close)
 	job := Job{Settings: DefaultSettings()}
-	pages := []Page{{Number: 1}, {Number: 2}}
+	job.Settings.HeaderFont = BandFont{Bold: true, Italic: true, Size: 14}
+	job.Settings.FooterFont = BandFont{Italic: true}
+	pages := []Page{{Number: 1, Header: TextBand{Right: "Report \u4e2d \U0001d11e"}, Footer: TextBand{Middle: "Footer"},
+		Bounds: PageBounds{Left: 20, Top: 50, Right: 500, Bottom: 750}}, {Number: 2}}
 	assertEmptySpool := func() {
 		t.Helper()
 		if files, err := os.ReadDir(tmp); err != nil || len(files) != 0 {
@@ -133,6 +186,11 @@ set -eu
 	if err != nil || !bytes.HasPrefix(spooled, []byte("%PDF-")) || !bytes.Contains(spooled, []byte("/Count 2\n")) ||
 		!bytes.HasSuffix(bytes.TrimSpace(spooled), []byte("%%EOF")) {
 		t.Fatalf("lp did not receive a complete two-page PDF: %d bytes, %v", len(spooled), err)
+	}
+	for _, resource := range []string{"vivapadbandbolditalic", "vivapadbandbold", "vivapadbanditalic"} {
+		if !bytes.Contains(spooled, []byte("/BaseFont /utf8"+resource+"\n")) {
+			t.Errorf("submitted PDF lacks %s", resource)
+		}
 	}
 	assertEmptySpool()
 }

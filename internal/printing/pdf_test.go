@@ -8,6 +8,10 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/gfx"
+	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/gobolditalic"
+	"golang.org/x/image/font/gofont/goitalic"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 type failingPDFWriter struct {
@@ -38,6 +42,67 @@ func TestPDFRendererReportsSpoolWriteFailure(t *testing.T) {
 	job := Job{Settings: DefaultSettings()}
 	if err := renderer.writePDF(failingPDFWriter{writeErr}, job, []Page{{Number: 1}}, device); !errors.Is(err, writeErr) {
 		t.Fatalf("PDF write error = %v, want %v", err, writeErr)
+	}
+}
+
+func TestPDFBandUsesNaturalFontVariants(t *testing.T) {
+	renderer, err := newPDFRendererWithBandFonts(goregular.TTF, 12, 4, pdfBandFonts{bold: gobold.TTF, italic: goitalic.TTF, boldItalic: gobolditalic.TTF})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		font BandFont
+	}{
+		{"VivaPadBandBold", BandFont{Bold: true}},
+		{"VivaPadBandItalic", BandFont{Italic: true}},
+		{"VivaPadBandBoldItalic", BandFont{Bold: true, Italic: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pdf := newPDFDocument(renderer.fonts[:renderer.bodyCount], 12)
+			pdf.SetCompression(false)
+			pdf.AddPage()
+			if err := renderer.drawPDFBand(pdf, TextBand{Right: "Styled band"}, tc.font, PageBounds{Left: 20, Top: 50, Right: 500, Bottom: 750}, true); err != nil {
+				t.Fatal(err)
+			}
+			var output bytes.Buffer
+			if err := pdf.Output(&output); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(output.Bytes(), []byte("/BaseFont /utf8"+strings.ToLower(tc.name))) || bytes.Contains(output.Bytes(), []byte("2 Tr")) || bytes.Contains(output.Bytes(), []byte(" cm\n")) {
+				t.Fatal("the band should use a real styled face without synthetic stroke or skew")
+			}
+		})
+	}
+}
+
+func TestPDFItalicBandDoesNotInheritPreviousPageFill(t *testing.T) {
+	music, err := os.ReadFile("fonts/NotoMusic-Regular.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderer, err := newPDFRendererWithBandFonts(goregular.TTF, 12, 4, pdfBandFonts{italic: goitalic.TTF}, music)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pdf := newPDFDocument(renderer.fonts[:renderer.bodyCount], 12)
+	pdf.SetCompression(false)
+	pdf.AddPage()
+	pdf.SetFillColor(20, 90, 200)
+	pdf.Rect(20, 100, 10, 10, "F")
+	pdf.AddPage()
+	if err := renderer.drawPDFBand(pdf, TextBand{Left: "\U0001d11eReport"}, BandFont{Italic: true},
+		PageBounds{Left: 20, Top: 50, Right: 500, Bottom: 750}, true); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := pdf.Output(&output); err != nil {
+		t.Fatal(err)
+	}
+	// The music outline is black inside its skew transform. After restoring
+	// the inherited blue fill, the following text must set its own black fill.
+	if !bytes.Contains(output.Bytes(), []byte("q 0.000 g BT ")) {
+		t.Fatal("the text following the music outline lacks an explicit black fill")
 	}
 }
 
