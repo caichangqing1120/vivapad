@@ -142,7 +142,8 @@ jobs:
           New-Item -ItemType Directory -Path $work | Out-Null
           try {
             $zip = Join-Path $work 'notepad++.zip'
-            Invoke-WebRequest -Uri 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.8.1/npp.8.9.8.1.portable.x64.zip' -OutFile $zip
+            curl.exe --fail --location --silent --show-error --retry 2 --retry-connrefused --retry-delay 2 --connect-timeout 15 --max-time 45 --retry-max-time 105 --output $zip 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.8.1/npp.8.9.8.1.portable.x64.zip'
+            if ($LASTEXITCODE -ne 0) { throw 'Download of pinned Notepad++ portable ZIP failed' }
             if ((Get-FileHash -Algorithm SHA256 $zip).Hash -ne 'beddf5548e75c97930d1575ba1c7d113e6e2b33d0a200310e734ca08e225f414') {
               throw 'Unexpected Notepad++ portable ZIP checksum'
             }
