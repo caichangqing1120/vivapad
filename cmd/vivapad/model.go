@@ -484,6 +484,7 @@ type model struct {
 	functionFilterFocus           bool
 	functionSymbols               map[*document.Document]functionSymbolCache
 	functionMatches               []int
+	functionRowIDBase             int
 	functionOffset                int
 	functionSelected              int
 	functionPageRows              int

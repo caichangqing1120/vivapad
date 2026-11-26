@@ -150,6 +150,79 @@ func TestFunctionListRejectsStaleKeyboardResultAfterEdit(t *testing.T) {
 	}
 }
 
+func TestFunctionListRejectsEnterBeforeFilterRepaint(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	const source = "package main\nfunc first() {}\nfunc second() {}\n"
+	doc.Editor.Insert(source)
+	doc.Editor.MoveTo(0, false)
+	state.command("Go")
+	state.command("Function List")
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, functionFilterID)
+	// Deliver Enter against the last frame before repainting the edited filter.
+	state.functionFilter.Insert("second")
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Editor.Caret() != 0 || doc.Editor.String() != source {
+		t.Fatalf("Enter activated the old filter result: caret=%d", doc.Editor.Caret())
+	}
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+		t.Fatal(err)
+	}
+	if want := strings.Index(source, "second"); doc.Editor.Caret() != want || doc.Editor.String() != source {
+		t.Fatalf("fresh Enter reached caret %d, want %d", doc.Editor.Caret(), want)
+	}
+}
+
+func TestFunctionListRejectsReleaseAfterFilterReplacesPressedRow(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	const source = "package main\nfunc first() {}\nfunc second() {}\n"
+	doc.Editor.Insert(source)
+	doc.Editor.MoveTo(0, false)
+	state.command("Go")
+	state.command("Function List")
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	var first gfx.Rect
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.ID.Scope() == functionSymbolScope && hit.Label == "first" {
+			first = hit.Bounds
+		}
+	}
+	if first.Width == 0 {
+		t.Fatal("first symbol is not visible")
+	}
+	x, y := first.X+first.Width/2, first.Y+first.Height/2
+	if err := driver.Press(x, y, gfx.PointerButtonPrimary); err != nil {
+		t.Fatal(err)
+	}
+	state.functionFilter.Insert("second")
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Release(x, y, gfx.PointerButtonPrimary); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Editor.Caret() != 0 || doc.Editor.String() != source {
+		t.Fatalf("release activated the replacement row: caret=%d", doc.Editor.Caret())
+	}
+	clickLabeledControl(t, driver, "second")
+	if want := strings.Index(source, "second"); doc.Editor.Caret() != want || doc.Editor.String() != source {
+		t.Fatalf("fresh click reached caret %d, want %d", doc.Editor.Caret(), want)
+	}
+}
+
 func TestFunctionListVisibilityAndActiveDockSurviveRestart(t *testing.T) {
 	root := t.TempDir()
 	path, sessionPath := filepath.Join(root, "source.go"), filepath.Join(root, "settings", "session.json")
