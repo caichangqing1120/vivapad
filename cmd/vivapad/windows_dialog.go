@@ -20,6 +20,7 @@ func (state *model) openWindowsDialog() {
 	state.windowsDialogOpen = true
 	state.windowsDialogPane = state.activePane
 	state.windowsRows = append(state.windowsRows[:0], state.activeViewTabs()...)
+	state.windowsRowIDs = make(map[*document.Document]gfx.ID)
 	state.windowsSelected = make(map[*document.Document]bool)
 	state.windowsFocused = state.paneDocument(state.activePane)
 	state.windowsVisible = 0
@@ -29,9 +30,21 @@ func (state *model) openWindowsDialog() {
 func (state *model) closeWindowsDialog() {
 	state.windowsDialogOpen = false
 	state.windowsRows = nil
+	state.windowsRowIDs = nil
 	state.windowsSelected = nil
 	state.windowsFocused = nil
 	state.windowsMessage = ""
+}
+
+func (state *model) windowsRowID(doc *document.Document) gfx.ID {
+	if id, ok := state.windowsRowIDs[doc]; ok {
+		return id
+	}
+	// Reordering must not transfer a pointer press to a different document.
+	id := windowsRowScope.At(state.windowsNextRowID)
+	state.windowsNextRowID = (state.windowsNextRowID + 1) & ((1 << 31) - 1)
+	state.windowsRowIDs[doc] = id
+	return id
 }
 
 func (state *model) refreshWindowsRows() {
@@ -277,7 +290,7 @@ func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 	for index := state.windowsOffset; index < len(state.windowsRows) && index-state.windowsOffset < state.windowsVisible; index++ {
 		doc := state.windowsRows[index]
 		item := gfx.Rect{X: rowArea.X, Y: rowArea.Y + float32(index-state.windowsOffset)*23, Width: rowArea.Width, Height: 23}
-		id := windowsRowScope.At(index)
+		id := state.windowsRowID(doc)
 		selected := state.windowsSelected[doc]
 		if selected || canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
