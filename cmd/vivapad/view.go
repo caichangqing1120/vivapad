@@ -852,6 +852,19 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.serverPageHighlighters, doc)
 	}
+	if language.Mode == ".rc" {
+		highlighter := state.resourceHighlighters[doc]
+		if highlighter == nil {
+			if state.resourceHighlighters == nil {
+				state.resourceHighlighters = make(map[*document.Document]*syntax.ResourceHighlighter)
+			}
+			highlighter = syntax.NewResourceHighlighter(&state.syntax)
+			state.resourceHighlighters[doc] = highlighter
+		}
+		snapshot.HighlightLine = highlighter.ForText(value)
+	} else {
+		delete(state.resourceHighlighters, doc)
+	}
 	if language.Mode == ".ans" {
 		background := state.ansiBackgrounds[doc]
 		if background == nil {
