@@ -481,6 +481,64 @@ func TestWindowsDialogOpensWithActiveDocumentVisible(t *testing.T) {
 	}
 }
 
+func TestWindowsDialogSortKeepsKeyboardTargetVisible(t *testing.T) {
+	for _, action := range []struct {
+		name string
+		id   gfx.ID
+	}{
+		{"column", windowsSortNameID},
+		{"tabs", windowsSortTabsID},
+	} {
+		t.Run(action.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			active := state.space.Current()
+			active.Name = "a.txt"
+			focused := state.space.NewDocument()
+			focused.Name = "z.txt"
+			for index := range 24 {
+				state.space.NewDocument().Name = "file" + strconv.Itoa(index) + ".txt"
+			}
+			state.space.Select(state.documentIndex(active))
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, menuOverflowID)
+			clickID(t, driver, hiddenMenuScope.At(11))
+			clickID(t, driver, menuItemScope.At(1))
+			clickLabeledControl(t, driver, "Select z.txt")
+			clickID(t, driver, action.id)
+			last := len(state.windowsRows) - 1
+			if state.windowsRows[last] != focused || state.space.Current() != active || len(state.windowsSelected) != 1 || !state.windowsSelected[focused] {
+				t.Fatal("sort lost its order, active document, or checked row")
+			}
+			if got := state.space.Documents[last] == focused; got != (action.id == windowsSortTabsID) {
+				t.Fatal("tab order did not match the sort action")
+			}
+			focusedVisible := func() bool {
+				for _, hit := range driver.Snapshot().Hits {
+					if hit.Label == "Select z.txt" {
+						return true
+					}
+				}
+				return false
+			}
+			if !focusedVisible() {
+				t.Fatal("sort moved the keyboard target out of the visible rows")
+			}
+			clickID(t, driver, windowsPreviousID)
+			if focusedVisible() {
+				t.Fatal("manual scrolling did not move away from the focused row")
+			}
+			if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+				t.Fatal(err)
+			}
+			if state.windowsDialogOpen || state.space.Current() != focused || driver.Snapshot().Focused != editorID {
+				t.Fatal("Enter did not activate and focus the original keyboard target")
+			}
+		})
+	}
+}
+
 func TestWindowsDialogSpaceTogglesOnlyTheFocusedRow(t *testing.T) {
 	state, driver := startDriver(t)
 	active := state.space.Current()
