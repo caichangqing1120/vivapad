@@ -89,7 +89,24 @@ jobs:
             throw 'Windows GUI executable did not print command-line help'
           }
       - name: Run unit and integration tests
-        run: go test ./... -count=1 -timeout=15m
+        run: |
+          if [[ "$RUNNER_OS" != Windows ]]; then
+            go test ./... -count=1 -timeout=15m
+            exit
+          fi
+          # Run the external-action package separately so console startup does
+          # not compete with desktop and editor tests in other packages.
+          listed=$(go list ./...)
+          packages=()
+          while IFS= read -r package; do
+            if [[ "$package" != vivapad/internal/external ]]; then
+              packages+=("$package")
+            fi
+          done <<< "$listed"
+          go test "${packages[@]}" -count=1 -timeout=15m
+      - name: Run Windows console and external action tests
+        if: runner.os == 'Windows'
+        run: go test ./internal/external -count=1 -v -timeout=2m
       - name: Compare RTL, clipboard and multi-selection macros with Notepad++
         if: runner.os == 'Windows'
         shell: pwsh
