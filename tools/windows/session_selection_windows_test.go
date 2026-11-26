@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"vivapad/internal/session"
 )
@@ -30,7 +31,13 @@ func TestNotepadPlusPlusLegacySessionSelection(t *testing.T) {
 	}
 	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", "-openSession", xml)
 	sci := focusedScintilla(t, editor)
-	if length, codePage := sci(2006, 0, 0), sci(2137, 0, 0); length != uintptr(len(buffer)) || codePage != 65001 {
+	// Notepad++ can show its window before loading the startup session.
+	length := sci(2006, 0, 0)
+	for deadline := time.Now().Add(5 * time.Second); length == 0 && time.Now().Before(deadline); {
+		time.Sleep(25 * time.Millisecond)
+		length = sci(2006, 0, 0)
+	}
+	if codePage := sci(2137, 0, 0); length != uintptr(len(buffer)) || codePage != 65001 {
 		t.Fatalf("reference buffer length=%d code page=%d, want %d bytes of UTF-8", length, codePage, len(buffer))
 	}
 	if gotAnchor, gotCaret := sci(2009, 0, 0), sci(2008, 0, 0); gotAnchor != uintptr(anchor) || gotCaret != uintptr(caret) {
