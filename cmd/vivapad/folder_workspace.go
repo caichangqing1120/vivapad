@@ -35,7 +35,7 @@ func (state *model) addFolderRoot(path string) error {
 			current := existing
 			relative, _ := filepath.Rel(existing, root)
 			for _, part := range strings.Split(relative, string(filepath.Separator)) {
-				state.folderExpanded[current] = true
+				state.setFolderExpanded(current, true)
 				if part != "." {
 					current = filepath.Join(current, part)
 				}
@@ -51,6 +51,7 @@ func (state *model) addFolderRoot(path string) error {
 		return fmt.Errorf("too many folder roots")
 	}
 	state.folderRoots = append(state.folderRoots, root)
+	state.folderRowsSnapshot = nil
 	state.folderSelected, state.folderVisible = root, true
 	return nil
 }
@@ -102,8 +103,19 @@ func (state *model) restoreFolderWorkspace(stored session.State) {
 	}
 }
 
+func (state *model) setFolderExpanded(path string, expanded bool) {
+	if state.folderExpanded[path] != expanded {
+		state.folderExpanded[path] = expanded
+		state.folderRowsSnapshot = nil
+	}
+}
+
 func (state *model) folderRows() []folderRow {
+	if state.folderRowsSnapshot != nil {
+		return state.folderRowsSnapshot
+	}
 	var rows []folderRow
+	cacheable := true
 	var appendChildren func(string, int)
 	appendChildren = func(path string, depth int) {
 		if !state.folderExpanded[path] {
@@ -112,16 +124,21 @@ func (state *model) folderRows() []folderRow {
 		children, ok := state.folderCache[path]
 		if !ok || state.folderWatching[path] == nil && !state.folderWatchUnavailable {
 			if err := foldertree.CheckCanonicalPath(path); err != nil {
+				cacheable = false
 				state.stopFolderBranch(path)
 				state.notice = "Folder unavailable: " + err.Error()
 				return
 			}
 		}
 		state.ensureFolderWatch(path)
+		if state.folderWatching[path] == nil {
+			cacheable = false
+		}
 		if !ok {
 			var err error
 			children, err = foldertree.Children(path)
 			if err != nil {
+				cacheable = false
 				state.notice = "Folder unavailable: " + err.Error()
 				return
 			}
@@ -138,13 +155,16 @@ func (state *model) folderRows() []folderRow {
 		rows = append(rows, folderRow{path: root, name: filepath.Base(root), directory: true})
 		appendChildren(root, 1)
 	}
+	if cacheable {
+		state.folderRowsSnapshot = rows
+	}
 	return rows
 }
 
 func (state *model) activateFolderRow(row folderRow) bool {
 	state.folderSelected = row.path
 	if row.directory {
-		state.folderExpanded[row.path] = !state.folderExpanded[row.path]
+		state.setFolderExpanded(row.path, !state.folderExpanded[row.path])
 		if !state.folderExpanded[row.path] {
 			state.stopFolderBranch(row.path)
 		}

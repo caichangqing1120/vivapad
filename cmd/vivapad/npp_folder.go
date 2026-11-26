@@ -131,7 +131,7 @@ func (state *model) applyNPPFolders(folders []session.NPPFolderRoot, selected st
 			return err
 		}
 		for _, path := range folder.Expanded {
-			state.folderExpanded[path] = true
+			state.setFolderExpanded(path, true)
 		}
 	}
 	if selected != "" {
@@ -145,7 +145,7 @@ func (state *model) applyNPPFolders(folders []session.NPPFolderRoot, selected st
 				parent = filepath.Dir(selected)
 			}
 			for current := parent; foldertree.Contains(folder.Path, current); current = filepath.Dir(current) {
-				state.folderExpanded[current] = true
+				state.setFolderExpanded(current, true)
 				if current == folder.Path {
 					break
 				}

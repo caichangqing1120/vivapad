@@ -52,6 +52,7 @@ func folderWatchIdentity(path string) (os.FileInfo, error) {
 }
 
 func (state *model) stopFolderBranch(path string) {
+	state.folderRowsSnapshot = nil
 	for watched := range state.folderWatching {
 		relative, err := filepath.Rel(path, watched)
 		if err != nil || relative != "." && (relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator))) {
@@ -72,6 +73,7 @@ func (state *model) stopFolderBranch(path string) {
 }
 
 func (state *model) stopFolderWatching() {
+	state.folderRowsSnapshot = nil
 	if state.folderWatcher != nil {
 		_ = state.folderWatcher.Close()
 		state.folderWatcher = nil
@@ -94,6 +96,7 @@ func (state *model) consumeFolderChanges() {
 	if !changed {
 		return
 	}
+	state.folderRowsSnapshot = nil
 	clear(state.folderCache)
 	active := make(map[string]struct{}, len(state.folderWatching))
 	for _, path := range state.folderWatcher.WatchList() {
