@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"vivapad/internal/session"
 )
 
 func TestNotepadPlusPlusSummaryWords(t *testing.T) {
@@ -18,16 +20,6 @@ func TestNotepadPlusPlusSummaryWords(t *testing.T) {
 	// Also used in TestDocumentSummaryMatchesWindowsReferenceWords.
 	const source = "alpha,beta\r\nx\u0301y _\n\U0001f642 \U0001f642\r\u732b\uff0f\u72ac"
 	const fixture = "\ufeff" + source
-	path := filepath.Join(t.TempDir(), "summary-words.txt")
-	if err := os.WriteFile(path, []byte(fixture), 0600); err != nil {
-		t.Fatal(err)
-	}
-	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", path)
-	editor.focusText(t)
-	send := focusedScintilla(t, editor)
-	if got := send(2006, 0, 0); got != uintptr(len(source)) || send(2137, 0, 0) != 65001 {
-		t.Fatalf("reference fixture is not UTF-8 at the expected length: %d", got)
-	}
 	for _, tc := range []struct {
 		name string
 		end  uintptr
@@ -35,12 +27,42 @@ func TestNotepadPlusPlusSummaryWords(t *testing.T) {
 		{"empty selection", 0},
 		{"selected first word", 5},
 	} {
-		if !t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "summary-words.txt")
+			if err := os.WriteFile(path, []byte(fixture), 0600); err != nil {
+				t.Fatal(err)
+			}
+			xml := filepath.Join(root, "summary.xml")
+			stored := session.NPPState{Main: []session.NPPFile{{
+				Path: path, Language: "normal", Encoding: -1, EndPos: int64(tc.end),
+			}}}
+			if err := session.SaveNPP(xml, stored); err != nil {
+				t.Fatal(err)
+			}
+			settings := filepath.Join(root, "settings")
+			if err := os.Mkdir(settings, 0700); err != nil {
+				t.Fatal(err)
+			}
+			const config = `<NotepadPlus><GUIConfigs><GUIConfig name="NewDocDefaultSettings" addNewDocumentOnStartup="no" /></GUIConfigs></NotepadPlus>`
+			if err := os.WriteFile(filepath.Join(settings, "config.xml"), []byte(config), 0600); err != nil {
+				t.Fatal(err)
+			}
+			editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", "-settingsDir="+settings, "-openSession", xml)
+			awaitSessionDocument(t, editor, filepath.Base(path))
+			view := awaitSessionBuffer(t, editor, source)
+			read := func(message uintptr) uintptr {
+				t.Helper()
+				value, ok := sessionScintillaValue(view, message, 0)
+				if !ok {
+					t.Fatalf("read Scintilla message %#x from view %#x", message, view)
+				}
+				return value
+			}
 			type viewState struct{ anchor, caret, length, modified uintptr }
 			readView := func() viewState {
-				return viewState{send(2009, 0, 0), send(2008, 0, 0), send(2006, 0, 0), send(2159, 0, 0)}
+				return viewState{read(2009), read(2008), read(2006), read(2159)}
 			}
-			send(2572, tc.end, 0) // SCI_SETSELECTION(caret, anchor)
 			before := readView()
 			want := viewState{caret: tc.end, length: uintptr(len(source))}
 			if before != want {
@@ -70,12 +92,10 @@ func TestNotepadPlusPlusSummaryWords(t *testing.T) {
 			if after := readView(); after != before {
 				t.Fatalf("Notepad++ Summary changed the selection or document: before %+v; after %+v", before, after)
 			}
-		}) {
-			return
-		}
+			editor.close(t)
+			awaitBytes(t, path, fixture)
+		})
 	}
-	editor.close(t)
-	awaitBytes(t, path, fixture)
 }
 
 func readNotepadSummary(t *testing.T, editor uintptr) (uintptr, string) {
