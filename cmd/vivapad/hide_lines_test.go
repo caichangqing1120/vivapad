@@ -124,6 +124,51 @@ func TestHideLinesCoexistsWithSourceFolds(t *testing.T) {
 	}
 }
 
+func TestInlineHiddenLinesBadgeInRightCloneKeepsSyntaxFold(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	const source = "{\n  \"a\": 1,\n  \"b\": 2\n}\nlast"
+	doc.Editor.Insert(source)
+	doc.Editor.ClearHistory()
+	state.command("JSON")
+	state.splitEnabled = true
+	state.paneDocs = [2]*document.Document{doc, doc}
+	state.activePane = 1
+	doc.GoToLine(2)
+	state.command("Hide Lines")
+	state.command("Fold All")
+	before := doc.Editor.Selection()
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	hits := driver.Snapshot().Hits
+	var gutter gfx.Rect
+	for _, hit := range hits {
+		if hit.ID == rightHideLineScope.At(0) {
+			gutter = hit.Bounds
+		}
+	}
+	if gutter.Width == 0 {
+		t.Fatal("right clone is missing the hidden-lines gutter control")
+	}
+	var badge gfx.ID
+	for _, hit := range hits {
+		if hit.Label == "Show hidden lines" && hit.Bounds.X >= gutter.X+gutter.Width {
+			badge = hit.ID
+		}
+	}
+	if badge.IsZero() {
+		t.Fatal("right clone is missing the inline hidden-lines control")
+	}
+	clickID(t, driver, badge)
+	if len(state.hiddenRanges(doc)) != 0 || len(state.foldRanges(doc)) != 1 {
+		t.Fatal("inline restore did not remove only the manually hidden lines")
+	}
+	if doc.Editor.String() != source || doc.Editor.Selection() != before || doc.Editor.CanUndo() {
+		t.Fatal("inline restore changed text, selection, or history")
+	}
+}
+
 func TestCaptureHideLinesWhenRequested(t *testing.T) {
 	output := os.Getenv("VIVAPAD_HIDE_LINES_SHOTS")
 	if output == "" {

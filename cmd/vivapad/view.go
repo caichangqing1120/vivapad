@@ -856,6 +856,10 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	state.applyChangeDecorations(&snapshot, doc)
 	state.paintRectangleSelection(&snapshot, doc, pane)
 	state.paintMultiSelection(&snapshot, doc, pane)
+	foldScope, hideScope, badgeScope := leftFoldScope, hideLineScope, leftFoldBadgeScope
+	if pane == 1 {
+		foldScope, hideScope, badgeScope = rightFoldScope, rightHideLineScope, rightFoldBadgeScope
+	}
 	if len(regions) != 0 || len(hidden) != 0 {
 		snapshot.FoldGutter = true
 		if provisional {
@@ -863,21 +867,21 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 		} else {
 			snapshot.FoldedLines = state.visualFoldRanges(doc)
 		}
-		foldScope := leftFoldScope
-		hideScope := hideLineScope
-		if pane == 1 {
-			foldScope = rightFoldScope
-			hideScope = rightHideLineScope
-		}
 		for _, region := range regions {
-			snapshot.FoldMarkers = append(snapshot.FoldMarkers, components.CodeEditorFoldMarker{
+			marker := components.CodeEditorFoldMarker{
 				Line: region.Header, ID: foldScope.At(region.Header), Collapsed: state.folded[doc][region.Header],
-			})
+			}
+			if marker.Collapsed {
+				marker.PlaceholderID = badgeScope.At(region.Header)
+			}
+			snapshot.FoldMarkers = append(snapshot.FoldMarkers, marker)
 		}
 		for _, group := range hidden {
 			header := group.Start - 1
 			snapshot.FoldMarkers = slices.DeleteFunc(snapshot.FoldMarkers, func(marker components.CodeEditorFoldMarker) bool { return marker.Line == header })
-			snapshot.FoldMarkers = append(snapshot.FoldMarkers, components.CodeEditorFoldMarker{Line: header, ID: hideScope.At(header), Collapsed: true, Label: "Show hidden lines"})
+			snapshot.FoldMarkers = append(snapshot.FoldMarkers, components.CodeEditorFoldMarker{
+				Line: header, ID: hideScope.At(header), PlaceholderID: badgeScope.At(header), Collapsed: true, Label: "Show hidden lines",
+			})
 		}
 		slices.SortFunc(snapshot.FoldMarkers, func(left, right components.CodeEditorFoldMarker) int { return left.Line - right.Line })
 	}
@@ -933,23 +937,16 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 		snapshot.CompositionEnd = doc.Editor.ByteOffset(composition.End)
 	}
 	state.codeEditorForPane(pane).Paint(canvas, theme, bounds, snapshot)
-	if len(regions) != 0 || len(hidden) != 0 {
-		foldScope := leftFoldScope
-		hideScope := hideLineScope
-		if pane == 1 {
-			foldScope = rightFoldScope
-			hideScope = rightHideLineScope
+	for _, marker := range snapshot.FoldMarkers {
+		if !canvas.Clicked(marker.ID) && !canvas.Clicked(marker.PlaceholderID) {
+			continue
 		}
-		for _, region := range regions {
-			if canvas.Clicked(foldScope.At(region.Header)) {
-				state.toggleFold(doc, region.Header)
-			}
+		if marker.ID.Scope() == hideScope {
+			state.showHiddenLines(doc, marker.Line)
+		} else {
+			state.toggleFold(doc, marker.Line)
 		}
-		for _, group := range hidden {
-			if canvas.Clicked(hideScope.At(group.Start - 1)) {
-				state.showHiddenLines(doc, group.Start-1)
-			}
-		}
+		break
 	}
 }
 

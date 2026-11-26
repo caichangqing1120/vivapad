@@ -67,6 +67,42 @@ func TestFoldCommandsHideNestedRowsWithoutChangingCleanDocument(t *testing.T) {
 	}
 }
 
+func TestInlineFoldBadgeExpandsOuterFoldWithoutChangingDocument(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	const source = "func main() {\n  if true {\n    println(1)\n  }\n}\ntail"
+	doc.Editor.Insert(source)
+	doc.Editor.ClearHistory()
+	doc.Editor.MoveTo(0, false)
+	state.command("Go")
+	state.toggleBookmark()
+	state.command("Fold All")
+	const anchor, caret = 1, 4
+	doc.Editor.SetSelection(text.Range{Start: anchor, End: caret})
+	before := doc.Editor.Selection()
+	dirty := doc.Dirty()
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	var badge gfx.ID
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.Label == "Expand fold" && hit.ID != leftFoldScope.At(0) {
+			badge = hit.ID
+			break
+		}
+	}
+	if badge.IsZero() {
+		t.Fatal("missing the inline fold control")
+	}
+	clickID(t, driver, badge)
+	if got := state.foldRanges(doc); !reflect.DeepEqual(got, []components.CodeEditorFoldRange{{Header: 1, LastLine: 3}}) {
+		t.Fatalf("outer badge did not preserve the folded child: %+v", got)
+	}
+	if doc.Editor.String() != source || doc.Editor.Selection() != before || doc.Dirty() != dirty || doc.Editor.CanUndo() || !reflect.DeepEqual(state.bookmarkLines(doc), []int{0}) {
+		t.Fatal("expanding the inline badge changed text, selection, history, or bookmarks")
+	}
+}
+
 func TestFoldAllHidesPythonBodyAfterCommentedHeader(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "greet.py")
 	value := "def greet(): # inline comment\r\n    hidden_body()\r\noutside()\r\n"
