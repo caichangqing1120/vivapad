@@ -76,6 +76,36 @@ func TestPDFBandUsesNaturalFontVariants(t *testing.T) {
 	}
 }
 
+func TestPDFItalicBandDoesNotInheritPreviousPageFill(t *testing.T) {
+	music, err := os.ReadFile("fonts/NotoMusic-Regular.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderer, err := newPDFRendererWithBandFonts(goregular.TTF, 12, 4, pdfBandFonts{italic: goitalic.TTF}, music)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pdf := newPDFDocument(renderer.fonts[:renderer.bodyCount], 12)
+	pdf.SetCompression(false)
+	pdf.AddPage()
+	pdf.SetFillColor(20, 90, 200)
+	pdf.Rect(20, 100, 10, 10, "F")
+	pdf.AddPage()
+	if err := renderer.drawPDFBand(pdf, TextBand{Left: "\U0001d11eReport"}, BandFont{Italic: true},
+		PageBounds{Left: 20, Top: 50, Right: 500, Bottom: 750}, true); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := pdf.Output(&output); err != nil {
+		t.Fatal(err)
+	}
+	// The music outline is black inside its skew transform. After restoring
+	// the inherited blue fill, the following text must set its own black fill.
+	if !bytes.Contains(output.Bytes(), []byte("q 0.000 g BT ")) {
+		t.Fatal("the text following the music outline lacks an explicit black fill")
+	}
+}
+
 func TestPDFRendererUsesEmbeddedFontMetricsAndPrinterPage(t *testing.T) {
 	font, err := os.ReadFile("fonts/NotoSansSC.ttf")
 	if err != nil {

@@ -87,11 +87,6 @@ func (renderer *pdfRenderer) fontCandidates(style pdfFontStyle) []int {
 
 func (renderer *pdfRenderer) paintBandRun(pdf *fpdf.Fpdf, run pdfFontRun, x, y, size float64, style pdfFontStyle) (float64, error) {
 	missing := style &^ renderer.fonts[run.font].style
-	if missing&pdfItalic != 0 {
-		pdf.TransformBegin()
-		pdf.TransformSkewX(12, x, y)
-		defer pdf.TransformEnd()
-	}
 	bold := missing&pdfBold != 0
 	if bold {
 		width := pdf.GetLineWidth()
@@ -101,6 +96,18 @@ func (renderer *pdfRenderer) paintBandRun(pdf *fpdf.Fpdf, run pdfFontRun, x, y, 
 		defer func() {
 			pdf.SetTextRenderingMode(0)
 			pdf.SetLineWidth(width)
+		}()
+	}
+	if missing&pdfItalic != 0 {
+		red, green, blue := pdf.GetFillColor()
+		pdf.TransformBegin()
+		pdf.TransformSkewX(12, x, y)
+		defer func() {
+			pdf.TransformEnd()
+			if run.vector {
+				// Q restores the PDF fill but not fpdf's cached fill.
+				pdf.SetFillColor(red, green, blue)
+			}
 		}()
 	}
 	return renderer.paintRun(pdf, run, x, y, size, bold)
