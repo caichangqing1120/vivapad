@@ -11,13 +11,13 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/rivo/uniseg v0.4.7
-	github.com/vivaui/viva v0.6.8
+	github.com/vivaui/viva v0.6.9
 	golang.org/x/image v0.48.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/text v0.44.0
 )
 
-replace github.com/vivaui/viva => github.com/caichangqing1120/viva v0.6.1-0.20261126012850-93748eda4924
+replace github.com/vivaui/viva => github.com/caichangqing1120/viva v0.6.1-0.20261126030351-84ecb9d7b666
 
 require (
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
