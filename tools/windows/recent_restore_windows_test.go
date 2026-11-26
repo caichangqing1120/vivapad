@@ -34,6 +34,10 @@ func TestWindowsRecentClosedFileRestore(t *testing.T) {
 			if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 				t.Fatal(err)
 			}
+			canonicalPath, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				t.Fatal(err)
+			}
 			var args, env []string
 			var history string
 			if tc.width == 0 {
@@ -69,7 +73,7 @@ func TestWindowsRecentClosedFileRestore(t *testing.T) {
 					t.Fatal("closing the last saved file did not leave an empty tab")
 				}
 			} else {
-				awaitWindowsClosedHistory(t, history, path)
+				awaitWindowsClosedHistory(t, history, canonicalPath)
 			}
 			editor.keys(t, keyLeftControl, 0xa0, 'T') // Ctrl+Left Shift+T
 			if history == "" {
