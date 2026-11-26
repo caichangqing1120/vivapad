@@ -127,14 +127,15 @@ func (state *model) closeWindowsDialogSelection() {
 }
 
 func (state *model) applyWindowsDialogSort() {
+	command := state.windowsSort
 	if !state.windowsHasSort {
-		state.windowsMessage = "Select a column to sort"
-		return
+		command = windowSortCommand{column: 0}
 	}
-	if err := state.sortWindowTabs(state.windowsSort); err != nil {
+	if err := state.sortWindowTabs(command); err != nil {
 		state.windowsMessage = "Sort failed: " + err.Error()
 		return
 	}
+	state.windowsSort, state.windowsHasSort = command, true
 	state.windowsMessage = "Tabs sorted"
 	state.refreshWindowsRows()
 }
