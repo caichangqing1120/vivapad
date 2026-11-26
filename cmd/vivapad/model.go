@@ -501,6 +501,7 @@ type model struct {
 	functionPaintMode             string
 	folderExpanded                map[string]bool
 	folderCache                   map[string][]foldertree.Entry
+	folderRowsSnapshot            []folderRow
 	folderSelected                string
 	folderOffset                  int
 	folderRowHits                 []folderRowHit
