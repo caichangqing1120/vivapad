@@ -566,6 +566,8 @@ type model struct {
 	windowsDialogOpen             bool
 	windowsDialogPane             int
 	windowsRows                   []*document.Document
+	windowsRowIDs                 map[*document.Document]gfx.ID
+	windowsNextRowID              int
 	windowsSelected               map[*document.Document]bool
 	windowsFocused                *document.Document
 	windowsOffset                 int
@@ -2553,6 +2555,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 		state.documentListAnchor = nil
 	}
 	delete(state.windowsSelected, doc)
+	delete(state.windowsRowIDs, doc)
 	if state.windowsFocused == doc {
 		state.windowsFocused = nil
 	}

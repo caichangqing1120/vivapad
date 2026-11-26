@@ -140,6 +140,67 @@ func TestWindowsDialogPreservesSortWhenMetadataIsMissing(t *testing.T) {
 	}
 }
 
+func TestWindowsDialogRejectsReleaseAfterModifiedSortReordersRows(t *testing.T) {
+	state, driver := startDriver(t)
+	root := t.TempDir()
+	first, second := state.space.Current(), state.space.NewDocument()
+	for i, doc := range []*document.Document{first, second} {
+		doc.Name = []string{"first.txt", "second.txt"}[i]
+		doc.Path = filepath.Join(root, doc.Name)
+		if err := os.WriteFile(doc.Path, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		stamp := time.Unix(1700000100+int64(i)*100, 0)
+		if err := os.Chtimes(doc.Path, stamp, stamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuOverflowID)
+	clickID(t, driver, hiddenMenuScope.At(11))
+	clickID(t, driver, menuItemScope.At(1))
+	clickID(t, driver, windowsHeaderScope.At(4))
+	bounds := func(label string) gfx.Rect {
+		for _, hit := range driver.Snapshot().Hits {
+			if hit.ID.Scope() == windowsRowScope && hit.Label == label {
+				return hit.Bounds
+			}
+		}
+		return gfx.Rect{}
+	}
+	pressed := bounds("Select first.txt")
+	if pressed.Width == 0 || !reflect.DeepEqual(state.windowsRows, []*document.Document{first, second}) {
+		t.Fatal("fixture did not show the first document at the top")
+	}
+	x, y := pressed.X+pressed.Width/2, pressed.Y+pressed.Height/2
+	if err := driver.Press(x, y, gfx.PointerButtonPrimary); err != nil {
+		t.Fatal(err)
+	}
+	stamp := time.Unix(1700000000, 0)
+	if err := os.Chtimes(second.Path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if bounds("Select second.txt") != pressed {
+		t.Fatal("modified-time refresh did not reorder the pressed row")
+	}
+	if err := driver.Release(x, y, gfx.PointerButtonPrimary); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.windowsSelected) != 0 {
+		t.Fatal("release checked a different document after sorting")
+	}
+	clickLabeledControl(t, driver, "Select second.txt")
+	if len(state.windowsSelected) != 1 || !state.windowsSelected[second] {
+		t.Fatal("a fresh click did not check the newly displayed document")
+	}
+}
+
 func TestWindowsDialogDisplaysContainingDirectory(t *testing.T) {
 	for _, size := range []struct {
 		name          string
