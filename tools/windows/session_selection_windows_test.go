@@ -10,7 +10,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/vivaui/viva/app"
 	"vivapad/internal/session"
 )
 
@@ -146,13 +145,7 @@ func TestVivaPadLegacySessionSelection(t *testing.T) {
 	helpClick(t, editor, "File")
 	helpClick(t, editor, "Sessions")
 	helpClick(t, editor, "Load Session...")
-	picker := waitForSessionPicker(t, editor)
-	if err := app.SetClipboardText(xml); err != nil {
-		t.Fatal(err)
-	}
-	picker.keys(t, keyLeftAlt, 'N') // File name field in the English Windows picker.
-	picker.keys(t, keyLeftControl, 'V')
-	picker.keys(t, 0x0d) // Enter
+	openSessionPickerFile(t, waitForSessionPicker(t, editor), xml)
 	helpWait(t, editor, "imported session tab", func(nodes []helpNode) bool {
 		_, found := helpFind(nodes, filepath.Base(path))
 		return found
@@ -188,7 +181,7 @@ func awaitSessionDocument(t *testing.T, editor *desktopEditor, name string) {
 	t.Fatalf("Notepad++ never activated session document %q; final window title %q", name, title)
 }
 
-func waitForSessionPicker(t *testing.T, editor *desktopEditor) *desktopEditor {
+func waitForSessionPicker(t *testing.T, editor *desktopEditor) uintptr {
 	t.Helper()
 	var owner uint32
 	windowPID.Call(editor.hwnd, uintptr(unsafe.Pointer(&owner)))
@@ -200,12 +193,12 @@ func waitForSessionPicker(t *testing.T, editor *desktopEditor) *desktopEditor {
 			windowPID.Call(active, uintptr(unsafe.Pointer(&pid)))
 			title = sessionWindowTitle(active)
 			if owner != 0 && pid == owner && title == "Load Session" {
-				return &desktopEditor{hwnd: active}
+				return active
 			}
 		}
 	}
 	t.Fatalf("VivaPad's Load Session picker did not become active; last dialog title %q", title)
-	return nil
+	return 0
 }
 
 func sessionWindowTitle(hwnd uintptr) string {
