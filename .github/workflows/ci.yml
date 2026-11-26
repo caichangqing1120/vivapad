@@ -119,6 +119,9 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'VivaPad native clipboard comparison failed' }
             go test ./cmd/vivapad -run '^TestSelectionHashWritesWindowsClipboard$' -count=1 -v -timeout=1m
             if ($LASTEXITCODE -ne 0) { throw 'VivaPad native selection hash comparison failed' }
+            $env:VIVAPAD_WINDOWS_HELP_TEST = '1'
+            go test ./tools/windows -run '^TestVivaPadWindowsHelpDialogs$' -count=1 -v -timeout=3m
+            if ($LASTEXITCODE -ne 0) { throw 'VivaPad native Help dialog checks failed' }
           } finally {
             Remove-Item -LiteralPath $work -Recurse -Force
           }
