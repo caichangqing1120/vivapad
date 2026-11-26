@@ -51,15 +51,74 @@ func TestNotepadPlusPlusLegacySessionSelection(t *testing.T) {
 	}
 	editor := openDesktopEditor(t, reference, "Notepad++", nil, "-multiInst", "-nosession", "-noPlugin", "-settingsDir="+settings, "-openSession", xml)
 	awaitSessionDocument(t, editor, filepath.Base(path))
-	sci := focusedScintilla(t, editor)
-	if length, codePage := sci(2006, 0, 0), sci(2137, 0, 0); length != uintptr(len(legacySessionBuffer)) || codePage != 65001 {
-		t.Fatalf("reference buffer length=%d code page=%d, want %d bytes of UTF-8", length, codePage, len(legacySessionBuffer))
-	}
-	if gotAnchor, gotCaret := sci(2009, 0, 0), sci(2008, 0, 0); gotAnchor != uintptr(legacySessionAnchor) || gotCaret != uintptr(legacySessionCaret) {
+	hwnd := awaitSessionBuffer(t, editor, legacySessionBuffer)
+	gotAnchor, anchorOK := sessionScintillaValue(hwnd, 2009, 0) // SCI_GETANCHOR
+	gotCaret, caretOK := sessionScintillaValue(hwnd, 2008, 0)   // SCI_GETCURRENTPOS
+	if !anchorOK || !caretOK || gotAnchor != uintptr(legacySessionAnchor) || gotCaret != uintptr(legacySessionCaret) {
 		t.Fatalf("reference restored anchor=%d caret=%d, want %d and %d", gotAnchor, gotCaret, legacySessionAnchor, legacySessionCaret)
 	}
 	editor.close(t)
 	awaitBytes(t, path, legacySessionDisk)
+}
+
+// The active file can already be in the window title while keyboard focus
+// still belongs to an empty Scintilla. Identify the loaded view by its bytes.
+func awaitSessionBuffer(t *testing.T, editor *desktopEditor, want string) uintptr {
+	t.Helper()
+	type observedView struct {
+		Length, CodePage uintptr
+	}
+	var views []observedView
+	var matches []uintptr
+	enumChildren := user32.NewProc("EnumChildWindows")
+	find := syscall.NewCallback(func(hwnd, _ uintptr) uintptr {
+		if visible, _, _ := isWindowVisible.Call(hwnd); visible == 0 {
+			return 1
+		}
+		var class [32]uint16
+		getClassName.Call(hwnd, uintptr(unsafe.Pointer(&class[0])), uintptr(len(class)))
+		if syscall.UTF16ToString(class[:]) != "Scintilla" {
+			return 1
+		}
+		length, lengthOK := sessionScintillaValue(hwnd, 2006, 0) // SCI_GETLENGTH
+		codePage, pageOK := sessionScintillaValue(hwnd, 2137, 0) // SCI_GETCODEPAGE
+		if !lengthOK || !pageOK {
+			return 1
+		}
+		views = append(views, observedView{length, codePage})
+		if length != uintptr(len(want)) || codePage != 65001 {
+			return 1
+		}
+		for index := 0; index < len(want); index++ {
+			value, ok := sessionScintillaValue(hwnd, 2007, uintptr(index)) // SCI_GETCHARAT
+			if !ok || byte(value) != want[index] {
+				return 1
+			}
+		}
+		matches = append(matches, hwnd)
+		return 1
+	})
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(25 * time.Millisecond) {
+		select {
+		case <-editor.done:
+			t.Fatalf("Notepad++ exited before exposing its session buffer: %v", editor.err)
+		default:
+		}
+		views, matches = views[:0], matches[:0]
+		enumChildren.Call(editor.hwnd, find, 0)
+		if len(matches) == 1 {
+			t.Logf("reference UTF-8 session buffer matched in one visible Scintilla: %+v", views)
+			return matches[0]
+		}
+	}
+	t.Fatalf("wanted one visible Scintilla with the exact UTF-8 fixture, found %d; observed views: %+v", len(matches), views)
+	return 0
+}
+
+func sessionScintillaValue(hwnd, message, index uintptr) (uintptr, bool) {
+	var value uintptr
+	ok, _, _ := sendMessageTimeout.Call(hwnd, message, index, 0, 2, 250, uintptr(unsafe.Pointer(&value)))
+	return value, ok != 0
 }
 
 func TestVivaPadLegacySessionSelection(t *testing.T) {
