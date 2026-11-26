@@ -34,19 +34,43 @@ func (state *model) closeWindowsDialog() {
 }
 
 func (state *model) refreshWindowsRows() {
-	state.windowsRows = append(state.windowsRows[:0], state.activeViewTabs()...)
+	tabs := state.activeViewTabs()
 	if !state.windowsHasSort {
+		state.windowsRows = append(state.windowsRows[:0], tabs...)
 		return
 	}
-	keys := make(map[*document.Document]windowSortKey, len(state.windowsRows))
-	for _, doc := range state.windowsRows {
-		key, err := state.windowKey(doc, state.windowsSort.column == 4)
+	if err := state.sortWindowsRows(tabs, state.windowsSort); err != nil {
+		state.windowsMessage = "Cannot sort: " + err.Error()
+		// Keep the last order while removing closed tabs and appending new ones.
+		open := make(map[*document.Document]bool, len(tabs))
+		for _, doc := range tabs {
+			open[doc] = true
+		}
+		state.windowsRows = slices.DeleteFunc(state.windowsRows, func(doc *document.Document) bool {
+			if !open[doc] {
+				return true
+			}
+			delete(open, doc)
+			return false
+		})
+		for _, doc := range tabs {
+			if open[doc] {
+				state.windowsRows = append(state.windowsRows, doc)
+			}
+		}
+	}
+}
+
+func (state *model) sortWindowsRows(tabs []*document.Document, command windowSortCommand) error {
+	keys := make(map[*document.Document]windowSortKey, len(tabs))
+	for _, doc := range tabs {
+		key, err := state.windowKey(doc, command.column == 4)
 		if err != nil {
-			state.windowsMessage = "Cannot sort: " + err.Error()
-			return
+			return err
 		}
 		keys[doc] = key
 	}
+	state.windowsRows = append(state.windowsRows[:0], tabs...)
 	slices.SortStableFunc(state.windowsRows, func(first, second *document.Document) int {
 		if state.isPinned(first) != state.isPinned(second) {
 			if state.isPinned(first) {
@@ -54,23 +78,23 @@ func (state *model) refreshWindowsRows() {
 			}
 			return 1
 		}
-		result := compareWindowKeys(keys[first], keys[second], state.windowsSort.column)
-		if state.windowsSort.reverse {
+		result := compareWindowKeys(keys[first], keys[second], command.column)
+		if command.reverse {
 			return -result
 		}
 		return result
 	})
+	return nil
 }
 
 func (state *model) sortWindowsDialogBy(column int) {
-	if state.windowsHasSort && state.windowsSort.column == column {
-		state.windowsSort.reverse = !state.windowsSort.reverse
-	} else {
-		state.windowsSort = windowSortCommand{column: column}
+	command := windowSortCommand{column: column, reverse: state.windowsHasSort && state.windowsSort.column == column && !state.windowsSort.reverse}
+	if err := state.sortWindowsRows(state.activeViewTabs(), command); err != nil {
+		state.windowsMessage = "Cannot sort: " + err.Error()
+		return
 	}
-	state.windowsHasSort = true
-	state.windowsOffset = 0
-	state.refreshWindowsRows()
+	state.windowsSort, state.windowsHasSort = command, true
+	state.windowsOffset, state.windowsMessage = 0, ""
 }
 
 func (state *model) activateWindowsDialogDocument() bool {
