@@ -42,6 +42,39 @@ func TestWindowsDialogActivatesAndSortsCurrentView(t *testing.T) {
 	clickID(t, driver, windowsOKID)
 }
 
+func TestWindowsDialogSortTabsDefaultsToAscendingName(t *testing.T) {
+	state, driver := startDriver(t)
+	active := state.space.Current()
+	active.Name = "file10.txt"
+	active.Editor.Insert("unsaved")
+	checked := state.space.NewDocument()
+	checked.Name = "file2.txt"
+	first := state.space.NewDocument()
+	first.Name = "a.txt"
+	state.space.Select(state.documentIndex(active))
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuOverflowID)
+	clickID(t, driver, hiddenMenuScope.At(11))
+	clickID(t, driver, menuItemScope.At(1))
+	clickLabeledControl(t, driver, "Select file2.txt")
+	clickID(t, driver, windowsSortTabsID)
+	want := []*document.Document{first, checked, active}
+	if !reflect.DeepEqual(state.space.Documents, want) || !reflect.DeepEqual(state.windowsRows, want) {
+		t.Fatalf("default Sort tabs = %q, rows = %q; want %q", windowSortTestNames(state.space.Documents), windowSortTestNames(state.windowsRows), windowSortTestNames(want))
+	}
+	if state.space.Current() != active || !state.windowsSelected[checked] || active.Editor.String() != "unsaved" || !active.Editor.CanUndo() {
+		t.Fatal("default Sort tabs changed the active document, selection, or editing state")
+	}
+	clickID(t, driver, windowsSortNameID)
+	clickID(t, driver, windowsSortTabsID)
+	want = []*document.Document{active, checked, first}
+	if !reflect.DeepEqual(state.space.Documents, want) {
+		t.Fatalf("descending Sort tabs = %q; want %q", windowSortTestNames(state.space.Documents), windowSortTestNames(want))
+	}
+}
+
 func TestWindowsDialogDisplaysContainingDirectory(t *testing.T) {
 	for _, size := range []struct {
 		name          string
