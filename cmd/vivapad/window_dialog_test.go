@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -72,6 +73,69 @@ func TestWindowsDialogSortTabsDefaultsToAscendingName(t *testing.T) {
 	want = []*document.Document{active, checked, first}
 	if !reflect.DeepEqual(state.space.Documents, want) {
 		t.Fatalf("descending Sort tabs = %q; want %q", windowSortTestNames(state.space.Documents), windowSortTestNames(want))
+	}
+}
+
+func TestWindowsDialogPreservesSortWhenMetadataIsMissing(t *testing.T) {
+	state, driver := startDriver(t)
+	root := t.TempDir()
+	z := state.space.Current()
+	a := state.space.NewDocument()
+	for _, fixture := range []struct {
+		doc   *document.Document
+		name  string
+		mtime time.Time
+	}{{z, "z.txt", time.Unix(100, 0)}, {a, "a.txt", time.Unix(200, 0)}} {
+		fixture.doc.Name = fixture.name
+		fixture.doc.Path = filepath.Join(root, fixture.name)
+		if err := os.WriteFile(fixture.doc.Path, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(fixture.doc.Path, fixture.mtime, fixture.mtime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clickID(t, driver, menuScope.At(11))
+	clickID(t, driver, menuItemScope.At(1))
+	clickID(t, driver, windowsSortNameID)
+	clickLabeledControl(t, driver, "Select a.txt")
+	if err := os.Remove(z.Path); err != nil {
+		t.Fatal(err)
+	}
+	modified := windowsHeaderScope.At(4)
+	clickID(t, driver, modified)
+	byName := []*document.Document{a, z}
+	if !reflect.DeepEqual(state.windowsRows, byName) || !reflect.DeepEqual(state.space.Documents, []*document.Document{z, a}) ||
+		!state.windowsSelected[a] || !strings.Contains(state.windowsMessage, "Cannot sort:") {
+		t.Fatalf("failed Modified sort lost the previous order or selection: rows=%q tabs=%q message=%q",
+			windowSortTestNames(state.windowsRows), windowSortTestNames(state.space.Documents), state.windowsMessage)
+	}
+	clickID(t, driver, windowsSortTabsID)
+	if !reflect.DeepEqual(state.space.Documents, byName) {
+		t.Fatalf("Sort tabs after failed header sort = %q; want %q", windowSortTestNames(state.space.Documents), windowSortTestNames(byName))
+	}
+	if err := os.WriteFile(z.Path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Unix(100, 0)
+	if err := os.Chtimes(z.Path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, modified)
+	byModified := []*document.Document{z, a}
+	if !reflect.DeepEqual(state.windowsRows, byModified) || strings.Contains(state.windowsMessage, "Cannot sort:") {
+		t.Fatalf("Modified retry = %q, message=%q; want %q", windowSortTestNames(state.windowsRows), state.windowsMessage, windowSortTestNames(byModified))
+	}
+	if err := os.Remove(z.Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Resize(850, 600); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(state.windowsRows, byModified) || !reflect.DeepEqual(state.space.Documents, byName) ||
+		!state.windowsSelected[a] || !strings.Contains(state.windowsMessage, "Cannot sort:") {
+		t.Fatalf("refresh after metadata loss changed the order or selection: rows=%q tabs=%q message=%q",
+			windowSortTestNames(state.windowsRows), windowSortTestNames(state.space.Documents), state.windowsMessage)
 	}
 }
 
