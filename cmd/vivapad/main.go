@@ -41,8 +41,7 @@ func main() {
 			return err
 		}
 		state.closeWindow = func() { config.OnCloseRequest(window.Close) }
-		state.requestFullscreen = window.SetFullscreen
-		state.requestAlwaysOnTop = window.SetAlwaysOnTop
+		state.bindWindowModeControls(window)
 		state.postBrowserResult = application.Post
 		state.saveSessionPicker = app.SaveFileWithCheckbox
 		state.printJob = func(job printing.Job) (int, error) {
@@ -59,6 +58,12 @@ func main() {
 	}); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func (state *model) bindWindowModeControls(window *app.Window) {
+	state.requestFullscreen = window.SetFullscreen
+	state.requestAlwaysOnTop = window.SetAlwaysOnTop
+	state.requestDecoration = window.SetDecorated
 }
 
 const launchUsage = `Usage: vivapad [--] [file ...]

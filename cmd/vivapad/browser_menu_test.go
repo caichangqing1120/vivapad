@@ -45,13 +45,13 @@ func TestViewNamedBrowserUsesSavedActivePane(t *testing.T) {
 	}
 	open := func() {
 		clickID(t, driver, menuScope.At(3))
-		clickID(t, driver, menuItemScope.At(len(menuCommands[3])-1))
+		clickID(t, driver, menuItemScope.At(viewCommandIndex(namedBrowserMenuCommand)))
 	}
 	open()
 	if err := driver.Key(gfx.KeyEscape, 0); err != nil || state.namedBrowserMenuOpen || state.menuOpen != 3 {
 		t.Fatalf("Escape did not return to View: %v", err)
 	}
-	clickID(t, driver, menuItemScope.At(len(menuCommands[3])-1))
+	clickID(t, driver, menuItemScope.At(viewCommandIndex(namedBrowserMenuCommand)))
 	clickID(t, driver, namedBrowserScope.At(2))
 	requireEditorCommandFocus(t, driver, rightEditorID)
 	if calls != 1 || !strings.Contains(state.notice, "browser unavailable") || right.Editor.String() != "unsaved saved" || !right.Dirty() || left.Editor.String() != "left" {
