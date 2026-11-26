@@ -1,12 +1,9 @@
 package windows_test
 
 import (
-	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -148,14 +145,7 @@ func TestVivaPadLegacySessionSelection(t *testing.T) {
 	helpClick(t, editor, "File")
 	helpClick(t, editor, "Sessions")
 	helpClick(t, editor, "Load Session...")
-	picker := waitForSessionPicker(t, editor)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	output, err := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-File", "session_picker.ps1", strconv.FormatUint(uint64(picker), 10), xml).CombinedOutput()
-	cancel()
-	if err != nil {
-		t.Fatalf("submit Load Session picker: %v\n%s", err, output)
-	}
-	t.Logf("Load Session picker: %s", strings.TrimSpace(string(output)))
+	openSessionPickerFile(t, waitForSessionPicker(t, editor), xml)
 	helpWait(t, editor, "imported session tab", func(nodes []helpNode) bool {
 		_, found := helpFind(nodes, filepath.Base(path))
 		return found
