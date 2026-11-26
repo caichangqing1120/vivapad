@@ -22,6 +22,7 @@ func (state *model) openWindowsDialog() {
 	state.windowsRows = append(state.windowsRows[:0], state.activeViewTabs()...)
 	state.windowsSelected = make(map[*document.Document]bool)
 	state.windowsFocused = state.paneDocument(state.activePane)
+	state.windowsVisible = 0
 	state.windowsOffset, state.windowsMessage, state.windowsHasSort = 0, "", false
 }
 
@@ -173,6 +174,17 @@ func (state *model) scrollWindowsDialog(event gfx.ScrollEvent) gfx.EventResult {
 	return gfx.EventResult{Handled: true, Repaint: true}
 }
 
+func (state *model) revealWindowsRow(index int) {
+	if index < 0 || state.windowsVisible == 0 {
+		return
+	}
+	if index < state.windowsOffset {
+		state.windowsOffset = index
+	} else if index >= state.windowsOffset+state.windowsVisible {
+		state.windowsOffset = index - state.windowsVisible + 1
+	}
+}
+
 func (state *model) windowsDialogKey(event gfx.KeyEvent) gfx.EventResult {
 	switch event.Key {
 	case gfx.KeyEscape:
@@ -191,11 +203,7 @@ func (state *model) windowsDialogKey(event gfx.KeyEvent) gfx.EventResult {
 		if len(state.windowsRows) != 0 {
 			index = min(max(0, index), len(state.windowsRows)-1)
 			state.windowsFocused = state.windowsRows[index]
-			if index < state.windowsOffset {
-				state.windowsOffset = index
-			} else if index >= state.windowsOffset+state.windowsVisible {
-				state.windowsOffset = index - state.windowsVisible + 1
-			}
+			state.revealWindowsRow(index)
 		}
 	}
 	return gfx.EventResult{Handled: true, Repaint: true}
@@ -237,7 +245,11 @@ func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 	}
 	canvas.Fill(gfx.Rect{X: list.X, Y: list.Y + 25, Width: list.Width, Height: 1}, palette.border)
 	rowArea := gfx.Rect{X: list.X + 1, Y: list.Y + 26, Width: list.Width - 2, Height: list.Height - 54}
+	firstLayout := state.windowsVisible == 0
 	state.windowsVisible = max(1, int(rowArea.Height/23))
+	if firstLayout {
+		state.revealWindowsRow(slices.Index(state.windowsRows, state.windowsFocused))
+	}
 	state.windowsOffset = min(max(0, state.windowsOffset), max(0, len(state.windowsRows)-state.windowsVisible))
 	canvas.HitWithOptions(windowsPanelID, rowArea, "Open windows", gfx.HitOptions{Role: gfx.RoleGroup})
 	canvas.Clip(rowArea)

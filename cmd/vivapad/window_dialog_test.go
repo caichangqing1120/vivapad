@@ -323,10 +323,12 @@ func TestWindowsDialogSaveCancelAndDirtyCloseGate(t *testing.T) {
 
 func TestWindowsDialogCompactMultiSelectAndWheel(t *testing.T) {
 	state, driver := startDriver(t)
+	first := state.space.Current()
 	for index := range 25 {
 		doc := state.space.NewDocument()
 		doc.Name = "tab" + strconv.Itoa(index)
 	}
+	state.space.Select(state.documentIndex(first))
 	if err := driver.Resize(640, 400); err != nil {
 		t.Fatal(err)
 	}
@@ -360,6 +362,56 @@ func TestWindowsDialogCompactMultiSelectAndWheel(t *testing.T) {
 	}
 	if state.windowsDialogOpen || len(state.space.Documents) != 26 || strings.TrimSpace(state.space.Current().Name) == "" {
 		t.Fatal("closing Windows dialog changed tabs")
+	}
+}
+
+func TestWindowsDialogOpensWithActiveDocumentVisible(t *testing.T) {
+	state, driver := startDriver(t)
+	first := state.space.Current()
+	for range 24 {
+		state.space.NewDocument()
+	}
+	active := state.space.NewDocument()
+	active.Name = "active.txt"
+	state.space.Select(state.documentIndex(active))
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickID(t, driver, menuOverflowID)
+	clickID(t, driver, hiddenMenuScope.At(11))
+	clickID(t, driver, menuItemScope.At(1))
+
+	activeVisible := func() bool {
+		for _, hit := range driver.Snapshot().Hits {
+			if hit.Label == "Select active.txt" {
+				return true
+			}
+		}
+		return false
+	}
+	if !activeVisible() {
+		t.Fatal("the active document is offscreen when the Windows dialog opens")
+	}
+	if len(state.windowsSelected) != 0 {
+		t.Fatal("revealing the focused row checked a document for batch actions")
+	}
+	clickID(t, driver, windowsPreviousID)
+	if activeVisible() {
+		t.Fatal("scrolling away from the active document pulled it back into view")
+	}
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+		t.Fatal(err)
+	}
+	if state.windowsDialogOpen || state.space.Current() != active || driver.Snapshot().Focused != editorID {
+		t.Fatal("Enter did not focus the active editor after scrolling the list")
+	}
+
+	state.space.Select(state.documentIndex(first))
+	clickID(t, driver, menuOverflowID)
+	clickID(t, driver, hiddenMenuScope.At(11))
+	clickID(t, driver, menuItemScope.At(1))
+	if state.windowsOffset != 0 {
+		t.Fatal("reopening with the first document active retained the old scroll position")
 	}
 }
 
