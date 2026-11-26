@@ -164,7 +164,8 @@ func (state *model) activateFolderRow(row folderRow) bool {
 }
 
 func (state *model) refreshFolderTree() {
-	clear(state.folderCache)
+	// An expanded path may now refer to a different directory.
+	state.stopFolderWatching()
 	state.folderWatchUnavailable = false
 	state.notice = "Folder tree refreshed"
 }
