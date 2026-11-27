@@ -29,7 +29,7 @@ func TestFindAllCurrentUnsavedDocumentNavigatesWithoutOpeningFile(t *testing.T) 
 	if !state.resultsOpen || state.searchOpen || state.resultDocument != doc || len(state.fileResults.Matches) != 3 {
 		t.Fatalf("current results = %+v open=%v source=%p", state.fileResults, state.resultsOpen, state.resultDocument)
 	}
-	clickID(t, driver, resultScope.At(1))
+	clickID(t, driver, state.resultRowID(1))
 	selected := doc.Editor.Selection()
 	line, column := doc.Position()
 	if state.space.Current() != doc || doc.Path != "" || string([]rune(doc.Editor.String())[selected.Start:selected.End]) != "cat" ||
@@ -56,7 +56,7 @@ func TestFindAllCurrentRejectsStaleResultAndInvalidPattern(t *testing.T) {
 	doc := state.space.Current()
 	doc.Editor.MoveTo(0, false)
 	doc.Editor.Insert("prefix ")
-	clickID(t, driver, resultScope.At(1))
+	clickID(t, driver, state.resultRowID(1))
 	if !strings.Contains(state.notice, "changed") || state.space.Current() != doc || len(state.space.Documents) != 1 {
 		t.Fatalf("stale result selection = notice:%q doc:%+v", state.notice, state.space.Current())
 	}
@@ -138,7 +138,7 @@ func TestDismissFinderReleasesSearchSnapshot(t *testing.T) {
 			if err := driver.Pump(); err != nil {
 				t.Fatal(err)
 			}
-			clickID(t, driver, resultScope.At(0))
+			clickID(t, driver, state.resultRowID(0))
 			before := doc.Editor.Selection()
 			if state.resultSelected != 0 || len(state.fileResults.Matches) != 2 || len(state.resultDocuments) != 2 {
 				t.Fatal("fixture did not select a source-backed result")
@@ -213,7 +213,7 @@ func TestCurrentResultDoesNotMoveTabToOtherView(t *testing.T) {
 	clickID(t, driver, menuScope.At(2))
 	clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
 	clickID(t, driver, rightEditorID)
-	clickID(t, driver, resultScope.At(0))
+	clickID(t, driver, state.resultRowID(0))
 	if state.activePane != 0 || state.paneDocs[0] != first || state.paneDocs[1] != second || state.paneOwner[first] != 0 || state.paneOwner[second] != 1 {
 		t.Fatalf("current-result navigation moved views: active=%d panes=%+v owners=%+v", state.activePane, state.paneDocs, state.paneOwner)
 	}

@@ -30,7 +30,7 @@ func TestFindAllOpenDocumentsIncludesUnsavedBuffers(t *testing.T) {
 		len(state.resultDocuments) != 2 || state.resultDocuments[0] != first || state.resultDocuments[1] != second {
 		t.Fatalf("open-buffer results = %+v sources=%+v", state.fileResults, state.resultDocuments)
 	}
-	clickID(t, driver, resultScope.At(0))
+	clickID(t, driver, state.resultRowID(0))
 	selection := first.Editor.Selection()
 	if state.space.Current() != first || first.Path != "" || !first.Dirty() || second.Path != "" ||
 		string([]rune(first.Editor.String())[selection.Start:selection.End]) != "cat" {
@@ -61,7 +61,7 @@ func TestFindAllOpenDocumentsPreservesSplitOwnership(t *testing.T) {
 	state.query.Insert("cat")
 	clickID(t, driver, menuScope.At(2))
 	clickID(t, driver, searchCommandID(t, "Find All in Open Documents"))
-	clickID(t, driver, resultScope.At(0))
+	clickID(t, driver, state.resultRowID(0))
 	if state.activePane != 0 || state.paneDocs[0] != first || state.paneDocs[1] != second || state.paneOwner[first] != 0 || state.paneOwner[second] != 1 {
 		t.Fatalf("open result moved a pane: active=%d panes=%+v owners=%+v", state.activePane, state.paneDocs, state.paneOwner)
 	}
@@ -98,7 +98,7 @@ func TestFindAllOpenDocumentsCapsGloballyAndDropsClosedSource(t *testing.T) {
 			t.Fatal("closed document remained in the result list")
 		}
 	}
-	clickID(t, driver, resultScope.At(0))
+	clickID(t, driver, state.resultRowID(0))
 	if state.space.Current() != second || state.notice == "Search result document is closed" {
 		t.Fatalf("remaining source not navigable: %+v notice=%q", state.space.Current(), state.notice)
 	}

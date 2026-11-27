@@ -44,7 +44,7 @@ func TestResultNavigationF4WrapsAcrossOpenDocumentsAndClickPosition(t *testing.T
 	if state.space.Current() != first || state.resultSelected != 0 {
 		t.Fatalf("next result did not wrap: active %p, selected %d", state.space.Current(), state.resultSelected)
 	}
-	clickID(t, driver, resultScope.At(1))
+	clickID(t, driver, state.resultRowID(1))
 	if state.resultSelected != 1 {
 		t.Fatalf("click did not establish navigation position: %d", state.resultSelected)
 	}
@@ -266,7 +266,7 @@ func TestRepeatedUnicodeResultRejectsStaleKeyboardAndPointerNavigation(t *testin
 	before, value := doc.Editor.Selection(), doc.Editor.String()
 	for _, activate := range []func() error{
 		func() error { return driver.Key(gfx.KeyF4, 0) },
-		func() error { clickID(t, driver, resultScope.At(1)); return nil },
+		func() error { clickID(t, driver, state.resultRowID(1)); return nil },
 	} {
 		if err := activate(); err != nil {
 			t.Fatal(err)
@@ -292,7 +292,8 @@ func TestDirectoryResultRefusesChangedFileBeforeOpeningTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, driver := startDriver(t)
-	state.fileResults, state.resultsOpen = result, true
+	state.replaceFileResults(result)
+	state.resultsOpen = true
 	state.invalidator.Invalidate()
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
@@ -303,7 +304,7 @@ func TestDirectoryResultRefusesChangedFileBeforeOpeningTab(t *testing.T) {
 	if err := os.WriteFile(path, []byte("cat cat cat"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, resultScope.At(1))
+	clickID(t, driver, state.resultRowID(1))
 	if state.resultSelected != -1 || state.space.Current() != current || len(state.space.Documents) != 1 ||
 		current.Editor.Selection() != selection || current.Editor.String() != "keep" || !strings.Contains(state.notice, "changed") {
 		t.Fatalf("changed directory result opened a tab: selected=%d docs=%d notice=%q", state.resultSelected, len(state.space.Documents), state.notice)
@@ -379,7 +380,7 @@ func TestResultNavigationKeepsSelectedRowVisibleAndMenuReachable(t *testing.T) {
 	}
 	visible := false
 	for _, hit := range driver.Snapshot().Hits {
-		visible = visible || hit.ID == resultScope.At(5)
+		visible = visible || hit.ID == state.resultRowID(5)
 	}
 	if !visible {
 		t.Fatal("selected result row is not in the visible hit list")
@@ -410,10 +411,10 @@ func TestResultNavigationOpensDirectoryMatchesAndRejectsMissingFile(t *testing.T
 		}
 	}
 	state, driver := startDriver(t)
-	state.fileResults = searchfiles.Result{Matches: []searchfiles.Match{
+	state.replaceFileResults(searchfiles.Result{Matches: []searchfiles.Match{
 		{Path: firstPath, Source: "cat", Line: 1, Column: 1, Text: "cat", Preview: "cat", Start: 0, End: 3},
 		{Path: secondPath, Source: "cat", Line: 1, Column: 1, Text: "cat", Preview: "cat", Start: 0, End: 3},
-	}}
+	}})
 	state.resultsOpen, state.resultSelected, state.resultQuery = true, -1, "cat"
 	state.invalidator.Invalidate()
 	if err := driver.Pump(); err != nil {

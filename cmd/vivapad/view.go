@@ -1307,11 +1307,12 @@ func (state *model) paintFileResults(canvas *gfx.Canvas, width, y, height float3
 	for row := 0; row < visible && state.resultOffset+row < len(state.fileResults.Matches); row++ {
 		index := state.resultOffset + row
 		match := state.fileResults.Matches[index]
+		id := state.resultRowID(index)
 		bounds := gfx.Rect{X: 4, Y: y + 30 + float32(row)*22, Width: width - 8, Height: 22}
 		if index == state.resultSelected {
 			canvas.Fill(bounds, gfx.RGB(241, 243, 246))
 			canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y, Width: 2, Height: bounds.Height}, palette.blue)
-		} else if canvas.Hovered() == resultScope.At(index) {
+		} else if canvas.Hovered() == id {
 			canvas.Fill(bounds, palette.hover)
 		}
 		name := filepath.Base(match.Path)
@@ -1323,8 +1324,8 @@ func (state *model) paintFileResults(canvas *gfx.Canvas, width, y, height float3
 		label := fmt.Sprintf("%s:%d:%d  %s", name, match.Line, match.Column, match.Preview)
 		label = canvas.FitLine(label, 11, gfx.WeightRegular, width-26)
 		smallLabel(canvas, label, gfx.Rect{X: 12, Y: bounds.Y, Width: width - 26, Height: 22}, palette.text, 11)
-		canvas.HitWithOptions(resultScope.At(index), bounds, match.Path, gfx.HitOptions{Role: gfx.RoleButton, Hint: match.Preview, Selected: index == state.resultSelected})
-		if canvas.Clicked(resultScope.At(index)) {
+		canvas.HitWithOptions(id, bounds, match.Path, gfx.HitOptions{Role: gfx.RoleButton, Hint: match.Preview, Selected: index == state.resultSelected})
+		if canvas.Clicked(id) {
 			state.openFileResult(index)
 		}
 	}

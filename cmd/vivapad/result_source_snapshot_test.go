@@ -29,7 +29,8 @@ func collectFinderSnapshot(t *testing.T, state *model, route, root string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		state.fileResults, state.resultsOpen, state.resultSelected = result, true, -1
+		state.replaceFileResults(result)
+		state.resultsOpen, state.resultSelected = true, -1
 	default:
 		t.Fatalf("unknown collection route %q", route)
 	}
@@ -63,7 +64,7 @@ func TestFinderSourceSnapshotRejectsRepeatedText(t *testing.T) {
 						if len(state.fileResults.Matches) != 2 {
 							t.Fatalf("fixture matches = %d", len(state.fileResults.Matches))
 						}
-						clickID(t, driver, resultScope.At(0))
+						clickID(t, driver, state.resultRowID(0))
 						if state.resultSelected != 0 {
 							t.Fatal("unchanged first result was not navigable")
 						}
@@ -89,7 +90,7 @@ func TestFinderSourceSnapshotRejectsRepeatedText(t *testing.T) {
 						}
 						switch action {
 						case "pointer":
-							clickID(t, driver, resultScope.At(1))
+							clickID(t, driver, state.resultRowID(1))
 						case "F4":
 							if err := driver.Key(gfx.KeyF4, 0); err != nil {
 								t.Fatal(err)
@@ -143,7 +144,7 @@ func TestFinderSourceSnapshotFreshSearchAndIndependentSources(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, resultScope.At(2))
+	clickID(t, driver, state.resultRowID(2))
 	if state.space.Current() != first || first.Editor.Selection() != (text.Range{Start: 8, End: 11}) || state.resultSelected != 2 {
 		t.Fatal("fresh search did not bind the changed source's new third occurrence")
 	}
@@ -179,7 +180,7 @@ func TestFinderSourceSnapshotPreservesSplitOwnershipOnRefusal(t *testing.T) {
 			if err := driver.Pump(); err != nil {
 				t.Fatal(err)
 			}
-			clickID(t, driver, resultScope.At(1))
+			clickID(t, driver, state.resultRowID(1))
 			if state.space.Current() != second || state.activePane != 1 || state.paneDocs != ([2]*document.Document{first, second}) ||
 				state.paneOwner[first] != 0 || state.paneOwner[second] != 1 || second.Editor.Selection() != before ||
 				second.Editor.Caret() != caret || state.resultSelected != -1 || !slices.Equal(state.recentEntries, recents) ||
@@ -218,7 +219,7 @@ func TestFinderSourceSnapshotUnopenedDirectoryRefusalIsAtomic(t *testing.T) {
 			if err := driver.Pump(); err != nil {
 				t.Fatal(err)
 			}
-			clickID(t, driver, resultScope.At(1))
+			clickID(t, driver, state.resultRowID(1))
 			if state.space.Current() != doc || len(state.space.Documents) != 1 || state.paneDocs != panes || len(state.paneOwner) != owners ||
 				doc.Editor.String() != value || doc.Editor.Selection() != before || doc.Editor.Caret() != caret || doc.Dirty() != dirty ||
 				state.resultSelected != -1 || !slices.Equal(state.recentEntries, recents) || !strings.Contains(state.notice, "changed") {
@@ -314,7 +315,7 @@ func testFinderDirectoryResultPathSpellings(t *testing.T, name, alternate string
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, resultScope.At(index))
+	clickID(t, driver, state.resultRowID(index))
 	if alias {
 		if len(state.space.Documents) != 1 || state.space.Current() != opened || state.paneDocs != panes ||
 			state.resultSelected != -1 || state.notice != staleSearchResultNotice || !slices.Equal(state.recentEntries, recents) {
@@ -436,7 +437,8 @@ func TestFinderDoesNotReuseRedirectedOpenTabAsAlias(t *testing.T) {
 	if err != nil || len(found.Matches) != 1 {
 		t.Fatalf("collect directory result: %v, %v", found, err)
 	}
-	state.fileResults, state.resultsOpen, state.resultSelected = found, true, -1
+	state.replaceFileResults(found)
+	state.resultsOpen, state.resultSelected = true, -1
 	parked := filepath.Join(root, "parked.txt")
 	if err := os.Rename(oldPath, parked); err != nil {
 		t.Fatal(err)
@@ -603,7 +605,8 @@ func TestFinderSourceSnapshotDirectoryKeepsEncodingMismatchRefusal(t *testing.T)
 	if err != nil || len(result.Matches) != 2 {
 		t.Fatalf("legacy directory fixture: %+v, %v", result, err)
 	}
-	state.fileResults, state.resultsOpen = result, true
+	state.replaceFileResults(result)
+	state.resultsOpen = true
 	before, caret, recents := other.Editor.Selection(), other.Editor.Caret(), slices.Clone(state.recentEntries)
 	if state.openFileResult(1) || state.space.Current() != other || len(state.space.Documents) != 2 ||
 		other.Editor.Selection() != before || other.Editor.Caret() != caret || !other.Dirty() ||
@@ -660,7 +663,7 @@ func TestFinderDirectoryResultKeepsSourceDecoding(t *testing.T) {
 			if err != nil || len(result.Matches) != 2 {
 				t.Fatalf("legacy directory fixture: %+v, %v", result, err)
 			}
-			state.fileResults = result
+			state.replaceFileResults(result)
 			if !state.openFileResult(1) || state.space.Current() != target || state.resultSelected != 1 ||
 				target.Editor.Selection() != (text.Range{Start: 4, End: 7}) || state.notice != "" {
 				t.Errorf("matching decoder did not navigate to the second match: %q", state.notice)

@@ -80,7 +80,7 @@ func TestResultPaneKeyboardHomeEndPageAndF7FromClickedRow(t *testing.T) {
 	if state.resultSelected < 2 {
 		t.Fatalf("Page Down moved only to %d", state.resultSelected)
 	}
-	clickID(t, driver, resultScope.At(state.resultSelected))
+	clickID(t, driver, state.resultRowID(state.resultSelected))
 	if err := driver.Key(gfx.KeyF7, 0); err != nil {
 		t.Fatal(err)
 	}
