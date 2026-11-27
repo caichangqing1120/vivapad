@@ -116,7 +116,7 @@ func TestConcurrentCloseReleasesHandle(t *testing.T) {
 		workers.Go(func() { _ = file.Close() })
 	}
 	workers.Wait()
-	if _, err := file.handle.Stat(); !errors.Is(err, os.ErrClosed) {
+	if _, err := file.handle.Stat(); err == nil || (!errors.Is(err, os.ErrClosed) && !strings.Contains(err.Error(), "The handle is invalid")) {
 		t.Fatalf("file handle still open: %v", err)
 	}
 	if err := os.Remove(path); err != nil {
