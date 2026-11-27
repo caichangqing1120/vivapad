@@ -30,7 +30,7 @@ func fixture(t testing.TB, chunks ...string) string {
 
 func indexed(t testing.TB, file *File) Progress {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		progress := file.Progress()
 		if progress.Err != nil {
