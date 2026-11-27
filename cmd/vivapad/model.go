@@ -509,6 +509,7 @@ type model struct {
 	folderRowHits                 []folderRowHit
 	folderNextRowID               int
 	folderFocusPath               string
+	folderWatchRefreshPending     bool
 	folderWatcher                 *foldertree.Watcher
 	folderWatching                map[string]os.FileInfo
 	folderWatchUnavailable        bool
@@ -1377,6 +1378,7 @@ func newConfig(state *model) app.Config {
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.folderVisible && (event.Target == folderPanelID || event.Target.Scope() == folderRowScope) {
+			state.folderWatchRefreshPending = false
 			step := 1
 			if event.StepY(22) < 0 {
 				step = -1
