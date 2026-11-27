@@ -20,8 +20,9 @@ func TestNotepadPlusPlusFinderFocusRoundTrip(t *testing.T) {
 		keyF7        = 0x76
 		wmSetText    = 0x000c
 		bmClick      = 0x00f5
-		findWhat     = 1601 // IDFINDWHAT in Notepad++ v8.9.8.1
-		findAll      = 1641 // IDC_FINDALL_CURRENTFILE
+		findWhat     = 1601  // IDFINDWHAT in Notepad++ v8.9.8.1
+		findAll      = 1641  // IDC_FINDALL_CURRENTFILE
+		focusResults = 43045 // IDM_FOCUS_ON_FOUND_RESULTS
 		gaRoot       = 2
 		getLength    = 2006 // SCI_GETLENGTH
 		getAnchor    = 2009 // SCI_GETANCHOR
@@ -83,13 +84,27 @@ func TestNotepadPlusPlusFinderFocusRoundTrip(t *testing.T) {
 		t.Fatal("focused control does not contain the read-only search results")
 	}
 	checkDocument("after search")
+	// Closing the Find dialog can leave the main window needing activation.
+	// Notepad++ resets focus to the editing view on WM_ACTIVATE.
+	editor.activate(t)
+	if focusedDesktopControl(t, editor) == finder {
+		invokeNotepadCommand(t, editor, focusResults)
+	}
+	if got := focusedDesktopControl(t, editor); got != document {
+		t.Fatalf("could not establish editor as the starting focus: got %#x, document %#x, Finder %#x", got, document, finder)
+	}
+	checkDocument("before F7")
 	for _, step := range []struct {
-		name string
-		want uintptr
-	}{{"editor", document}, {"Finder", finder}, {"editor again", document}} {
+		name       string
+		from, want uintptr
+	}{{"Finder", document, finder}, {"editor", finder, document}} {
+		foreground, _, _ := getForegroundWindow.Call()
+		if got := focusedDesktopControl(t, editor); got != step.from || foreground != editor.hwnd {
+			t.Fatalf("before F7 to %s: focus=%#x want %#x, foreground=%#x want %#x", step.name, got, step.from, foreground, editor.hwnd)
+		}
 		editor.keys(t, keyF7)
 		if got := focusedDesktopControl(t, editor); got != step.want {
-			t.Fatalf("F7 to %s: focus = %#x, want %#x", step.name, got, step.want)
+			t.Fatalf("F7 to %s: focus = %#x, want %#x (document %#x, Finder %#x)", step.name, got, step.want, document, finder)
 		}
 		checkDocument(step.name)
 		t.Logf("F7 focused %s without changing the document selection", step.name)
