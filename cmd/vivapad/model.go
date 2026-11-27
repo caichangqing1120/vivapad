@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"vivapad/internal/macro"
 	"vivapad/internal/preferences"
 	"vivapad/internal/printing"
+	"vivapad/internal/projects"
 	"vivapad/internal/recent"
 	"vivapad/internal/recovery"
 	"vivapad/internal/runcommand"
@@ -359,6 +361,20 @@ var (
 )
 
 type model struct {
+	m5                            *m5Dialog
+	styles                        preferences.Styles
+	editorStyle                   *editorStyleCache
+	udlPath                       string
+	udls                          []syntax.UDL
+	udlHighlights                 map[*document.Document]udlHighlightCache
+	projectsPath                  string
+	projects                      projectPanel
+	externalWatcher               *externalWatcher
+	externalBindings              map[*document.Document]externalBinding
+	externalChanges               map[*document.Document]string
+	externalWatchFailed           bool
+	launchWindow                  func(...string) error
+	independentWindow             bool
 	shortcuts                     *shortcuts.Registry
 	mapper                        *shortcutMapper
 	statusPopup                   statusPopup
@@ -838,8 +854,13 @@ func newModel() *model {
 		openConsole = external.OpenConsole
 	}
 	state := &model{
-		changeView: newChangeViewCache(),
-		space:      space, editors: make(map[*document.Document]*components.CodeEditor),
+		udlHighlights:    make(map[*document.Document]udlHighlightCache),
+		projects:         projectPanel{selected: -1},
+		externalBindings: make(map[*document.Document]externalBinding),
+		externalChanges:  make(map[*document.Document]string),
+		launchWindow:     launchVivaPadWindow,
+		changeView:       newChangeViewCache(),
+		space:            space, editors: make(map[*document.Document]*components.CodeEditor),
 		secondEditors: make(map[*document.Document]*components.CodeEditor), paneDocs: [2]*document.Document{space.Current()}, splitRatio: 0.5,
 		paneOwner:      map[*document.Document]int{space.Current(): 0},
 		languages:      make(map[*document.Document]string),
@@ -881,9 +902,29 @@ func newModelWithFiles(paths []string) *model {
 }
 
 func newStartupModel(paths []string, sessionPath string) *model {
+	return newStartupModelMode(paths, sessionPath, false)
+}
+
+func newStartupModelMode(paths []string, sessionPath string, independent bool) *model {
 	state := newModel()
 	state.sessionPath = sessionPath
+	state.independentWindow = independent
 	if sessionPath != "" {
+		state.udlPath = filepath.Join(filepath.Dir(sessionPath), "udl.json")
+		if definitions, err := syntax.LoadUDLs(state.udlPath); err == nil {
+			state.udls = definitions
+		} else {
+			state.notice = "User languages not restored: " + err.Error()
+		}
+		state.projectsPath = filepath.Join(filepath.Dir(sessionPath), "projects.json")
+		if groups, err := projects.Load(state.projectsPath); err == nil {
+			state.projects.groups = groups
+			if len(groups) != 0 {
+				state.projects.selected = 0
+			}
+		} else {
+			state.notice = "Projects not restored: " + err.Error()
+		}
 		state.closedPath = filepath.Join(filepath.Dir(sessionPath), "closed.json")
 		if entries, err := recent.Load(state.closedPath); err != nil {
 			state.notice = "Closed files unavailable: " + err.Error()
@@ -926,12 +967,21 @@ func newStartupModel(paths []string, sessionPath string) *model {
 			state.applyPreferences(stored)
 		}
 		state.recoveryPath = filepath.Join(filepath.Dir(sessionPath), "recovery.json")
-		state.recoveryWriter = recovery.NewWriter(state.recoveryPath, state.invalidator.Invalidate)
+		if !independent {
+			state.recoveryWriter = recovery.NewWriter(state.recoveryPath, state.invalidator.Invalidate)
+		}
 	}
 	var stored session.State
 	var sessionErr error
 	if sessionPath != "" {
 		stored, sessionErr = session.Load(sessionPath)
+	}
+	if independent {
+		state.openArguments(paths, stored.Encodings)
+		state.restoreSessionLanguages(stored.Languages)
+		state.paneDocs[0] = state.space.Current()
+		state.resetPaneOwnership()
+		return state
 	}
 	state.documentMapVisible = stored.DocumentMapVisible
 	if len(paths) != 0 {
@@ -1027,6 +1077,7 @@ func defaultSessionPath() (string, error) {
 
 func (state *model) applyPreferences(stored preferences.State) {
 	state.themeChoice = stored.Theme.Normalized()
+	state.styles = stored.Styles
 	state.fontSize, state.subFontSize, state.zoomSync, state.tabWidth = stored.FontSize, stored.SubFontSize, stored.ZoomSync, stored.TabWidth
 	state.wrap, state.showLineNumbers = stored.Wrap, stored.LineNumbers
 	state.indentMode, state.autoIndent, state.autoClose = stored.IndentMode, stored.AutoIndent, stored.AutoClose
@@ -1048,6 +1099,7 @@ func (state *model) savePreferences() error {
 		return errors.New("settings storage unavailable")
 	}
 	stored := preferences.State{
+		Styles:   state.styles,
 		Theme:    state.themeChoice,
 		FontSize: state.fontSize, SubFontSize: state.subFontSize, ZoomSync: state.zoomSync, TabWidth: state.tabWidth,
 		Wrap: state.wrap, LineNumbers: state.showLineNumbers,
@@ -1112,6 +1164,9 @@ func newConfig(state *model) app.Config {
 		return input
 	}
 	config.OnPointer = func(event gfx.PointerEvent) gfx.EventResult {
+		if state.m5 != nil {
+			return gfx.EventResult{}
+		}
 		if isComparePreview(event.Target) {
 			if view := state.activeComparison(); view != nil && view.saved {
 				result := view.preview.Pointer(event)
@@ -1250,6 +1305,9 @@ func newConfig(state *model) app.Config {
 		return state.codeEditor().Pointer(event)
 	}
 	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult {
+		if state.m5 != nil {
+			return gfx.EventResult{Handled: true}
+		}
 		if state.mapper != nil {
 			if event.Target == mapperPanelID || event.Target.Scope() == mapperRows {
 				state.mapper.offset = max(0, state.mapper.offset+scrollListStep(event))
@@ -1343,6 +1401,10 @@ func newConfig(state *model) app.Config {
 			state.moveCharacterPanel(step)
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
+		if state.activeDock() == "projects" && (event.Target == projectsPanelID || event.Target.Scope() == projectRows || event.Target.Scope() == projectRemoveRows) {
+			state.projects.offset = max(0, state.projects.offset+scrollListStep(event))
+			return gfx.EventResult{Handled: true, Repaint: true}
+		}
 		if state.documentListVisible && state.activeDock() == "documents" &&
 			(event.Target == documentListPanelID || event.Target.Scope() == documentListRowScope || event.Target.Scope() == documentListRowCloseScope) {
 			step := 1
@@ -1381,7 +1443,7 @@ func newConfig(state *model) app.Config {
 			if event.StepY(22) < 0 {
 				step = -1
 			}
-			state.languageOffset = min(max(0, state.languageOffset+step), max(0, len(syntax.Languages())-state.languageVisible))
+			state.languageOffset = min(max(0, state.languageOffset+step), max(0, len(state.availableLanguageCommands())-state.languageVisible))
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.macroRunOpen && state.macroSourceOpen &&
@@ -1474,7 +1536,7 @@ func newConfig(state *model) app.Config {
 		return result
 	}
 	config.OnFileDrop = func(event gfx.FileDropEvent) gfx.EventResult {
-		if state.mapper != nil {
+		if state.mapper != nil || state.m5 != nil {
 			return gfx.EventResult{}
 		}
 		if state.saveSessionOptionsOpen || state.columnDialogOpen || state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.webSearchOpen || state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen || state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil || state.dateTimeDialogOpen || state.hashDialogOpen || state.windowsDialogOpen {
@@ -1495,6 +1557,9 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: event.Phase == gfx.FileDropDrop}
 	}
 	config.OnShortcut = func(event gfx.KeyEvent) gfx.EventResult {
+		if state.m5 != nil {
+			return gfx.EventResult{Handled: state.m5TextInput(event.Target) == nil}
+		}
 		if state.mapper != nil {
 			return state.shortcutMapperKey(event, true)
 		}
@@ -1588,6 +1653,13 @@ func newConfig(state *model) app.Config {
 		return state.dispatchShortcut(event)
 	}
 	config.OnKey = func(event gfx.KeyEvent) gfx.EventResult {
+		if state.m5 != nil {
+			if event.Key == gfx.KeyEscape && !event.Release {
+				state.closeM5Dialog()
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+			}
+			return gfx.EventResult{}
+		}
 		if state.mapper != nil {
 			return state.shortcutMapperKey(event, false)
 		}
@@ -2122,6 +2194,10 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	config.OnCloseRequest = func(allow func()) {
+		if state.m5 != nil {
+			state.closeM5Dialog()
+			return
+		}
 		if state.mapper != nil {
 			state.closeShortcutMapper()
 			return
@@ -2199,6 +2275,7 @@ func newConfig(state *model) app.Config {
 		state.consumeLargeSearch()
 		state.consumeFolderChanges()
 		state.consumeMonitorChanges()
+		state.consumeExternalChanges()
 		state.observeRecoveryError()
 	}
 	config.OnClosed = func() {
@@ -2208,6 +2285,12 @@ func newConfig(state *model) app.Config {
 		state.cancelLargeSearch()
 		state.stopFolderWatching()
 		state.stopAllMonitors()
+		if state.externalWatcher != nil {
+			state.externalWatcher.close()
+			state.externalWatcher = nil
+		}
+		clear(state.externalBindings)
+		clear(state.externalChanges)
 		for _, doc := range state.space.Documents {
 			_ = doc.Close()
 		}
@@ -2223,14 +2306,24 @@ func (state *model) codeEditor() *components.CodeEditor {
 }
 
 func (state *model) languageFor(doc *document.Document) string {
-	if language, selected := state.languages[doc]; selected {
+	if language, selected := state.languages[doc]; selected && (!strings.HasPrefix(language, "udl:") || state.udlForMode(language) != nil) {
 		return language
 	}
-	return strings.ToLower(filepath.Ext(doc.Name))
+	extension := strings.ToLower(filepath.Ext(doc.Name))
+	for _, definition := range state.udls {
+		if slices.Contains(definition.Extensions, strings.TrimPrefix(extension, ".")) {
+			return definition.Mode()
+		}
+	}
+	return extension
 }
 
 func (state *model) configureCode(doc *document.Document) {
-	options, known := codeOptions(state.languageFor(doc))
+	mode := state.languageFor(doc)
+	options, known := codeOptions(mode)
+	if definition := state.udlForMode(mode); definition != nil {
+		options, known = text.CodeOptions{LineComment: definition.LineComment}, true
+	}
 	if !known {
 		options = text.CodeOptions{TabWidth: 4, HardTabs: true}
 	} else {
@@ -2426,6 +2519,8 @@ func (state *model) closeTab(index int) {
 }
 
 func (state *model) releaseDocument(doc *document.Document) {
+	state.releaseExternalWatch(doc)
+	delete(state.udlHighlights, doc)
 	state.releaseDocumentComposition(doc)
 	state.stopMonitor(doc)
 	if state.largeSearch != nil && state.largeSearch.doc == doc {
@@ -2639,6 +2734,9 @@ func (state *model) cancelClose() {
 
 func (state *model) persistSession() {
 	state.closingAccepted = true
+	if state.independentWindow {
+		return
+	}
 	if state.recoveryWriter != nil {
 		if err := state.recoveryWriter.Clear(); err != nil {
 			state.notice = "Recovery not cleared: " + err.Error()
@@ -2654,7 +2752,7 @@ func (state *model) persistSession() {
 	stored.FunctionListVisible = state.functionListVisible
 	stored.DocumentListVisible = state.documentListVisible
 	stored.ActiveLeftDock = state.activeLeftDock
-	if stored.ActiveLeftDock == "characters" {
+	if stored.ActiveLeftDock == "characters" || stored.ActiveLeftDock == "projects" {
 		stored.ActiveLeftDock = ""
 	}
 	for _, doc := range state.closingDocs {
@@ -2983,7 +3081,7 @@ func (state *model) command(command string) {
 	if state.macroRecording && !columnHelp && !macroMenuSupported(command) && !isCalltipCommand(command) {
 		state.cancelMacroUnsupported("command")
 	}
-	if language, ok := languageExtension(command); ok {
+	if language, ok := state.languageForCommand(command); ok {
 		state.languages[doc] = language
 		state.configureCode(doc)
 		return
@@ -3051,6 +3149,20 @@ func (state *model) command(command string) {
 		state.openCurrentConsole(external.WindowsPowerShell, "PowerShell")
 	case "Open in Default Viewer":
 		state.openDefaultViewer()
+	case newWindowCommand:
+		state.openNewWindow(doc)
+	case styleConfiguratorCommand:
+		state.openStyleConfigurator()
+	case udlManagerCommand:
+		state.openUDLManager(min(0, len(state.udls)-1))
+	case projectPanelCommand:
+		if state.activeDock() == "projects" {
+			state.projects.visible = false
+			state.activeLeftDock = state.activeDock()
+		} else {
+			state.projects.visible, state.activeLeftDock = true, "projects"
+		}
+		state.invalidator.Invalidate()
 	case "Open File from Selection":
 		state.openSelectedPath(false)
 	case "Open Containing Folder from Selection":

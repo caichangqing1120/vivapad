@@ -116,6 +116,13 @@ func (state *model) useStatusAction(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Re
 func (state *model) paintStatusPopup(canvas *gfx.Canvas, size gfx.Size) {
 	popup := &state.statusPopup
 	items, title := popup.choices()
+	if popup.kind == statusLanguageID && len(state.udls) > 0 {
+		items = make([]string, 0, len(quickLanguages)+len(state.udls))
+		for _, definition := range state.udls {
+			items = append(items, udlLabelPrefix+definition.Name)
+		}
+		items = append(items, quickLanguages...)
+	}
 	if len(items) == 0 || popup.doc != state.space.Current() || state.editorCommandFocusBlocked() || state.distractionFree || state.postIt.active {
 		*popup = statusPopup{}
 		return

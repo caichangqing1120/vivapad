@@ -10,12 +10,13 @@ import (
 
 	"vivapad/internal/datetime"
 	"vivapad/internal/printing"
+	"vivapad/internal/privatejson"
 	"vivapad/internal/websearch"
 )
 
 const (
 	maxSize = 64 << 10
-	version = 8
+	version = 9
 )
 
 type Theme string
@@ -37,6 +38,7 @@ func (theme Theme) Normalized() Theme {
 }
 
 type State struct {
+	Styles               Styles `json:"styles,omitzero"`
 	Theme                Theme  `json:"theme,omitempty"`
 	FontSize             int    `json:"font_size"`
 	SubFontSize          int    `json:"sub_font_size"`
@@ -74,6 +76,11 @@ func Default() State {
 }
 
 func (state State) validate() error {
+	for _, theme := range []Theme{ClassicLight, ModernDark, Monokai} {
+		if err := state.Styles.For(theme).Validate(); err != nil {
+			return err
+		}
+	}
 	if state.FontSize < 9 || state.FontSize > 24 || state.SubFontSize < 9 || state.SubFontSize > 24 || state.TabWidth < 1 || state.TabWidth > 16 {
 		return fmt.Errorf("invalid editor size or tab width")
 	}
@@ -198,5 +205,5 @@ func Save(path string, state State) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(file.Name(), path)
+	return privatejson.Replace(file.Name(), path)
 }

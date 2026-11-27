@@ -16,7 +16,7 @@ import (
 var menuLabels = [...]string{"File", "Edit", "Search", "View", "Encoding", "Language", "Settings", "Tools", "Macro", "Run", "Plugins", "Window", "?"}
 
 var menuCommands = [...][]string{
-	{"New", "Open...", "Save", "Save As...", "Save a Copy As...", "Save All", "Close", "Open as GB18030...", "Open as Windows-1252...", "Reload from Disk", "Recent Files", "Close All", "Close Other Tabs", "Sessions", "Rename...", "Close Multiple Documents", "Open Folder as Workspace...", "Open in Default Viewer", "Open Containing Folder", "Open as Encoding...", "Move to Recycle Bin", "Print...", "Print Now", "Exit"},
+	{"New", "Open...", "Save", "Save As...", "Save a Copy As...", "Save All", "Close", "Open as GB18030...", "Open as Windows-1252...", "Reload from Disk", "Recent Files", "Close All", "Close Other Tabs", "Sessions", "Rename...", "Close Multiple Documents", "Open Folder as Workspace...", "Open in Default Viewer", "Open Containing Folder", "Open as Encoding...", "Move to Recycle Bin", "Print...", "Print Now", newWindowCommand, "Exit"},
 	{"Undo", "Redo", "Cut", "Copy", "Paste", "Select All", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines", "Line Operations", "Convert Case", "Blank Operations", "Copy to Clipboard", "Delete", "Begin/End Select", "Read-Only in Notepad++", fileReadOnlyLabel(), "Auto-Completion", "Comment/Uncomment", "Insert", "EOL Conversion", "Column Editor...", "Begin/End Select in Column Mode", columnModeHelpCommand, "On Selection", "Multi-select All", "Multi-select Next", "Undo Latest Multi-Select", "Skip Current Multi-Select", pasteSpecialCommand, characterPanelCommand},
 	{
 		"Find...", "Find in Files...", "Find Next", "Find Previous", "Selected Text Search",
@@ -27,10 +27,10 @@ var menuCommands = [...][]string{
 		"Replace in Files...", "Find All in Current Document", "Find All in Open Documents", "Replace All in Open Documents",
 		"Clear Marks", "Next Change", "Previous Change", "Clear Change History",
 	},
-	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", textDirectionRTL, textDirectionLTR, "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand, namedBrowserMenuCommand, postItCommand, compareMenu, themeMenuCommand},
+	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", textDirectionRTL, textDirectionLTR, "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand, namedBrowserMenuCommand, postItCommand, compareMenu, projectPanelCommand, themeMenuCommand},
 	{"Unix (LF)", "Windows (CR LF)", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE", "GB18030", "Windows-1252", "Character sets"},
 	{"Normal Text", "Go", "JavaScript", "TypeScript", "Python", "JSON", "HTML", "CSS", "Markdown", "SQL"},
-	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off", shortcutMapperCommand},
+	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off", shortcutMapperCommand, styleConfiguratorCommand},
 	{"MD5", "SHA-1", "SHA-256", "SHA-512", structuredToolsMenu, encodingToolsMenu, compareMenu},
 	{"Record Macro", "Stop Recording", "Playback Macro", "Save Current Recorded Macro...", "Run a Macro Multiple Times...", "Playback 5 Times", "Clear Macro", "Saved Macros"},
 	{"Run..."},
@@ -65,6 +65,7 @@ func resultPaneHeight(windowHeight float32) float32 {
 func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	palette := state.palette()
 	state.consumeSystemDocuments()
+	state.syncExternalWatches()
 	window := gfx.Rect{Width: size.Width, Height: size.Height}
 	canvas.Fill(window, palette.editorBackground)
 	postIt := state.postIt.active
@@ -133,6 +134,10 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	if state.distractionFree {
 		panelWidth, mapWidth, top = 0, 0, 0
 	}
+	if doc := state.nextExternalChange(); doc != nil {
+		state.paintExternalBar(canvas, gfx.Rect{Y: top, Width: size.Width, Height: externalBarHeight}, doc)
+		top += externalBarHeight
+	}
 	editorBounds := gfx.Rect{X: panelWidth, Y: top, Width: size.Width - panelWidth - mapWidth, Height: max(64, bottom-top)}
 	if panelWidth > 0 {
 		leftBounds := gfx.Rect{Y: editorBounds.Y, Width: panelWidth, Height: editorBounds.Height}
@@ -147,6 +152,8 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 			state.paintDocumentList(canvas, leftBounds)
 		case "characters":
 			state.paintCharacterPanel(canvas, leftBounds)
+		case "projects":
+			state.paintProjectPanel(canvas, leftBounds)
 		default:
 			state.paintFolderPanel(canvas, leftBounds)
 		}
@@ -246,6 +253,9 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	}
 	if state.mapper != nil {
 		state.paintShortcutMapper(canvas, size)
+	}
+	if state.m5 != nil {
+		state.paintM5Dialog(canvas, size)
 	}
 	if state.resultFocusRequested {
 		if state.resultFocusArmed {
@@ -895,7 +905,12 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	} else {
 		delete(state.resourceHighlighters, doc)
 	}
-	state.renderTheme.Apply(language.Mode, &snapshot)
+	state.applyUDLHighlight(doc, &snapshot)
+	var styleTokens map[gfx.Color]gfx.Color
+	if state.editorStyle != nil {
+		styleTokens = state.editorStyle.tokens
+	}
+	state.renderTheme.ApplyColors(snapshot.Language, &snapshot, styleTokens)
 	if language.Mode == ".ans" {
 		background := state.ansiBackgrounds[doc]
 		if background == nil {
@@ -1783,7 +1798,7 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 
 func (state *model) menuSelected(command string) bool {
 	doc := state.space.Current()
-	if language, ok := languageExtension(command); ok {
+	if language, ok := state.languageForCommand(command); ok {
 		current := state.languageFor(doc)
 		if current == language || language == "" && current == ".txt" {
 			return true
@@ -1794,6 +1809,8 @@ func (state *model) menuSelected(command string) bool {
 		return false
 	}
 	switch command {
+	case projectPanelCommand:
+		return state.projects.visible
 	case "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off":
 		view := state.changeHistoryView
 		if view == "" {
@@ -1907,6 +1924,9 @@ func (state *model) menuSelected(command string) bool {
 
 func (state *model) languageLabel(doc *document.Document) string {
 	mode := state.languageFor(doc)
+	if definition := state.udlForMode(mode); definition != nil {
+		return definition.Name
+	}
 	if mode == ".txt" {
 		mode = ""
 	}

@@ -53,40 +53,64 @@ func readableToken(color gfx.Color) gfx.Color {
 	return color
 }
 
-// Recolor changes only caller-owned runs, leaving lexical caches and print colors intact.
-func (theme Theme) Recolor(runs []components.CodeEditorRun) []components.CodeEditorRun {
+func (theme Theme) TokenColor(base gfx.Color) gfx.Color {
 	var colors map[gfx.Color]gfx.Color
 	switch theme {
 	case ModernDark:
 		colors = modernColors
 	case Monokai:
 		colors = monokaiColors
-	default:
-		return runs
 	}
+	if color, ok := colors[base]; ok {
+		return color
+	}
+	return base
+}
+
+// Recolor changes only caller-owned runs, leaving lexical caches and print colors intact.
+func (theme Theme) Recolor(runs []components.CodeEditorRun) []components.CodeEditorRun {
 	for index := range runs {
-		if color, ok := colors[runs[index].Color]; ok {
-			runs[index].Color = color
-		}
+		runs[index].Color = theme.TokenColor(runs[index].Color)
 	}
 	return runs
 }
 
 func (theme Theme) Apply(mode string, snapshot *components.CodeEditorSnapshot) {
-	if theme == ClassicLight || mode == ".ans" {
+	theme.ApplyColors(mode, snapshot, nil)
+}
+
+func (theme Theme) ApplyColors(mode string, snapshot *components.CodeEditorSnapshot, overrides map[gfx.Color]gfx.Color) {
+	if theme == ClassicLight && len(overrides) == 0 || mode == ".ans" {
 		return
+	}
+	recolor := func(runs []components.CodeEditorRun) {
+		for index := range runs {
+			if color, ok := overrides[runs[index].Color]; ok {
+				runs[index].Color = color
+			} else {
+				runs[index].Color = theme.TokenColor(runs[index].Color)
+			}
+		}
 	}
 	if highlight := snapshot.HighlightLine; highlight != nil {
 		snapshot.HighlightLine = func(mode string, line int, value string, dst []components.CodeEditorRun) []components.CodeEditorRun {
 			runs := highlight(mode, line, value, dst)
-			theme.Recolor(runs[len(dst):])
+			recolor(runs[len(dst):])
 			return runs
 		}
 	} else if highlight := snapshot.Highlight; highlight != nil {
 		snapshot.Highlight = func(mode, value string, dst []components.CodeEditorRun) []components.CodeEditorRun {
 			runs := highlight(mode, value, dst)
-			theme.Recolor(runs[len(dst):])
+			recolor(runs[len(dst):])
 			return runs
 		}
 	}
+}
+
+func StyleTokenColors() [5]gfx.Color {
+	var colors [5]gfx.Color
+	for index, kind := range [...]chroma.TokenType{chroma.Keyword, chroma.LiteralString, chroma.Comment, chroma.LiteralNumber, chroma.NameFunction} {
+		colors[index], _ = tokenColor(kind)
+	}
+	return colors
 }

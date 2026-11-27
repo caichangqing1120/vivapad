@@ -58,7 +58,12 @@ func commentStep(command, language string) (macro.Step, bool) {
 }
 
 func (state *model) applyCommentCommand(doc *document.Document, command string) {
-	step, ok := commentStep(command, state.languageFor(doc))
+	mode := state.languageFor(doc)
+	step, ok := commentStep(command, mode)
+	if definition := state.udlForMode(mode); definition != nil {
+		step.LinePrefix, step.BlockStart, step.BlockEnd = definition.LineComment, definition.BlockStart, definition.BlockEnd
+		ok = step.Comment != "" && (step.LinePrefix != "" || step.BlockStart != "")
+	}
 	if !ok {
 		state.notice = "No comment for this language"
 		return

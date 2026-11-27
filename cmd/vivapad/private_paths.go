@@ -22,6 +22,7 @@ func (state *model) isPrivateDataPath(path string) bool {
 	for _, internal := range []string{
 		state.sessionPath, state.preferencesPath, state.recoveryPath, state.recentPath,
 		state.closedPath, state.macroPath, state.namedMacroPath, state.runPath,
+		state.udlPath, state.projectsPath,
 	} {
 		if internal == "" {
 			continue

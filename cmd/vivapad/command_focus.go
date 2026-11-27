@@ -7,7 +7,7 @@ import (
 )
 
 func (state *model) editorCommandFocusBlocked() bool {
-	return state.menuOpen >= 0 || state.mapper != nil || state.saveSessionOptionsOpen || state.columnDialogOpen ||
+	return state.menuOpen >= 0 || state.mapper != nil || state.m5 != nil || state.saveSessionOptionsOpen || state.columnDialogOpen ||
 		state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.webSearchOpen || state.windowsDialogOpen ||
 		state.macroSaveOpen || state.macroRunOpen || state.hashDialogOpen || state.dateTimeDialogOpen ||
 		state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil ||
@@ -28,7 +28,7 @@ func (state *model) restoreEditorCommandFocus(command string) {
 		slices.Contains(menuCommands[1][:], command) || slices.Contains(menuCommands[6][:], command) ||
 		slices.Contains(symbolCommands[:], command) || slices.Contains(copyPathsCommands[:], command) ||
 		slices.Contains(viewTabCommands[:], command) || foldLevelForCommand(command)
-	if _, language := languageExtension(command); language {
+	if _, language := state.languageForCommand(command); language {
 		returnsToEditor = true
 	}
 	switch command {

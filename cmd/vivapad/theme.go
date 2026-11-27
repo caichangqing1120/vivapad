@@ -133,11 +133,11 @@ func (state *model) unwatchAppearance() {
 func (state *model) palette() *themePalette {
 	switch state.renderTheme {
 	case syntax.ModernDark:
-		return &modernPalette
+		return state.styledPalette(&modernPalette)
 	case syntax.Monokai:
-		return &monokaiPalette
+		return state.styledPalette(&monokaiPalette)
 	default:
-		return &classicPalette
+		return state.styledPalette(&classicPalette)
 	}
 }
 
@@ -153,6 +153,9 @@ func (state *model) uiTheme() gfx.Theme {
 	theme.Border, theme.Hover, theme.Ring = palette.border, palette.hover, palette.accent
 	theme.Muted, theme.MutedForeground = palette.dock, palette.muted
 	theme.Input, theme.Primary, theme.PrimaryForeground = palette.border, palette.accent, palette.editorBackground
+	if state.editorStyle != nil {
+		theme.PrimaryForeground = state.editorStyle.base.editorBackground
+	}
 	theme.Selection, theme.SelectionForeground = palette.selection, palette.selectionText
 	return theme
 }

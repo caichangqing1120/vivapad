@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/vivaui/viva/app"
@@ -29,11 +30,12 @@ func TestFileExitUsesNativeDirtyCloseGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(0))
-	row := revealFileMenuItem(t, driver, 23)
+	exitIndex := slices.Index(menuCommands[0], "Exit")
+	row := revealFileMenuItem(t, driver, exitIndex)
 	if row.Y+row.Height > 400-statusHeight {
 		t.Fatalf("Exit overlaps status: %+v", row)
 	}
-	clickID(t, driver, menuItemScope.At(23))
+	clickID(t, driver, menuItemScope.At(exitIndex))
 	if closed != 0 || state.pendingClose < 0 || !doc.Dirty() {
 		t.Fatal("Exit bypassed the dirty close gate")
 	}
@@ -48,7 +50,7 @@ func TestFileExitUsesNativeDirtyCloseGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	clickID(t, driver, menuScope.At(0))
-	clickID(t, driver, menuItemScope.At(23))
+	clickID(t, driver, menuItemScope.At(exitIndex))
 	clickID(t, driver, saveCloseID)
 	if closed != 0 || state.pendingClose < 0 || doc.Editor.String() != "unsaved" {
 		t.Fatal("canceled Save As closed or changed the document")

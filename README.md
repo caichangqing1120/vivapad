@@ -38,6 +38,11 @@ VivaPad in Open With for `.txt`, `.md`, `.markdown`, and `.json` files.
 They do not set it as the default editor. Windows and Linux pass the selected
 file to a new VivaPad process; macOS can also open it in a running window.
 
+- **Settings > Style Configurator...** previews editor font size and per-theme colors before saving.
+- **Language > User Defined Language...** defines custom keywords, delimiters, and file extensions. Saved languages also appear in the Language menu.
+- **View > Projects** groups file references. Removing a reference or group leaves the files on disk.
+- **File > Open in New Window** opens an independent instance with the current saved file, or a blank document. When an open file changes on disk, the editor offers reload, comparison, or ignore; reloading a dirty tab still requires confirmation.
+
 The source requires official Viva commit `95ea459` and temporarily replaces it
 with published fork commit `ac36aac` for the pending clipboard, indentation
 guide, soft-wrap marker, character-representation, colored mark-layer, primitive

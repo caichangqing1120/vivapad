@@ -27,6 +27,9 @@ func (state *model) restoreFunctionDock(stored session.State) {
 }
 
 func (state *model) activeDock() string {
+	if state.projects.visible && state.activeLeftDock == "projects" {
+		return "projects"
+	}
 	if state.characterVisible && state.activeLeftDock == "characters" {
 		return "characters"
 	}
@@ -47,6 +50,9 @@ func (state *model) activeDock() string {
 	}
 	if state.characterVisible {
 		return "characters"
+	}
+	if state.projects.visible {
+		return "projects"
 	}
 	return ""
 }
@@ -154,7 +160,7 @@ func (state *model) paintLeftDockTabs(canvas *gfx.Canvas, bounds gfx.Rect) {
 	canvas.Fill(bounds, palette.tabs)
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
 	canvas.Fill(gfx.Rect{Y: bounds.Y + bounds.Height - 1, Width: bounds.Width, Height: 1}, palette.border)
-	var tabs [4]struct {
+	var tabs [5]struct {
 		id    gfx.ID
 		label string
 		mode  string
@@ -186,6 +192,13 @@ func (state *model) paintLeftDockTabs(canvas *gfx.Canvas, bounds gfx.Rect) {
 			id          gfx.ID
 			label, mode string
 		}{leftDockCharactersID, "Characters", "characters"}
+		count++
+	}
+	if state.projects.visible {
+		tabs[count] = struct {
+			id          gfx.ID
+			label, mode string
+		}{leftDockProjectsID, "Projects", "projects"}
 		count++
 	}
 	for index, tab := range tabs[:count] {

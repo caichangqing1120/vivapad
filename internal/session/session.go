@@ -220,7 +220,7 @@ func validate(state State) error {
 		if !paths[path] {
 			return fmt.Errorf("invalid session language path %s", path)
 		}
-		if _, ok := syntax.LanguageByMode(mode); !ok {
+		if _, ok := syntax.LanguageByMode(mode); !ok && !syntax.ValidUDLMode(mode) {
 			return fmt.Errorf("unsupported session language %q", mode)
 		}
 	}

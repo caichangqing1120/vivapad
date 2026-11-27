@@ -18,7 +18,12 @@ func init() {
 }
 
 func main() {
-	paths, help := parseLaunchArguments(os.Args[1:])
+	args := os.Args[1:]
+	independent := len(args) >= 2 && args[0] == newWindowFlag && args[1] == "--"
+	if independent {
+		args = args[1:]
+	}
+	paths, help := parseLaunchArguments(args)
 	if help {
 		if err := writeLaunchUsage(); err != nil {
 			log.Fatal(err)
@@ -33,7 +38,7 @@ func main() {
 	if err != nil {
 		log.Printf("session storage unavailable: %v", err)
 	}
-	state := newStartupModel(paths, sessionPath)
+	state := newStartupModelMode(paths, sessionPath, independent)
 	config := newNativeConfig(state)
 	if err := app.RunApplication(func(application *app.Application) error {
 		window, err := application.OpenWindow(config, &canvas)

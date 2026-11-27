@@ -27,6 +27,9 @@ func (state *model) leftDockCount() int {
 	if state.characterVisible {
 		count++
 	}
+	if state.projects.visible {
+		count++
+	}
 	return count
 }
 

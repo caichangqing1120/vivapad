@@ -1,6 +1,9 @@
 package main
 
 func (state *model) paneFontSize(pane int) int {
+	if state.m5 != nil && state.m5.kind == styleConfiguratorCommand {
+		return state.m5.size
+	}
 	if state.splitEnabled && pane == 1 {
 		return state.subFontSize
 	}
