@@ -1,10 +1,6 @@
 package main
 
-import (
-	"errors"
-
-	"github.com/vivaui/viva/gfx"
-)
+import "errors"
 
 const postItCommand = "Post-It"
 
@@ -111,15 +107,4 @@ func (state *model) finishPostIt(active bool, err error) {
 	state.notice = state.postIt.failure
 	state.requestNativeChooserFocus()
 	state.invalidator.Invalidate()
-}
-
-func (state *model) postItShortcut(event gfx.KeyEvent) gfx.EventResult {
-	if event.Key != gfx.KeyF12 || event.Modifiers != 0 || event.Release ||
-		state.requestDecoration == nil || state.distractionFree || state.editorCommandFocusBlocked() && state.menuOpen < 0 {
-		return gfx.EventResult{}
-	}
-	if !event.Repeat {
-		state.command(postItCommand)
-	}
-	return gfx.EventResult{Handled: true, Repaint: true}
 }

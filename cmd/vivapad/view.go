@@ -30,7 +30,7 @@ var menuCommands = [...][]string{
 	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", textDirectionRTL, textDirectionLTR, "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand, namedBrowserMenuCommand, postItCommand, compareMenu, themeMenuCommand},
 	{"Unix (LF)", "Windows (CR LF)", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE", "GB18030", "Windows-1252", "Character sets"},
 	{"Normal Text", "Go", "JavaScript", "TypeScript", "Python", "JSON", "HTML", "CSS", "Markdown", "SQL"},
-	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off"},
+	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off", shortcutMapperCommand},
 	{"MD5", "SHA-1", "SHA-256", "SHA-512", structuredToolsMenu, encodingToolsMenu, compareMenu},
 	{"Record Macro", "Stop Recording", "Playback Macro", "Save Current Recorded Macro...", "Run a Macro Multiple Times...", "Playback 5 Times", "Clear Macro", "Saved Macros"},
 	{"Run..."},
@@ -175,6 +175,7 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	if !state.distractionFree && !postIt {
 		state.paintStatus(canvas, size.Width, size.Height-statusHeight)
 	}
+	state.paintStatusPopup(canvas, size)
 	if !state.fullscreen && !postIt {
 		state.paintOpenMenu(canvas, size)
 	}
@@ -242,6 +243,9 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	}
 	if state.saveSessionOptionsOpen {
 		state.paintSaveSessionOptions(canvas, size)
+	}
+	if state.mapper != nil {
+		state.paintShortcutMapper(canvas, size)
 	}
 	if state.resultFocusRequested {
 		if state.resultFocusArmed {
@@ -1385,21 +1389,7 @@ func (state *model) paintStatus(canvas *gfx.Canvas, width, y float32) {
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: statusHeight}, palette.statusBar)
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.border)
 	doc := state.space.Current()
-	if doc.LargeFile() != nil {
-		status := state.largeStatus(doc)
-		if state.largeView(doc, state.activePane).clipped {
-			status += "   Long line clipped"
-		}
-		if err := doc.LargeFile().Progress().Err; err != nil {
-			status += "   Index stopped: " + err.Error()
-		}
-		if state.notice != "" {
-			status = state.notice + "   |   " + status
-		}
-		box := gfx.Rect{X: 10, Y: y + 1, Width: max(1, width-20), Height: 21}
-		smallLabel(canvas, canvas.FitLine(status, 11, gfx.WeightRegular, box.Width), box, palette.text, 11)
-		return
-	}
+	large := doc.LargeFile() != nil
 	if state.noChangeNoticeDoc != nil {
 		if state.notice != noChangeNavigationNotice || doc != state.noChangeNoticeDoc {
 			state.retireNoChangeNotice("")
@@ -1409,14 +1399,27 @@ func (state *model) paintStatus(canvas *gfx.Canvas, width, y float32) {
 			state.retireNoChangeNotice("")
 		}
 	}
-	line, column := doc.Position()
+	line, column := 0, 0
+	if large {
+		line, column, _ = state.largeView(doc, state.activePane).position()
+	} else {
+		line, column = doc.Position()
+	}
 	message := state.notice
-	if message == "" {
-		if state.macroRecording {
-			message = fmt.Sprintf("Recording macro (%d steps)", len(state.macroSteps))
-		} else {
-			message = state.languageLabel(doc)
+	if large {
+		status := state.largeStatus(doc)
+		if state.largeView(doc, state.activePane).clipped {
+			status += "   Long line clipped"
 		}
+		if err := doc.LargeFile().Progress().Err; err != nil {
+			status += "   Index stopped: " + err.Error()
+		}
+		if message != "" && message != "Large File (Read-Only)" {
+			status = message + "   |   " + status
+		}
+		message = status
+	} else if message == "" && state.macroRecording {
+		message = fmt.Sprintf("Recording macro (%d steps)", len(state.macroSteps))
 	}
 	for _, hover := range []struct {
 		id    gfx.ID
@@ -1441,30 +1444,39 @@ func (state *model) paintStatus(canvas *gfx.Canvas, width, y float32) {
 			mode, modeWidth = "Lightweight · Read-Only", 145
 		}
 	}
+	if large {
+		mode, modeWidth = "", 0
+	}
 	cells := [...]struct {
+		id    gfx.ID
 		label string
 		width float32
 	}{
-		{fmt.Sprintf("length: %d", doc.Editor.RuneCount()), 91},
-		{fmt.Sprintf("lines: %d", doc.LineCount()), 78},
-		{fmt.Sprintf("Ln: %d  Col: %d", line, column), 112},
-		{encoding, 85}, {doc.NewlineLabel(), 112}, {mode, modeWidth},
+		{gfx.ID{}, fmt.Sprintf("length: %d", doc.Editor.RuneCount()), 91},
+		{gfx.ID{}, fmt.Sprintf("lines: %d", doc.LineCount()), 78},
+		{statusGoToID, fmt.Sprintf("Ln: %d  Col: %d", line, column), 112},
+		{statusEncodingID, encoding, 85}, {statusEOLID, doc.NewlineLabel(), 112},
+		{statusLanguageID, state.languageLabel(doc), 105}, {gfx.ID{}, mode, modeWidth},
 	}
 	shown := cells[:]
-	if width < 850 {
+	if large || width < 850 {
 		shown = cells[2:]
+	}
+	if width < 850 {
+		cells[2].width, cells[3].width, cells[4].width, cells[5].width = 90, 68, 83, 68
 	}
 	total := float32(0)
 	for _, cell := range shown {
 		total += cell.width
 	}
-	messageWidth := max(60, width-total-20)
+	messageWidth := max(0, width-total-20)
 	message = canvas.FitLine(message, 11, gfx.WeightRegular, messageWidth)
 	smallLabel(canvas, message, gfx.Rect{X: 10, Y: y + 1, Width: messageWidth, Height: 21}, palette.muted, 11)
 	x := width - total
 	for _, cell := range shown {
-		canvas.Fill(gfx.Rect{X: x, Y: y + 3, Width: 1, Height: 18}, palette.border)
-		smallLabel(canvas, cell.label, gfx.Rect{X: x + 7, Y: y + 1, Width: cell.width - 9, Height: 21}, palette.text, 11)
+		if cell.width > 0 {
+			state.paintStatusAction(canvas, cell.id, gfx.Rect{X: x, Y: y + 1, Width: cell.width, Height: 23}, cell.label)
+		}
 		x += cell.width
 	}
 }
@@ -1543,6 +1555,9 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 		rowHeight = fileMenuRowHeight
 	}
 	available := size.Height - menuHeight - statusHeight - 8
+	if state.menuOpen == 6 {
+		rowHeight = min(rowHeight, (available-8)/float32(count))
+	}
 	if state.menuOpen == 0 && float32(count)*rowHeight+8 > available {
 		rowHeight, controls = 20, 44
 		visible = min(count, max(1, int((available-controls-8)/rowHeight)))

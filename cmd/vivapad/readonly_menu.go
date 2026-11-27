@@ -55,7 +55,7 @@ func (state *model) textMutation(command string) bool {
 		return true
 	case "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE":
 		return true
-	case "Undo", "Redo", "Cut", "Paste", "Delete", "Redact Selection", "Redact Selection with Bullets", "Word Completion", "Path Completion", "Column Editor...", "Duplicate Line", "Delete Line", "Indent Lines", "Unindent Lines",
+	case "Undo", "Redo", "Cut", "Paste", "Delete", "Redact Selection", "Redact Selection with Bullets", "Word Completion", "Path Completion", "Column Editor...", "Duplicate Line", "Duplicate Lines Up", "Delete Line", "Indent Lines", "Unindent Lines",
 		"Unix (LF)", "Windows (CR LF)", "Macintosh (CR)",
 		"Toggle Single Line Comment", "Single Line Comment", "Single Line Uncomment", "Block Comment", "Block Uncomment",
 		"Date Time (short)", "Date Time (long)", "Date Time (customized)",

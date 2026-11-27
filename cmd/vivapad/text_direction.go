@@ -2,7 +2,6 @@ package main
 
 import (
 	"runtime"
-	"strings"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -34,19 +33,6 @@ func (state *model) setTextDirection(rtl bool) {
 	state.menuOpen, state.menuOverflowOpen = -1, false
 	state.requestEditorCommandFocus()
 	state.invalidator.Invalidate()
-}
-
-func directionShortcut(event gfx.KeyEvent) string {
-	if event.Modifiers != gfx.ModifierControl|gfx.ModifierAlt || (event.Target != editorID && event.Target != rightEditorID) {
-		return ""
-	}
-	switch strings.ToLower(event.Text) {
-	case "r":
-		return textDirectionRTL
-	case "l":
-		return textDirectionLTR
-	}
-	return ""
 }
 
 func (state *model) moveShapedHorizontal(pane int, doc *document.Document, event gfx.KeyEvent) bool {

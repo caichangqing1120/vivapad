@@ -183,6 +183,53 @@ jobs:
           path: build/vivapad*
           if-no-files-found: error
           retention-days: 7
+      - name: Locate or install NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Get-Command makensis -ErrorAction SilentlyContinue) { exit 0 }
+          $nsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS'
+          if (!(Test-Path (Join-Path $nsis 'makensis.exe'))) {
+            choco install nsis --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
+          }
+          if (!(Test-Path (Join-Path $nsis 'makensis.exe'))) { throw 'makensis.exe not found' }
+          $nsis | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build and inspect unsigned desktop packages
+        run: |
+          case "$RUNNER_OS" in
+            macOS)
+              arch=amd64
+              if [[ "$RUNNER_ARCH" == ARM64 ]]; then arch=arm64; fi
+              bundle=build/VivaPad.app
+              go tool viva package --target darwin --arch "$arch" --format app --no-sign -o "$bundle"
+              go run ./tools/icon -app "$bundle"
+              plutil -lint "$bundle/Contents/Info.plist"
+              program=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$bundle/Contents/Info.plist")
+              usage=$("$bundle/Contents/MacOS/$program" --help)
+              [[ "$usage" == "Usage: vivapad "* ]]
+              mkdir -p build/packages
+              ditto -c -k --keepParent "$bundle" build/packages/VivaPad-macOS.zip
+              ;;
+            Windows)
+              go tool viva package --target windows --arch amd64 --format nsis,zip --no-sign -o build/packages
+              test -s build/packages/*-setup.exe
+              unzip -t build/packages/*.zip
+              ;;
+            Linux)
+              go tool viva package --target linux --arch amd64 --format deb,tar.gz --no-sign -o build/packages
+              dpkg-deb --info build/packages/*.deb
+              tar -tzf build/packages/*.tar.gz
+              ;;
+            *) exit 1 ;;
+          esac
+      - name: Upload unsigned desktop packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: vivapad-packages-${{ runner.os }}-${{ runner.arch }}
+          path: build/packages/*
+          if-no-files-found: error
+          retention-days: 7
 
   race:
     name: Race

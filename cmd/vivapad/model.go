@@ -30,6 +30,7 @@ import (
 	"vivapad/internal/runcommand"
 	"vivapad/internal/searchfiles"
 	"vivapad/internal/session"
+	"vivapad/internal/shortcuts"
 	"vivapad/internal/syntax"
 	"vivapad/internal/websearch"
 	"vivapad/internal/workspace"
@@ -358,6 +359,9 @@ var (
 )
 
 type model struct {
+	shortcuts                     *shortcuts.Registry
+	mapper                        *shortcutMapper
+	statusPopup                   statusPopup
 	invalidator                   app.Invalidator
 	largeViews                    map[*document.Document][2]*largeView
 	largeDragDoc                  *document.Document
@@ -833,7 +837,7 @@ func newModel() *model {
 	if runtime.GOOS == "windows" {
 		openConsole = external.OpenConsole
 	}
-	return &model{
+	state := &model{
 		changeView: newChangeViewCache(),
 		space:      space, editors: make(map[*document.Document]*components.CodeEditor),
 		secondEditors: make(map[*document.Document]*components.CodeEditor), paneDocs: [2]*document.Document{space.Current()}, splitRatio: 0.5,
@@ -868,6 +872,8 @@ func newModel() *model {
 		dateTimeFormat: datetime.DefaultFormat, clock: time.Now,
 		lastRecovery: recovery.State{Active: -1},
 	}
+	state.shortcuts, _ = shortcuts.Load("", state.shortcutCatalog())
+	return state
 }
 
 func newModelWithFiles(paths []string) *model {
@@ -907,6 +913,11 @@ func newStartupModel(paths []string, sessionPath string) *model {
 			state.notice = "Run commands unavailable: " + err.Error()
 		} else {
 			state.namedRuns = named
+		}
+		var shortcutErr error
+		state.shortcuts, shortcutErr = shortcuts.Load(filepath.Join(filepath.Dir(sessionPath), "shortcuts.json"), state.shortcutCatalog())
+		if shortcutErr != nil {
+			state.notice = "Shortcuts not restored: " + shortcutErr.Error()
 		}
 		state.preferencesPath = filepath.Join(filepath.Dir(sessionPath), "settings.json")
 		if stored, err := preferences.Load(state.preferencesPath); err != nil {
@@ -1239,6 +1250,18 @@ func newConfig(state *model) app.Config {
 		return state.codeEditor().Pointer(event)
 	}
 	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult {
+		if state.mapper != nil {
+			if event.Target == mapperPanelID || event.Target.Scope() == mapperRows {
+				state.mapper.offset = max(0, state.mapper.offset+scrollListStep(event))
+			}
+			return gfx.EventResult{Handled: true, Repaint: true}
+		}
+		if !state.statusPopup.kind.IsZero() {
+			if event.Target == statusMenuID || event.Target.Scope() == statusChoiceScope {
+				state.statusPopup.offset = max(0, state.statusPopup.offset+scrollListStep(event))
+			}
+			return gfx.EventResult{Handled: true, Repaint: true}
+		}
 		if isComparePreview(event.Target) {
 			if view := state.activeComparison(); view != nil && view.saved {
 				result := view.preview.Scroll(event)
@@ -1451,6 +1474,9 @@ func newConfig(state *model) app.Config {
 		return result
 	}
 	config.OnFileDrop = func(event gfx.FileDropEvent) gfx.EventResult {
+		if state.mapper != nil {
+			return gfx.EventResult{}
+		}
 		if state.saveSessionOptionsOpen || state.columnDialogOpen || state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.webSearchOpen || state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen || state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil || state.dateTimeDialogOpen || state.hashDialogOpen || state.windowsDialogOpen {
 			return gfx.EventResult{}
 		}
@@ -1469,7 +1495,16 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: event.Phase == gfx.FileDropDrop}
 	}
 	config.OnShortcut = func(event gfx.KeyEvent) gfx.EventResult {
-		if isComparePreview(event.Target) && event.Key != gfx.KeyF8 {
+		if state.mapper != nil {
+			return state.shortcutMapperKey(event, true)
+		}
+		if !state.statusPopup.kind.IsZero() {
+			return gfx.EventResult{Handled: true}
+		}
+		if isComparePreview(event.Target) {
+			if result := state.dispatchShortcut(event); result.Handled {
+				return result
+			}
 			return gfx.EventResult{Handled: event.Modifiers&primary() != 0}
 		}
 		if state.saveSessionOptionsOpen {
@@ -1550,178 +1585,18 @@ func newConfig(state *model) app.Config {
 		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
 			return gfx.EventResult{Handled: true}
 		}
-		if pane := paneForTarget(event.Target); (event.Target == editorID || event.Target == rightEditorID) &&
-			state.paneDocument(pane).LargeFile() != nil && event.Modifiers == primary() {
-			state.activatePane(pane)
-			doc := state.paneDocument(pane)
-			switch strings.ToLower(event.Text) {
-			case "c":
-				state.copyLarge(doc)
-				return gfx.EventResult{Handled: true, Repaint: true}
-			case "a":
-				view := state.largeView(doc, pane)
-				view.anchor, view.caret = 0, len(view.value)
-				return gfx.EventResult{Handled: true, Repaint: true}
-			case "x", "v", "z", "y":
-				state.notice = document.ErrLargeFileReadOnly.Error()
-				return gfx.EventResult{Handled: true, Repaint: true}
-			}
-		}
-		if command := directionShortcut(event); command != "" {
-			state.activatePane(paneForTarget(event.Target))
-			state.command(command)
-			return gfx.EventResult{Handled: true, Repaint: true}
-		}
-		if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) &&
-			state.isReadOnly(state.paneDocument(pane)) && event.Modifiers == primary() {
-			switch strings.ToLower(event.Text) {
-			case "c":
-				state.activatePane(pane)
-				state.command("Copy")
-				return gfx.EventResult{Handled: true, Repaint: true}
-			case "x":
-				state.notice = "Read-only document"
-				return gfx.EventResult{Handled: true, Repaint: true}
-			}
-		}
-		if event.Modifiers == gfx.ModifierAlt|gfx.ModifierShift && strings.EqualFold(event.Text, "b") {
-			state.command("Begin/End Select in Column Mode")
-			return gfx.EventResult{Handled: true, Repaint: true}
-		}
-		if event.Modifiers&primary() == 0 {
-			return gfx.EventResult{}
-		}
-		if strings.ToLower(event.Text) == "i" && event.Modifiers == primary()|gfx.ModifierAlt {
-			state.openIncrementalSearch(state.incrementOpen && event.Target == incrementQueryID)
-			return gfx.EventResult{Handled: true, Repaint: true}
-		}
-		if (event.Key == gfx.KeySpace || event.Text == " ") && event.Modifiers == primary()|gfx.ModifierShift {
-			if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) {
-				state.activatePane(pane)
-				state.command("Path Completion")
-				return gfx.EventResult{Handled: true, Repaint: true}
-			}
-		}
-		if event.Key == gfx.KeyEnter && event.Modifiers == primary() {
-			if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) {
-				state.activatePane(pane)
-				state.command("Word Completion")
-				return gfx.EventResult{Handled: true, Repaint: true}
-			}
-		}
-		if event.Modifiers&gfx.ModifierShift != 0 {
-			switch strings.ToLower(event.Text) {
-			case "r":
-				if state.macroRecording {
-					state.command("Stop Recording")
-				} else {
-					state.command("Record Macro")
-				}
-				return gfx.EventResult{Handled: true, Repaint: true}
-			case "p":
-				state.command("Playback Macro")
-				return gfx.EventResult{Handled: true, Repaint: true}
-			case "t":
-				state.restoreClosed()
-				return gfx.EventResult{Handled: true, Repaint: true}
-			}
-		}
-		if pane := paneForTarget(event.Target); pane >= 0 && (event.Target == editorID || event.Target == rightEditorID) {
-			state.activatePane(pane)
-			if command, ok := components.CodeEditorCommandForKey(event); ok {
-				if command == components.CodeEditorToggleComment {
-					state.command("Toggle Single Line Comment")
-					return gfx.EventResult{Handled: true, Repaint: true}
-				}
-				if state.isReadOnly(state.paneDocument(pane)) {
-					state.notice = "Read-only document"
-					return gfx.EventResult{Handled: true, Repaint: true}
-				}
-				state.applyCodeCommand(state.paneDocument(pane), command)
-				state.recordMacro(state.paneDocument(pane), macro.Step{Kind: macro.CodeStep, Code: command})
-				return gfx.EventResult{Handled: true, Repaint: true}
-			}
-		}
-		switch strings.ToLower(event.Text) {
-		case "b":
-			if event.Modifiers&gfx.ModifierShift != 0 {
-				state.command("Begin/End Select")
-			} else if event.Modifiers&gfx.ModifierAlt != 0 {
-				state.command("Select All In-between {} [] or ()")
-			} else {
-				state.command("Go to Matching Brace")
-			}
-		case "n":
-			state.cancelMacroForCommand()
-			state.showInActivePane(state.space.NewDocument())
-		case "o":
-			state.cancelMacroForCommand()
-			if state.menuOpen >= 0 {
-				state.command("Open...")
-			} else {
-				state.openFiles()
-			}
-		case "s":
-			state.cancelMacroForCommand()
-			if state.menuOpen >= 0 {
-				if event.Modifiers&gfx.ModifierShift != 0 {
-					state.command("Save As...")
-				} else {
-					state.command("Save")
-				}
-			} else {
-				state.save(state.space.Active, event.Modifiers&gfx.ModifierShift != 0)
-			}
-		case "f", "h":
-			state.cancelMacroForCommand()
-			state.closeIncrementalSearch()
-			state.markDialogOpen = false
-			if event.Text == "f" && event.Modifiers&gfx.ModifierShift != 0 {
-				state.openFilesDialog()
-				return gfx.EventResult{Handled: true, Repaint: true, Focus: queryID}
-			}
-			state.searchOpen, state.goToOpen = true, false
-			return gfx.EventResult{Handled: true, Repaint: true, Focus: queryID}
-		case "g":
-			state.cancelMacroForCommand()
-			state.closeIncrementalSearch()
-			state.goToOpen, state.searchOpen = true, false
-			return gfx.EventResult{Handled: true, Repaint: true, Focus: goToFieldID}
-		case "d":
-			state.command("Duplicate Line")
-		case "l":
-			state.command("Delete Line")
-		case "u":
-			if state.isReadOnly(state.space.Current()) {
-				state.notice = "Read-only document"
-				return gfx.EventResult{Handled: true, Repaint: true}
-			}
-			state.cancelMacroForCommand()
-			if event.Modifiers&gfx.ModifierShift != 0 {
-				state.convertSelectedCase(state.space.Current(), document.CaseUpper, "Converted to uppercase")
-			} else {
-				state.convertSelectedCase(state.space.Current(), document.CaseLower, "Converted to lowercase")
-			}
-		case "+", "=":
-			state.cancelMacroForCommand()
-			state.zoom("Zoom In")
-		case "-":
-			state.cancelMacroForCommand()
-			state.zoom("Zoom Out")
-		case "0":
-			state.cancelMacroForCommand()
-			state.zoom("Restore Default Zoom")
-		case "w":
-			state.cancelMacroForCommand()
-			state.closePaneTab(state.activePane, state.paneDocument(state.activePane))
-		default:
-			return gfx.EventResult{}
-		}
-		return gfx.EventResult{Handled: true, Repaint: true}
+		return state.dispatchShortcut(event)
 	}
 	config.OnKey = func(event gfx.KeyEvent) gfx.EventResult {
-		if result := state.postItShortcut(event); result.Handled {
-			return result
+		if state.mapper != nil {
+			return state.shortcutMapperKey(event, false)
+		}
+		if !state.statusPopup.kind.IsZero() && event.Key == gfx.KeyEscape {
+			state.statusPopup = statusPopup{}
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+		}
+		if !state.statusPopup.kind.IsZero() {
+			return gfx.EventResult{}
 		}
 		if event.Key == gfx.KeyEscape && state.largeSearch != nil {
 			state.cancelLargeSearch()
@@ -2120,15 +1995,10 @@ func newConfig(state *model) app.Config {
 		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
 			return gfx.EventResult{Handled: true}
 		}
-		if state.comparison != nil && state.menuOpen < 0 && event.Key == gfx.KeyF8 && event.Modifiers&^gfx.ModifierShift == primary() {
-			command := nextDiffCommand
-			if event.Modifiers&gfx.ModifierShift != 0 {
-				command = previousDiffCommand
-			}
-			state.command(command)
-			return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
-		}
 		if isComparePreview(event.Target) {
+			if result := state.dispatchShortcut(event); result.Handled {
+				return result
+			}
 			result := gfx.EventResult{Handled: true}
 			if event.Key == gfx.KeyEscape || event.Key == gfx.KeyTab {
 				result.Focus = state.commandEditorFocusID()
@@ -2138,26 +2008,15 @@ func newConfig(state *model) app.Config {
 		if result := state.folderWorkspaceKey(event); result.Handled {
 			return result
 		}
-		if event.Key == gfx.KeyF7 && event.Modifiers == 0 {
-			if state.distractionFree {
-				return gfx.EventResult{Handled: true}
-			}
-			if !state.resultsOpen || len(state.fileResults.Matches) == 0 {
-				state.notice = "No search results"
+		if (event.Target == editorID || event.Target == rightEditorID) && event.Modifiers == gfx.ModifierAlt|gfx.ModifierShift {
+			pane := paneForTarget(event.Target)
+			if state.paneDocument(pane).LargeFile() == nil && state.extendRectangleKey(pane, event) {
+				state.activatePane(pane)
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			state.searchOpen, state.goToOpen = false, false
-			state.menuOpen = -1
-			if event.Target == resultsPaneID || event.Target.Scope() == resultScope {
-				state.resultFocusMode = false
-				focus := editorID
-				if state.splitEnabled && state.activePane == 1 {
-					focus = rightEditorID
-				}
-				return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
-			}
-			state.resultFocusMode = true
-			return gfx.EventResult{Handled: true, Repaint: true, Focus: resultsPaneID}
+		}
+		if result := state.dispatchShortcut(event); result.Handled {
+			return result
 		}
 		if state.resultsOpen && (event.Target == resultsPaneID || event.Target.Scope() == resultScope) {
 			index := state.resultSelected
@@ -2198,76 +2057,13 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{Handled: true, Repaint: true, Focus: resultsPaneID}
 			}
 		}
-		if event.Key == gfx.KeyF4 && event.Modifiers&^gfx.ModifierShift == 0 {
-			fromPane := state.activePane
-			if event.Modifiers&gfx.ModifierShift != 0 {
-				state.command("Previous Search Result")
-			} else {
-				state.command("Next Search Result")
-			}
-			result := gfx.EventResult{Handled: true, Repaint: true}
-			if state.splitEnabled && paneForTarget(event.Target) == fromPane && state.activePane != fromPane {
-				result.Focus = editorID
-				if state.activePane == 1 {
-					result.Focus = rightEditorID
-				}
-			}
-			return result
-		}
-		if event.Key == gfx.KeyF2 {
-			if pane := paneForTarget(event.Target); pane >= 0 {
-				state.activatePane(pane)
-			}
-			if event.Modifiers&gfx.ModifierControl != 0 {
-				state.toggleBookmark()
-			} else {
-				state.navigateBookmark(event.Modifiers&gfx.ModifierShift != 0)
-			}
-			return gfx.EventResult{Handled: true, Repaint: true}
-		}
-		if event.Key == gfx.KeyTab && event.Modifiers&gfx.ModifierControl != 0 {
-			state.cycleTabs(event.Modifiers&gfx.ModifierShift != 0)
-			focus := editorID
-			if state.splitEnabled && state.activePane == 1 {
-				focus = rightEditorID
-			}
-			return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
-		}
-		if event.Key == gfx.KeyF3 {
-			if state.incrementOpen && event.Target == incrementQueryID && event.Modifiers&^gfx.ModifierShift == 0 {
-				state.findIncremental(event.Modifiers&gfx.ModifierShift != 0, true)
-				return gfx.EventResult{Handled: true, Repaint: true}
-			}
-			if pane := paneForTarget(event.Target); pane >= 0 {
-				state.activatePane(pane)
-			}
-			switch event.Modifiers {
-			case 0, gfx.ModifierShift:
-				state.cancelMacroForCommand()
-				state.find(event.Modifiers&gfx.ModifierShift != 0)
-			case primary():
-				state.command("Select and Find Next")
-			case primary() | gfx.ModifierShift:
-				state.command("Select and Find Previous")
-			case primary() | gfx.ModifierAlt:
-				state.command("Find (Volatile) Next")
-			case primary() | gfx.ModifierAlt | gfx.ModifierShift:
-				state.command("Find (Volatile) Previous")
-			default:
-				return gfx.EventResult{}
-			}
-			return gfx.EventResult{Handled: true, Repaint: true}
-		}
 		if state.searchOpen && event.Target == queryID && event.Key == gfx.KeyEnter {
 			state.find(false)
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if event.Target == goToFieldID && event.Key == gfx.KeyEnter {
 			state.goToLine()
-			if state.space.Current().LargeFile() != nil {
-				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
-			}
-			return gfx.EventResult{Handled: true, Repaint: true, Focus: editorID}
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
 		}
 		if state.incrementOpen && event.Target == incrementQueryID && event.Key == gfx.KeyEnter {
 			state.findIncremental(event.Modifiers&gfx.ModifierShift != 0, true)
@@ -2284,9 +2080,6 @@ func newConfig(state *model) app.Config {
 		doc := state.paneDocument(pane)
 		if doc.LargeFile() != nil {
 			return state.largeKey(doc, event)
-		}
-		if state.extendRectangleKey(pane, event) {
-			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.moveShapedHorizontal(pane, doc, event) {
 			return gfx.EventResult{Handled: true, Repaint: true}
@@ -2307,7 +2100,7 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 		}
-		if command, ok := editorCodeCommandForKey(event); ok {
+		if command, ok := components.CodeEditorCommandForKey(event); event.Key == gfx.KeyTab && ok {
 			if state.isReadOnly(doc) {
 				state.notice = "Read-only document"
 				return gfx.EventResult{Handled: true, Repaint: true}
@@ -2329,6 +2122,10 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	config.OnCloseRequest = func(allow func()) {
+		if state.mapper != nil {
+			state.closeShortcutMapper()
+			return
+		}
 		// The pending exit already owns the session snapshot and close callback.
 		if state.allowClose != nil {
 			return
@@ -3531,6 +3328,9 @@ func (state *model) command(command string) {
 	case "Duplicate Line":
 		state.applyCodeCommand(doc, components.CodeEditorDuplicateLinesDown)
 		state.recordMacro(doc, macro.Step{Kind: macro.LineStep, Line: command})
+	case "Duplicate Lines Up":
+		state.applyCodeCommand(doc, components.CodeEditorDuplicateLinesUp)
+		state.recordMacro(doc, macro.Step{Kind: macro.CodeStep, Code: components.CodeEditorDuplicateLinesUp})
 	case "Delete Line":
 		state.deleteLineWithBookmarks(doc)
 		state.recordMacro(doc, macro.Step{Kind: macro.LineStep, Line: command})
@@ -3814,6 +3614,9 @@ func (state *model) command(command string) {
 	case "Preferences...":
 		state.preferencesOpen, state.preferencesPage = true, 0
 		state.openPrintPreferenceFields()
+	case shortcutMapperCommand:
+		state.openShortcutMapper()
+		state.invalidator.Invalidate()
 	case "Column Editor...":
 		state.openColumnDialog()
 	case "Split View":
@@ -3976,6 +3779,7 @@ func (state *model) command(command string) {
 		state.openFilesDialog()
 		state.filesReplaceMode = true
 	case "Go to Line...":
+		state.closeIncrementalSearch()
 		state.goToOpen, state.searchOpen = true, false
 	case "Go to Matching Brace":
 		state.matchBrace(false)

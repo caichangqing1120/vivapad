@@ -108,6 +108,12 @@ func (state *model) documentTextInput(pane int) *app.TextInput {
 // wrapper in newConfig reconciles ownership after it so a dialog or non-editor
 // target cancels a live document composition exactly once.
 func (state *model) resolveTextInput(context app.TextInputContext) *app.TextInput {
+	if state.mapper != nil {
+		if context.ID == mapperSearchID && !state.mapper.capturing {
+			return &app.TextInput{Editor: state.mapper.search}
+		}
+		return nil
+	}
 	if state.saveSessionOptionsOpen {
 		return nil
 	}

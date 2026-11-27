@@ -38,10 +38,12 @@ node tools/github/check-public-files.cjs
 GOWORK=off go tool viva package --target darwin --arch arm64 --format app --no-sign -o build/VivaPad.app
 GOWORK=off go run ./tools/icon -app build/VivaPad.app
 
-# Windows / Linux（在对应平台或 CI Runner 执行）
-GOWORK=off go tool viva package --target windows --arch amd64 --no-sign
-GOWORK=off go tool viva package --target linux --arch amd64 --no-sign
+# Windows（需要 makensis）/ Linux
+GOWORK=off go tool viva package --target windows --arch amd64 --format nsis,zip --no-sign -o build/packages
+GOWORK=off go tool viva package --target linux --arch amd64 --format deb,tar.gz --no-sign -o build/packages
 ```
+
+原生三端 CI 通过后，在对应任务的 `vivapad-packages-*` artifact 中提供未签名桌面包。
 
 ## 本地私有文件红线
 
