@@ -1303,7 +1303,20 @@ func (state *model) paintFileResults(canvas *gfx.Canvas, width, y, height float3
 	}
 	canvas.HitWithOptions(resultsPaneID, gfx.Rect{Y: y + 29, Width: width, Height: height - 29}, "Find results", gfx.HitOptions{Role: gfx.RoleGroup})
 	visible := max(1, int((height-30)/22))
+	resized := visible != state.resultVisible
+	// On shrink, keep a visible selection in view without undoing manual scrolling.
+	if visible < state.resultVisible && state.resultSelected >= state.resultOffset+visible &&
+		state.resultSelected < state.resultOffset+state.resultVisible {
+		state.resultOffset = state.resultSelected - visible + 1
+	}
 	state.resultVisible = visible
+	state.resultOffset = min(state.resultOffset, max(0, len(state.fileResults.Matches)-visible))
+	if focused := canvas.Focused(); resized && focused.Scope() == resultScope {
+		end := min(state.resultOffset+visible, len(state.fileResults.Matches))
+		if !slices.Contains(state.resultRowIDs[state.resultOffset:end], focused) {
+			canvas.RequestFocusOnce(resultsPaneID)
+		}
+	}
 	for row := 0; row < visible && state.resultOffset+row < len(state.fileResults.Matches); row++ {
 		index := state.resultOffset + row
 		match := state.fileResults.Matches[index]

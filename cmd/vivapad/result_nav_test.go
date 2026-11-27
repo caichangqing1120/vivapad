@@ -399,6 +399,98 @@ func TestResultNavigationKeepsSelectedRowVisibleAndMenuReachable(t *testing.T) {
 	}
 }
 
+func TestResultPaneResizePreservesSelectionAndManualScroll(t *testing.T) {
+	for _, action := range []string{"shrink with selection visible", "shrink with focus on another row", "grow after scrolling away"} {
+		t.Run(action, func(t *testing.T) {
+			state, driver := startDriver(t)
+			grow := action == "grow after scrolling away"
+			otherFocus := action == "shrink with focus on another row"
+			resize := func(width, height int) {
+				t.Helper()
+				if err := driver.Resize(width, height); err != nil {
+					t.Fatal(err)
+				}
+			}
+			row := func(id gfx.ID) (gfx.Rect, bool) {
+				for _, hit := range driver.Snapshot().Hits {
+					if hit.ID == id {
+						return hit.Bounds, true
+					}
+				}
+				return gfx.Rect{}, false
+			}
+			if !grow {
+				resize(1000, 700)
+			} else {
+				resize(640, 400)
+			}
+			doc := state.space.Current()
+			doc.Editor.Insert(strings.Repeat("cat\n", 20))
+			state.query.Insert("cat")
+			clickID(t, driver, menuScope.At(2))
+			clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
+			index := state.resultVisible - 1
+			if grow {
+				index = 0
+			}
+			id := state.resultRowID(index)
+			clickID(t, driver, id)
+			beforeSelection := doc.Editor.Selection()
+			wantFocus := id
+			if otherFocus {
+				for range index {
+					if err := driver.Key(gfx.KeyTab, gfx.ModifierShift); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if driver.Snapshot().Focused != state.resultRowID(0) || state.resultSelected != index {
+					t.Fatal("Tab did not move focus independently of the selection")
+				}
+				wantFocus = resultsPaneID
+			}
+			if !grow {
+				resize(640, 400)
+				if _, ok := row(id); !ok || driver.Snapshot().Focused != wantFocus {
+					t.Error("shrinking hid the selected result or lost its keyboard focus")
+				}
+			} else {
+				bounds, ok := row(id)
+				if !ok {
+					t.Fatal("initial result row is missing")
+				}
+				for range 20 {
+					if err := driver.Scroll(gfx.ScrollEvent{X: bounds.X + 10, Y: bounds.Y + 8, DeltaY: 120}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				last := state.resultRowID(len(state.fileResults.Matches) - 1)
+				if _, ok := row(last); !ok || state.resultOffset == 0 {
+					t.Fatal("wheel did not scroll to the end of the results")
+				}
+				resize(1000, 700)
+				if _, ok := row(id); ok {
+					t.Error("growing jumped back to the selection after manual scrolling")
+				}
+				first := len(state.fileResults.Matches) - state.resultVisible
+				if _, ok := row(state.resultRowID(first)); !ok {
+					t.Error("growing left unused space instead of revealing more rows above the end")
+				}
+			}
+			if state.resultSelected != index || doc.Editor.Selection() != beforeSelection {
+				t.Fatal("resizing changed the selected result or the editor selection")
+			}
+			if otherFocus {
+				if err := driver.Key(gfx.KeyUp, 0); err != nil {
+					t.Fatal(err)
+				}
+				if state.resultSelected != index-1 || doc.Editor.Selection() != beforeSelection {
+					t.Error("Up did not navigate within the result pane after resizing")
+				}
+			}
+		})
+	}
+}
+
 func TestResultNavigationOpensDirectoryMatchesAndRejectsMissingFile(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
