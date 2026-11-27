@@ -266,10 +266,7 @@ func findRegexSpan(matches [][]int, byteStart int, backward bool) text.Span {
 
 func findLiteralSpan(value, query string, options SearchOptions, byteStart int, backward bool) text.Span {
 	var chosen, wrap text.Span
-	visitLiteralMatches(value, query, options.MatchCase, func(match text.Span) bool {
-		if options.WholeWord && !searchWholeWord(value, match.Start, match.End) {
-			return true
-		}
+	visitLiteralMatches(value, query, options, func(match text.Span) bool {
 		if backward {
 			if match.End <= byteStart {
 				chosen = match
@@ -294,8 +291,11 @@ func findLiteralSpan(value, query string, options SearchOptions, byteStart int, 
 	return chosen
 }
 
-func visitLiteralMatches(value, query string, matchCase bool, visit func(text.Span) bool) {
-	scanLiteralMatches(value, query, matchCase, func(match text.Span) literalMatchDecision {
+func visitLiteralMatches(value, query string, options SearchOptions, visit func(text.Span) bool) {
+	scanLiteralMatches(value, query, options.MatchCase, func(match text.Span) literalMatchDecision {
+		if options.WholeWord && !searchWholeWord(value, match.Start, match.End) {
+			return literalReject
+		}
 		if !visit(match) {
 			return literalStop
 		}
@@ -388,7 +388,11 @@ func scanRuneLiteralMatches(value, query string, matchCase bool, visit func(text
 			length++
 		}
 		if length == len(pattern) {
-			end := index + utf8.RuneLen(r)
+			width := utf8.RuneLen(r)
+			if r == utf8.RuneError {
+				_, width = utf8.DecodeRuneInString(value[index:])
+			}
+			end := index + width
 			switch visit(text.Span{Start: start, End: end}) {
 			case literalStop:
 				return false
@@ -421,7 +425,16 @@ func (doc *Document) MatchesWith(query string, options SearchOptions) ([]text.Sp
 	if err != nil || expression == nil {
 		return nil, err
 	}
-	return searchSpans(doc.Editor.String(), expression, options), nil
+	value := doc.Editor.String()
+	if !options.Regex && options.WholeWord {
+		spans := make([]text.Span, 0)
+		visitLiteralMatches(value, query, options, func(match text.Span) bool {
+			spans = append(spans, match)
+			return true
+		})
+		return spans, nil
+	}
+	return searchSpans(value, expression, options), nil
 }
 
 func searchSpans(value string, expression *regexp.Regexp, options SearchOptions) []text.Span {
@@ -488,24 +501,39 @@ func MatchesInTextWithLimit(ctx context.Context, value, query string, options Se
 	}
 	spans := make([]text.Span, 0, min(limit, 64))
 	inspected := 0
-	collect := func(start, end int) (bool, error) {
+	collect := func(start, end int) (literalMatchDecision, error) {
 		inspected++
 		if inspected%1024 == 0 {
 			if err := ctx.Err(); err != nil {
-				return false, err
+				return literalStop, err
 			}
 		}
 		if start == end {
-			return false, nil
+			return literalReject, nil
 		}
 		if options.WholeWord && !searchWholeWord(value, start, end) {
-			return false, nil
+			return literalReject, nil
 		}
 		if len(spans) == limit {
-			return true, nil
+			return literalStop, nil
 		}
 		spans = append(spans, text.Span{Start: start, End: end})
-		return false, nil
+		return literalAccept, nil
+	}
+	if !options.Regex && options.WholeWord {
+		var canceled error
+		finished := scanLiteralMatches(value, query, options.MatchCase, func(match text.Span) literalMatchDecision {
+			var decision literalMatchDecision
+			decision, canceled = collect(match.Start, match.End)
+			return decision
+		})
+		if canceled == nil {
+			canceled = ctx.Err()
+		}
+		if canceled != nil {
+			return nil, false, canceled
+		}
+		return spans, !finished, nil
 	}
 	for pos := 0; pos < len(value); {
 		if resumed != nil {
@@ -513,11 +541,11 @@ func MatchesInTextWithLimit(ctx context.Context, value, query string, options Se
 			if !found {
 				break
 			}
-			truncated, err := collect(start, end)
+			decision, err := collect(start, end)
 			if err != nil {
 				return nil, false, err
 			}
-			if truncated {
+			if decision == literalStop {
 				return spans, true, nil
 			}
 			pos = end
@@ -538,11 +566,11 @@ func MatchesInTextWithLimit(ctx context.Context, value, query string, options Se
 			}
 			origin := pos
 			for _, match := range matches {
-				truncated, err := collect(origin+match[0], origin+match[1])
+				decision, err := collect(origin+match[0], origin+match[1])
 				if err != nil {
 					return nil, false, err
 				}
-				if truncated {
+				if decision == literalStop {
 					return spans, true, nil
 				}
 			}
@@ -555,11 +583,11 @@ func MatchesInTextWithLimit(ctx context.Context, value, query string, options Se
 		}
 		start, end := pos+match[0], pos+match[1]
 		pos = end
-		truncated, err := collect(start, end)
+		decision, err := collect(start, end)
 		if err != nil {
 			return nil, false, err
 		}
-		if truncated {
+		if decision == literalStop {
 			return spans, true, nil
 		}
 	}
@@ -685,12 +713,11 @@ func (doc *Document) ReplaceCurrentWithEdit(query, replacement string, options S
 	from, to := byteAtRune(value, selection.Start), byteAtRune(value, selection.End)
 	if !options.Regex {
 		var matched bool
-		visitLiteralMatches(value, query, options.MatchCase, func(match text.Span) bool {
+		visitLiteralMatches(value, query, options, func(match text.Span) bool {
 			if match.Start < from {
 				return true
 			}
-			matched = match.Start == from && match.End == to &&
-				(!options.WholeWord || searchWholeWord(value, from, to))
+			matched = match.Start == from && match.End == to
 			return false
 		})
 		if !matched {
@@ -730,6 +757,14 @@ func ReplacementEditsInText(value, query, replacement string, options SearchOpti
 	expression, err := compileSearch(query, options)
 	if err != nil || expression == nil {
 		return nil, err
+	}
+	if !options.Regex && options.WholeWord {
+		edits := make([]ReplacementEdit, 0)
+		visitLiteralMatches(value, query, options, func(match text.Span) bool {
+			edits = append(edits, ReplacementEdit{Start: match.Start, End: match.End, Text: replacement})
+			return true
+		})
+		return edits, nil
 	}
 	matches := searchMatches(value, expression, options)
 	edits := make([]ReplacementEdit, 0, len(matches))
