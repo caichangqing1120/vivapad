@@ -156,7 +156,7 @@ jobs:
             $env:VIVAPAD_CLIPBOARD_FIXTURE_EXE = Join-Path $work 'vivapad-clipboard.test.exe'
             go test -c -o $env:VIVAPAD_CLIPBOARD_FIXTURE_EXE ./cmd/vivapad
             if ($LASTEXITCODE -ne 0) { throw 'Build Windows clipboard fixture failed' }
-            go test ./tools/windows -run '^Test(RTLDesktopMatchesNotepadPlusPlus|NotepadPlusPlus(SummaryWords|SelectionHash|DocumentPathClipboard|LegacySessionSelection|MultiSelection(Clipboard|WordBoundaries|Macros)|FirstMultiSelectFromCaret|MultiSelect(SearchOrigin|FromCarets|AllFromMixedSelection))|VivaPad(MultiSelectionClipboardRoundTrip|LegacySessionSelection))$' -count=1 -v -timeout=3m
+            go test ./tools/windows -run '^Test(RTLDesktopMatchesNotepadPlusPlus|NotepadPlusPlus(SummaryWords|SelectionHash|BinaryClipboard|DocumentPathClipboard|LegacySessionSelection|MultiSelection(Clipboard|WordBoundaries|Macros)|FirstMultiSelectFromCaret|MultiSelect(SearchOrigin|FromCarets|AllFromMixedSelection))|VivaPad(MultiSelectionClipboardRoundTrip|LegacySessionSelection))$' -count=1 -v -timeout=3m
             if ($LASTEXITCODE -ne 0) { throw 'Native desktop reference checks failed' }
             $env:VIVAPAD_WINDOWS_CLIPBOARD_TEST = '1'
             go test ./cmd/vivapad -run '^TestMultiSelectionWritesWindowsClipboard$' -count=1 -v -timeout=1m
