@@ -14,17 +14,28 @@ type folderRowHit struct {
 
 func (state *model) folderHitsFor(rows []folderRow) []folderRowHit {
 	hits := state.folderRowHits
+	if slices.EqualFunc(hits, rows, func(hit folderRowHit, row folderRow) bool {
+		return hit.path == row.path && hit.directory == row.directory
+	}) {
+		return hits
+	}
+	// Preserve the identity of visible rows that moved during a refresh.
+	previous := make(map[string]folderRowHit, len(hits))
+	for _, hit := range hits {
+		previous[hit.path] = hit
+	}
 	if len(hits) > len(rows) {
 		clear(hits[len(rows):])
 	}
 	hits = slices.Grow(hits, max(0, len(rows)-len(hits)))[:len(rows)]
 	for index, row := range rows {
-		hit := &hits[index]
-		if hit.path != row.path || hit.directory != row.directory {
+		hit, ok := previous[row.path]
+		if !ok || hit.directory != row.directory {
 			// A click in flight must not carry over to a new occupant of this slot.
-			*hit = folderRowHit{path: row.path, directory: row.directory, id: folderRowScope.At(state.folderNextRowID)}
+			hit = folderRowHit{path: row.path, directory: row.directory, id: folderRowScope.At(state.folderNextRowID)}
 			state.folderNextRowID = (state.folderNextRowID + 1) & ((1 << 31) - 1)
 		}
+		hits[index] = hit
 	}
 	state.folderRowHits = hits
 	return hits

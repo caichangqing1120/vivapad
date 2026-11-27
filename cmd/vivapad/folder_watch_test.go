@@ -150,6 +150,72 @@ func TestFolderWorkspaceRejectsReleaseAfterWatchedRowIsReplaced(t *testing.T) {
 	}
 }
 
+func TestFolderWorkspaceKeepsKeyboardFocusAfterWatchedRowMoves(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "z-last.txt"), []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state, driver := startDriver(t)
+	draft := state.space.Current()
+	draft.Editor.Insert("keep draft")
+	if err := state.addFolderRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	canonical := state.folderRoots[0]
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	clickLabeledControl(t, driver, "Toggle folder "+filepath.Base(canonical))
+	if err := driver.Key(gfx.KeyDown, 0); err != nil {
+		t.Fatal(err)
+	}
+	last := filepath.Join(canonical, "z-last.txt")
+	if state.folderSelected != last || driver.Snapshot().Focused.Scope() != folderRowScope || state.folderWatching[canonical] == nil {
+		t.Fatal("fixture did not watch the root and focus the original file")
+	}
+	rowY := func(label string) (float32, bool) {
+		for _, hit := range driver.Snapshot().Hits {
+			if hit.ID.Scope() == folderRowScope && hit.Label == label {
+				return hit.Bounds.Y, true
+			}
+		}
+		return 0, false
+	}
+	before, visible := rowY("Open z-last.txt")
+	if !visible {
+		t.Fatal("focused row is not visible")
+	}
+	if err := os.WriteFile(filepath.Join(root, "a-first.txt"), []byte("sibling"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	moved := false
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+		if err := driver.Pump(); err != nil {
+			t.Fatal(err)
+		}
+		if firstY, ok := rowY("Open a-first.txt"); ok && firstY == before {
+			after, stillVisible := rowY("Open z-last.txt")
+			moved = stillVisible && after > before
+			if moved {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !moved {
+		t.Fatal("filesystem notification did not move the focused row")
+	}
+	if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+		t.Fatal(err)
+	}
+	if opened := state.space.Current(); opened.Path != last || opened.Editor.String() != "original" || driver.Snapshot().Focused != editorID {
+		t.Fatalf("Enter after refresh opened %q with focus %v; want %q and editor focus", opened.Path, driver.Snapshot().Focused, last)
+	}
+	if draft.Editor.String() != "keep draft" || !draft.Dirty() {
+		t.Fatal("opening the focused file changed the draft")
+	}
+}
+
 func TestCollapsedBranchRereadsDiskAndWindowCloseReleasesWatches(t *testing.T) {
 	root := t.TempDir()
 	child := filepath.Join(root, "child")
