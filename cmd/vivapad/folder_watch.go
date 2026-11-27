@@ -74,6 +74,7 @@ func (state *model) stopFolderBranch(path string) {
 
 func (state *model) stopFolderWatching() {
 	state.folderRowsSnapshot = nil
+	state.folderWatchRefreshPending = false
 	if state.folderWatcher != nil {
 		_ = state.folderWatcher.Close()
 		state.folderWatcher = nil
@@ -125,4 +126,5 @@ func (state *model) consumeFolderChanges() {
 	if reset {
 		state.stopFolderWatching()
 	}
+	state.folderWatchRefreshPending = true
 }

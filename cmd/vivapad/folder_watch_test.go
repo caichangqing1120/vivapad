@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -213,6 +214,93 @@ func TestFolderWorkspaceKeepsKeyboardFocusAfterWatchedRowMoves(t *testing.T) {
 	}
 	if draft.Editor.String() != "keep draft" || !draft.Dirty() {
 		t.Fatal("opening the focused file changed the draft")
+	}
+}
+
+func TestFolderWorkspaceRecoversFocusAfterWatchedRefresh(t *testing.T) {
+	for _, remove := range []bool{false, true} {
+		name := "row moves past viewport"
+		if remove {
+			name = "row is removed"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			child := filepath.Join(root, "src")
+			if err := os.Mkdir(child, 0700); err != nil {
+				t.Fatal(err)
+			}
+			write := func(name string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(child, name), []byte(name), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := range 24 {
+				write(fmt.Sprintf("file-%02d.txt", i))
+			}
+			write("z-last.txt")
+			state, driver := startDriver(t)
+			draft := state.space.Current()
+			draft.Editor.Insert("keep draft")
+			if err := state.addFolderRoot(root); err != nil {
+				t.Fatal(err)
+			}
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			canonical := state.folderRoots[0]
+			clickLabeledControl(t, driver, "Toggle folder "+filepath.Base(canonical))
+			clickLabeledControl(t, driver, "Toggle folder src")
+			if err := driver.Key(gfx.KeyEnd, 0); err != nil {
+				t.Fatal(err)
+			}
+			focusedLabel := func() string {
+				snapshot := driver.Snapshot()
+				for _, hit := range snapshot.Hits {
+					if hit.ID.Scope() == folderRowScope && hit.ID == snapshot.Focused {
+						return hit.Label
+					}
+				}
+				return ""
+			}
+			if focusedLabel() != "Open z-last.txt" || state.folderOffset == 0 {
+				t.Fatal("fixture did not focus the last visible file")
+			}
+			wantRows := len(state.folderRows()) + 1
+			wantFocus := "Open z-last.txt"
+			if remove {
+				wantRows -= 2
+				wantFocus = "Toggle folder src"
+				if err := os.Remove(filepath.Join(child, "z-last.txt")); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				write("a-first.txt")
+			}
+			for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+				if err := driver.Pump(); err != nil {
+					t.Fatal(err)
+				}
+				if len(state.folderRows()) == wantRows {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			if len(state.folderRows()) != wantRows {
+				t.Fatal("filesystem notification did not refresh the folder")
+			}
+			if got := focusedLabel(); got != wantFocus || state.space.Current() != draft || draft.Editor.String() != "keep draft" {
+				t.Fatalf("focus after refresh = %q, want %q; active document %q", got, wantFocus, state.space.Current().Name)
+			}
+			if !remove {
+				if err := driver.Key(gfx.KeyEnter, 0); err != nil {
+					t.Fatal(err)
+				}
+				if got := state.space.Current().Path; got != filepath.Join(canonical, "src", "z-last.txt") {
+					t.Fatalf("Enter opened %q instead of the surviving row", got)
+				}
+			}
+		})
 	}
 }
 

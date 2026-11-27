@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"slices"
 
 	"github.com/vivaui/viva/gfx"
@@ -39,6 +40,30 @@ func (state *model) folderHitsFor(rows []folderRow) []folderRowHit {
 	}
 	state.folderRowHits = hits
 	return hits
+}
+
+func (state *model) folderFocusAfterRefresh(rows []folderRow, focused gfx.ID) string {
+	if focused.Scope() != folderRowScope {
+		return ""
+	}
+	index := slices.IndexFunc(state.folderRowHits, func(hit folderRowHit) bool { return hit.id == focused })
+	if index < 0 {
+		return ""
+	}
+	hit := state.folderRowHits[index]
+	if slices.ContainsFunc(rows, func(row folderRow) bool { return row.path == hit.path && row.directory == hit.directory }) {
+		return hit.path
+	}
+	for path := hit.path; ; {
+		parent := filepath.Dir(path)
+		if parent == path {
+			return ""
+		}
+		if slices.ContainsFunc(rows, func(row folderRow) bool { return row.path == parent && row.directory }) {
+			return parent
+		}
+		path = parent
+	}
 }
 
 func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
@@ -91,6 +116,15 @@ func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 	visible := max(1, int(rowArea.Height/22))
 	focusPath := state.folderFocusPath
 	state.folderFocusPath = ""
+	if state.folderWatchRefreshPending {
+		state.folderWatchRefreshPending = false
+		if focusPath == "" {
+			focusPath = state.folderFocusAfterRefresh(rows, canvas.Focused())
+			if focusPath != "" {
+				state.folderSelected = focusPath
+			}
+		}
+	}
 	if focusPath != "" {
 		if index := slices.IndexFunc(rows, func(row folderRow) bool { return row.path == focusPath }); index >= 0 {
 			state.folderOffset = min(max(state.folderOffset, index-visible+1), index)
