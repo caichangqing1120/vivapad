@@ -7,6 +7,8 @@ import (
 	"syscall"
 	"testing"
 	"unsafe"
+
+	"vivapad/tools/windows"
 )
 
 func TestNotepadPlusPlusFinderFocusRoundTrip(t *testing.T) {
@@ -111,4 +113,84 @@ func TestNotepadPlusPlusFinderFocusRoundTrip(t *testing.T) {
 	}
 	editor.close(t)
 	awaitBytes(t, path, source)
+}
+
+func TestVivaPadWindowsFinderFocusRoundTrip(t *testing.T) {
+	binary := os.Getenv("VIVAPAD_RTL_DESKTOP_EXE")
+	if binary == "" {
+		t.Skip("requires the built VivaPad and an isolated Windows desktop")
+	}
+	const (
+		source = "anchor\r\nhit one\r\nhit two\r\n"
+		f7     = 0x76
+		down   = 0x28
+		enter  = 0x0d
+		home   = 0x24
+		end    = 0x23
+		shift  = 0xa0
+	)
+	for _, viewport := range []struct {
+		name          string
+		width, height int32
+	}{{"compact", 640, 400}, {"desktop", 960, 600}} {
+		t.Run(viewport.name, func(t *testing.T) {
+			profile := t.TempDir()
+			path := filepath.Join(profile, "finder-focus.txt")
+			if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+				t.Fatal(err)
+			}
+			data := filepath.Join(profile, "appdata")
+			if err := os.Mkdir(data, 0700); err != nil {
+				t.Fatal(err)
+			}
+			editor := openDesktopEditor(t, binary, "VivaPad", append(os.Environ(),
+				"APPDATA="+data, "LOCALAPPDATA="+data, "VIVA_ACCESSIBILITY=1"), path)
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			dpiContext := user32.NewProc("SetThreadDpiAwarenessContext")
+			previous, _, err := dpiContext.Call(^uintptr(3)) // PER_MONITOR_AWARE_V2
+			if previous == 0 {
+				t.Fatalf("use physical desktop coordinates: %v", err)
+			}
+			defer dpiContext.Call(previous)
+			helpResize(t, editor, viewport.width, viewport.height)
+			helpClick(t, editor, "Text editor")
+			editor.keys(t, keyLeftControl, 'F')
+			for _, letter := range "HIT" {
+				editor.keys(t, uintptr(letter))
+			}
+			helpClick(t, editor, "Find All")
+			helpWait(t, editor, "search results", func(nodes []helpNode) bool {
+				_, found := helpFind(nodes, "Find results")
+				return found
+			})
+			helpClick(t, editor, "Text editor")
+			editor.keys(t, keyLeftControl, home)
+			editor.keys(t, shift, end)
+			copySelection := func(want string) {
+				t.Helper()
+				sequence := windows.ClipboardSequence()
+				editor.keys(t, keyLeftControl, 'C')
+				helpClipboard(t, want)
+				if windows.ClipboardSequence() == sequence {
+					t.Fatalf("editor did not copy the current selection %q", want)
+				}
+			}
+			copySelection("anchor")
+			editor.keys(t, f7)
+			editor.keys(t, down)
+			editor.keys(t, f7)
+			copySelection("anchor")
+			editor.keys(t, f7)
+			editor.keys(t, down)
+			editor.keys(t, enter)
+			copySelection("hit")
+			editor.keys(t, home)
+			editor.keys(t, shift, end)
+			copySelection("hit two")
+			editor.close(t)
+			awaitBytes(t, path, source)
+			t.Log("F7 preserved the selection; Down and Enter opened the second match")
+		})
+	}
 }
