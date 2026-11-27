@@ -120,7 +120,7 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 		status = 0
 	}
 	bottom := size.Height - status
-	showResults := !state.distractionFree && state.resultsOpen && !state.searchOpen && !state.goToOpen && !state.incrementOpen
+	showResults := state.fileResultsVisible()
 	if showResults {
 		bottom -= resultPaneHeight(size.Height)
 	}

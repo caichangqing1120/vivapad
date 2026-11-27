@@ -332,6 +332,46 @@ func TestF7RevealsResultsHiddenByFindBarBeforeFocusing(t *testing.T) {
 	}
 }
 
+func TestEscapeRevealsExistingFinderAfterClosingSearchBar(t *testing.T) {
+	for _, tc := range []struct {
+		command string
+		field   gfx.ID
+	}{{"Find...", queryID}, {"Go to Line...", goToFieldID}} {
+		t.Run(tc.command, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			doc.Editor.Insert("cat first\ncat second")
+			state.query.Insert("cat")
+			clickID(t, driver, menuScope.At(2))
+			clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
+			clickID(t, driver, state.resultRowID(1))
+			resultID := state.resultRowID(1)
+			selection, caret := doc.Editor.Selection(), doc.Editor.Caret()
+			clickID(t, driver, menuScope.At(2))
+			clickID(t, driver, searchCommandID(t, tc.command))
+			clickID(t, driver, tc.field)
+			if driver.Snapshot().Focused != tc.field || !state.resultsOpen || state.resultSelected != 1 {
+				t.Fatal("could not establish the bar over the selected Finder result")
+			}
+			if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+				t.Fatal(err)
+			}
+			if state.searchOpen || state.goToOpen || !state.resultsOpen || len(state.fileResults.Matches) != 2 ||
+				state.resultSelected != 1 || state.resultRowID(1) != resultID || state.resultQuery != "cat" ||
+				driver.Snapshot().Focused != editorID || doc.Editor.Selection() != selection || doc.Editor.Caret() != caret {
+				t.Fatalf("Escape should close the bar and preserve Finder and the editor: find=%v goto=%v results=%v selected=%d focus=%v",
+					state.searchOpen, state.goToOpen, state.resultsOpen, state.resultSelected, driver.Snapshot().Focused)
+			}
+			if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+				t.Fatal(err)
+			}
+			if state.resultsOpen || len(state.fileResults.Matches) != 0 || driver.Snapshot().Focused != editorID {
+				t.Fatal("second Escape should dismiss the revealed Finder and retain editor focus")
+			}
+		})
+	}
+}
+
 func TestResultsMenuFromFindFieldDoesNotUseOldResultFocus(t *testing.T) {
 	state, driver := startDriver(t)
 	state.space.Current().Editor.Insert("cat")
