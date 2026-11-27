@@ -476,6 +476,8 @@ type model struct {
 	functionListVisible           bool
 	documentListVisible           bool
 	documentListRows              []documentListRow
+	documentListRowIDs            [2]map[*document.Document]int
+	documentListNextRowID         int
 	documentListOffset            int
 	documentListVisibleRows       int
 	documentListAnchor            *document.Document
@@ -2553,6 +2555,9 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.functionSymbols, doc)
 	if state.documentListAnchor == doc {
 		state.documentListAnchor = nil
+	}
+	for _, ids := range state.documentListRowIDs {
+		delete(ids, doc)
 	}
 	delete(state.windowsSelected, doc)
 	delete(state.windowsRowIDs, doc)

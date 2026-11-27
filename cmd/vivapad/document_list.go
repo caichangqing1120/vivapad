@@ -55,6 +55,22 @@ func (state *model) openDocumentRows() []documentListRow {
 	return rows
 }
 
+func (state *model) documentListRowIndex(row documentListRow) int {
+	ids := state.documentListRowIDs[row.pane]
+	if index, ok := ids[row.doc]; ok {
+		return index
+	}
+	if ids == nil {
+		ids = make(map[*document.Document]int)
+		state.documentListRowIDs[row.pane] = ids
+	}
+	// A reordered row or a clone in the other view must not inherit a press.
+	index := state.documentListNextRowID
+	state.documentListNextRowID = (index + 1) & ((1 << 31) - 1)
+	ids[row.doc] = index
+	return index
+}
+
 func (state *model) paintDocumentList(canvas *gfx.Canvas, bounds gfx.Rect) {
 	canvas.Fill(bounds, gfx.RGB(250, 250, 250))
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
@@ -122,8 +138,9 @@ func (state *model) paintDocumentList(canvas *gfx.Canvas, bounds gfx.Rect) {
 			smallLabel(canvas, row.heading, gfx.Rect{X: item.X + 7, Y: item.Y, Width: item.Width - 14, Height: item.Height}, palette.muted, 10)
 			continue
 		}
-		rowID := documentListRowScope.At(index)
-		closeID := documentListRowCloseScope.At(index)
+		rowIndex := state.documentListRowIndex(row)
+		rowID := documentListRowScope.At(rowIndex)
+		closeID := documentListRowCloseScope.At(rowIndex)
 		selected := row.doc == state.paneDocument(row.pane) && (!state.splitEnabled || row.pane == state.activePane)
 		if selected || canvas.Hovered() == rowID || canvas.Hovered() == closeID {
 			canvas.Fill(item, palette.hover)

@@ -54,6 +54,60 @@ func TestDocumentListActivateAndDirtyCloseUseExistingGate(t *testing.T) {
 	}
 }
 
+func TestDocumentListRejectsReleaseAfterTabSortReplacesRow(t *testing.T) {
+	for _, action := range []string{"Open ", "Close "} {
+		t.Run(strings.TrimSpace(action), func(t *testing.T) {
+			state, driver := startDriver(t)
+			first, second := state.space.Current(), state.space.NewDocument()
+			first.Name, second.Name = "zeta.txt", "alpha.txt"
+			state.space.Select(state.documentIndex(first))
+			state.command("Document List")
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			bounds := func(label string) gfx.Rect {
+				for _, hit := range driver.Snapshot().Hits {
+					if hit.Label == label && (hit.ID.Scope() == documentListRowScope || hit.ID.Scope() == documentListRowCloseScope) {
+						return hit.Bounds
+					}
+				}
+				return gfx.Rect{}
+			}
+			pressed := bounds(action + first.Name)
+			if pressed.Width == 0 {
+				t.Fatal("first document row is missing")
+			}
+			x, y := pressed.X+pressed.Width/2, pressed.Y+pressed.Height/2
+			if action == "Open " {
+				x = pressed.X + 20
+			}
+			if err := driver.Press(x, y, gfx.PointerButtonPrimary); err != nil {
+				t.Fatal(err)
+			}
+			if err := state.sortWindowTabs(windowSortCommand{column: 0}); err != nil {
+				t.Fatal(err)
+			}
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			if bounds(action+second.Name) != pressed {
+				t.Fatal("the sorted row did not replace the pressed target")
+			}
+			if err := driver.Release(x, y, gfx.PointerButtonPrimary); err != nil {
+				t.Fatal(err)
+			}
+			if state.space.Current() != first || state.documentIndex(second) < 0 || state.pendingClose >= 0 {
+				t.Fatalf("release after reorder triggered %s on a different document", strings.TrimSpace(action))
+			}
+			clickLabeledControl(t, driver, action+second.Name)
+			if action == "Open " && state.space.Current() != second || action == "Close " && state.documentIndex(second) >= 0 {
+				t.Fatalf("fresh click did not trigger %s on the displayed document", strings.TrimSpace(action))
+			}
+		})
+	}
+}
+
 func TestDocumentListActivationRoutesFirstKeyToSelectedEditor(t *testing.T) {
 	for _, tc := range []struct {
 		name, row string
