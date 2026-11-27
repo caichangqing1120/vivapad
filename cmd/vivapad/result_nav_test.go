@@ -491,6 +491,70 @@ func TestResultPaneResizePreservesSelectionAndManualScroll(t *testing.T) {
 	}
 }
 
+func TestResultPaneWheelPreservesKeyboardNavigation(t *testing.T) {
+	for _, scenario := range []struct {
+		name        string
+		selected    int
+		editorFocus bool
+	}{
+		{name: "focused row leaves view"},
+		{name: "focused row remains visible", selected: 1},
+		{name: "editor keeps focus", editorFocus: true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			state, driver := startDriver(t)
+			doc := state.space.Current()
+			doc.Editor.Insert(strings.Repeat("cat\n", 20))
+			state.query.Insert("cat")
+			clickID(t, driver, menuScope.At(2))
+			clickID(t, driver, searchCommandID(t, "Find All in Current Document"))
+			id := state.resultRowID(scenario.selected)
+			clickID(t, driver, id)
+			if scenario.editorFocus {
+				if err := driver.Key(gfx.KeyF7, 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := driver.Snapshot()
+			wantBefore, wantAfter := id, id
+			if scenario.editorFocus {
+				wantBefore, wantAfter = editorID, editorID
+			} else if scenario.selected == 0 {
+				wantAfter = resultsPaneID
+			}
+			if before.Focused != wantBefore || state.resultSelected != scenario.selected {
+				t.Fatal("initial focus or selected result is incorrect")
+			}
+			beforeSelection := doc.Editor.Selection()
+			for _, hit := range before.Hits {
+				if hit.ID == id {
+					if err := driver.Scroll(gfx.ScrollEvent{X: hit.Bounds.X + 10, Y: hit.Bounds.Y + 8, DeltaY: 120}); err != nil {
+						t.Fatal(err)
+					}
+					break
+				}
+			}
+			if state.resultOffset != 1 {
+				t.Fatalf("scroll offset = %d, want 1", state.resultOffset)
+			}
+			if got := driver.Snapshot().Focused; got != wantAfter {
+				t.Errorf("focus after scrolling = %v, want %v", got, wantAfter)
+			}
+			if state.resultSelected != scenario.selected || doc.Editor.Selection() != beforeSelection {
+				t.Fatal("scrolling changed the selected result or editor selection")
+			}
+			if !scenario.editorFocus {
+				if err := driver.Key(gfx.KeyDown, 0); err != nil {
+					t.Fatal(err)
+				}
+				if state.resultSelected != scenario.selected+1 || doc.Editor.Selection() != beforeSelection {
+					t.Error("Down did not navigate results without changing the editor selection")
+				}
+			}
+		})
+	}
+}
+
 func TestResultNavigationOpensDirectoryMatchesAndRejectsMissingFile(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

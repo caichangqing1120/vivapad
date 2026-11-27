@@ -552,6 +552,7 @@ type model struct {
 	resultOffset                  int
 	resultSelected                int
 	resultVisible                 int
+	resultScrolled                bool
 	resultFocusRequested          bool
 	resultFocusArmed              bool
 	resultFocusMode               bool
@@ -1390,7 +1391,11 @@ func newConfig(state *model) app.Config {
 				step = -1
 			}
 			visible := max(1, int((resultPaneHeight(event.Viewport.Height)-30)/22))
-			state.resultOffset = min(max(0, state.resultOffset+step), max(0, len(state.fileResults.Matches)-visible))
+			offset := min(max(0, state.resultOffset+step), max(0, len(state.fileResults.Matches)-visible))
+			if offset != state.resultOffset {
+				state.resultOffset = offset
+				state.resultScrolled = true
+			}
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		pane := paneForTarget(event.Target)

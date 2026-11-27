@@ -46,6 +46,7 @@ func (state *model) cancelFilesDialog() {
 }
 
 func (state *model) clearResultFocus() {
+	state.resultScrolled = false
 	state.resultFocusMode, state.resultFocusRequested = false, false
 	state.resultFocusArmed, state.resultReturnToEditor = false, false
 }
