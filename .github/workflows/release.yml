@@ -170,7 +170,7 @@ jobs:
           mkdir -p "$previous"
           stable=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq '.[] | select((.draft or .prerelease) | not) | .tag_name' | sort -V)
-          prior_tag=''
+          prior_tags=()
           while IFS= read -r tag; do
             [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
             if [[ "$tag" == "$GITHUB_REF_NAME" ]]; then
@@ -181,23 +181,46 @@ jobs:
               echo 'Refusing to move the stable feed backwards.' >&2
               exit 1
             fi
-            prior_tag=$tag
+            prior_tags+=("$tag")
           done <<< "$stable"
 
-          sources=()
-          if [[ -n "$prior_tag" ]]; then
+          # Generate delta patches from the most recent N published releases (like Motty's multi-base strategy)
+          # so clients several versions behind still upgrade by delta; viva feed drops oversized patches (>0.6).
+          patch_bases=${PATCH_BASES:-5}
+          selected_tags=()
+          total_prior=${#prior_tags[@]}
+          start_idx=0
+          if (( total_prior > patch_bases )); then
+            start_idx=$((total_prior - patch_bases))
+          fi
+          for (( i=start_idx; i<total_prior; i++ )); do
+            selected_tags+=("${prior_tags[$i]}")
+          done
+
+          for prior_tag in "${selected_tags[@]}"; do
             old=${prior_tag#v}
-            published=$(gh release view "$prior_tag" --json assets --jq '.assets[].name')
+            mkdir -p "$previous/$old"
+            (
+              gh release download "$prior_tag" --dir "$previous/$old" \
+                --pattern "vivapad-$old-darwin-*.zip" \
+                --pattern "vivapad-$old-windows-*.zip" \
+                --pattern "vivapad-$old-linux-*.tar.gz" 2>/dev/null || true
+            ) &
+          done
+          wait
+
+          sources=()
+          for prior_tag in "${selected_tags[@]}"; do
+            old=${prior_tag#v}
             for target in darwin/arm64 darwin/amd64 windows/amd64 linux/amd64; do
               ext=zip
               [[ "$target" != linux/* ]] || ext=tar.gz
               asset="vivapad-$old-${target/\//-}.$ext"
-              if grep -Fxq -- "$asset" <<< "$published"; then
-                gh release download "$prior_tag" --pattern "$asset" --dir "$previous"
-                sources+=("$target=$old=$previous/$asset")
+              if [[ -f "$previous/$old/$asset" ]]; then
+                sources+=("$target=$old=$previous/$old/$asset")
               fi
             done
-          fi
+          done
           bash scripts/build-update-feed.sh "$current" "${GITHUB_REF_NAME#v}" \
             "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME" "${sources[@]}"
           (cd "$current" && sha256sum --check SHA256SUMS)
