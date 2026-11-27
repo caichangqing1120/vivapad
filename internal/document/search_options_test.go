@@ -4,6 +4,7 @@ import (
 	"math/rand/v2"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,6 +50,56 @@ func TestUnicodeWholeWordDoesNotMatchInsideIdentifier(t *testing.T) {
 	}
 	if found, err := doc.FindWith("猫", options, false); err != nil || !found || doc.Editor.Selection().Start != 5 {
 		t.Fatalf("last match: found=%v err=%v selection=%+v", found, err, doc.Editor.Selection())
+	}
+}
+
+func TestWholeWordSearchUsesUnicodeCharacterEdges(t *testing.T) {
+	for _, tc := range []struct {
+		name, value, query, replaced string
+		want                         []text.Span
+	}{
+		{"combining marks", "e\u0301 e e\u0301 e", "e", "e\u0301 ! e\u0301 !", []text.Span{{Start: 4, End: 5}, {Start: 10, End: 11}}},
+		{"other Unicode numbers", "x\u00b2 x x\u2160 x", "x", "x\u00b2 ! x\u2160 !", []text.Span{{Start: 4, End: 5}, {Start: 11, End: 12}}},
+		{"punctuation runs", ":: a:b : ", ":", ":: a!b ! ", []text.Span{{Start: 4, End: 5}, {Start: 7, End: 8}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, mode := range []struct {
+				name  string
+				regex bool
+			}{{"literal", false}, {"regex", true}} {
+				t.Run(mode.name, func(t *testing.T) {
+					doc := New("fixture")
+					doc.Editor.Insert(tc.value)
+					options := SearchOptions{MatchCase: true, WholeWord: true, Regex: mode.regex}
+					if matches, err := doc.MatchesWith(tc.query, options); err != nil || !slices.Equal(matches, tc.want) {
+						t.Errorf("all matches = %v, %v; want %v", matches, err, tc.want)
+					}
+					if matches, truncated, err := doc.MatchesWithLimit(tc.query, options, 1); err != nil || !truncated || !slices.Equal(matches, tc.want[:1]) {
+						t.Errorf("limited matches = %v, truncated %t, %v; want %v and truncation", matches, truncated, err, tc.want[:1])
+					}
+					for _, backward := range []bool{false, true} {
+						doc.Editor.MoveTo(0, false)
+						want := tc.want[0]
+						if backward {
+							want = tc.want[1]
+						}
+						found, err := doc.FindWith(tc.query, options, backward)
+						selection := doc.Editor.Selection()
+						got := text.Span{Start: doc.Editor.ByteOffset(selection.Start), End: doc.Editor.ByteOffset(selection.End)}
+						if err != nil || !found || got != want {
+							t.Errorf("find (backward %t) = %v, %t, %v; want %v", backward, got, found, err, want)
+						}
+					}
+					doc.Editor.SetSelection(text.Range{Start: 0, End: 1}) // The first occurrence is only part of a word or punctuation run.
+					if changed, _, err := doc.ReplaceCurrentWithEdit(tc.query, "!", options); err != nil || changed || doc.Editor.String() != tc.value {
+						t.Fatalf("replace accepted a partial match: changed %t, text %q, err %v", changed, doc.Editor.String(), err)
+					}
+					if count, _, err := doc.ReplaceAllWithEdits(tc.query, "!", options); err != nil || count != len(tc.want) || doc.Editor.String() != tc.replaced {
+						t.Errorf("replace all count %d, text %q, err %v; want %d, %q", count, doc.Editor.String(), err, len(tc.want), tc.replaced)
+					}
+				})
+			}
+		})
 	}
 }
 

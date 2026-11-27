@@ -60,16 +60,6 @@ func searchMatches(value string, expression *regexp.Regexp, options SearchOption
 	return filtered
 }
 
-func wordRune(value rune) bool {
-	return value == '_' || unicode.IsLetter(value) || unicode.IsDigit(value)
-}
-
-func searchWholeWord(value string, start, end int) bool {
-	before, _ := utf8.DecodeLastRuneInString(value[:start])
-	after, _ := utf8.DecodeRuneInString(value[end:])
-	return !wordRune(before) && !wordRune(after)
-}
-
 type selectionCharacterClass uint8
 
 const (
@@ -90,7 +80,7 @@ func multiSelectionClass(r rune) selectionCharacterClass {
 	}
 }
 
-func multiSelectionWholeWord(value string, start, end int) bool {
+func searchWholeWord(value string, start, end int) bool {
 	match := value[start:end]
 	first, _ := utf8.DecodeRuneInString(match)
 	last, _ := utf8.DecodeLastRuneInString(match)
@@ -190,7 +180,7 @@ func scanMultiSelectionRegion(value, query string, start, end int, options Searc
 	return scanLiteralMatches(value[start:end], query, options.MatchCase, func(match text.Span) literalMatchDecision {
 		match.Start += start
 		match.End += start
-		if options.WholeWord && !multiSelectionWholeWord(value, match.Start, match.End) {
+		if options.WholeWord && !searchWholeWord(value, match.Start, match.End) {
 			return literalReject
 		}
 		return visit(match)
@@ -508,17 +498,8 @@ func MatchesInTextWithLimit(ctx context.Context, value, query string, options Se
 		if start == end {
 			return false, nil
 		}
-		if options.WholeWord {
-			before, after := rune(0), rune(0)
-			if start > 0 {
-				before, _ = utf8.DecodeLastRuneInString(value[:start])
-			}
-			if end < len(value) {
-				after, _ = utf8.DecodeRuneInString(value[end:])
-			}
-			if wordRune(before) || wordRune(after) {
-				return false, nil
-			}
+		if options.WholeWord && !searchWholeWord(value, start, end) {
+			return false, nil
 		}
 		if len(spans) == limit {
 			return true, nil
