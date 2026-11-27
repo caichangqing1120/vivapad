@@ -28,6 +28,7 @@ func multiSelectModeForCommand(command string) (all bool, options document.Searc
 }
 
 func (state *model) paintMultiSelectMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
+	palette := state.palette()
 	all := state.multiAllMenuOpen
 	label := "Multi-select Next"
 	scope := multiSelectNextScope
@@ -40,7 +41,7 @@ func (state *model) paintMultiSelectMenu(canvas *gfx.Canvas, size gfx.Size, pare
 	y := max(menuHeight, size.Height-statusHeight-height-4)
 	canvas.PushLayer(3)
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.Border(panel, 1, palette.border, palette.white)
+	canvas.Border(panel, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(scope.At(len(multiSelectModes)), panel, label, gfx.HitOptions{Role: gfx.RoleMenu})
 	for index, mode := range multiSelectModes {
 		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*26, Width: width - 8, Height: 26}

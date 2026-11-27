@@ -19,13 +19,14 @@ var changeHistoryItems = [...]changeHistoryItem{
 }
 
 func (state *model) paintChangeHistoryMenu(canvas *gfx.Canvas, size gfx.Size, parentRight, parentY float32) {
+	palette := state.palette()
 	width := min(float32(300), size.Width-parentRight-4)
 	height := float32(len(changeHistoryItems))*27 + 8
 	x := parentRight
 	y := min(parentY, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.Border(panel, 1, palette.border, palette.white)
+	canvas.Border(panel, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(changeHistoryScope.At(len(changeHistoryItems)), panel, "Change History", gfx.HitOptions{Role: gfx.RoleMenu})
 	// An unavailable history keeps the entries visible but inert, and the reason
 	// replaces "no changes" rather than pretending the document is clean.

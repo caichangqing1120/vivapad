@@ -36,7 +36,7 @@ func (state *model) changeDecorations(doc *document.Document) *changeViewCache {
 		delete(state.changeView, doc)
 		return nil
 	}
-	colors := changeMarginColors()
+	colors := state.palette().changeMarginColors()
 	bars := changeMarginBars(value, runs, points, colors)
 	layers := make([]components.CodeEditorIndicatorLayer, 8)
 	for edition, color := range colors {
@@ -60,7 +60,7 @@ func (state *model) changeDecorations(doc *document.Document) *changeViewCache {
 			}
 		}
 	}
-	margin := components.CodeEditorDecorations{GutterWidth: 9, GutterBackground: gfx.RGB(224, 224, 224), GutterBars: bars}
+	margin := components.CodeEditorDecorations{GutterWidth: 9, GutterBackground: state.palette().gutter, GutterBars: bars}
 	combined := margin
 	combined.IndicatorLayers = layers
 	cached = &changeViewCache{
@@ -142,7 +142,7 @@ func (state *model) changeMarginLines(doc *document.Document) []components.CodeE
 // changeMarginColors returns the palette for the margin lane. The original
 // classic theme uses cyan for reverted text, green for saved, orange for modified
 // and yellow-green for reverted-to-modified.
-func changeMarginColors() [4]gfx.Color {
+func (palette *themePalette) changeMarginColors() [4]gfx.Color {
 	return [4]gfx.Color{
 		palette.changeReverted,
 		palette.changeSaved,

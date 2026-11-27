@@ -45,13 +45,14 @@ func (state *model) openCurrentFileInNamedBrowser(browser external.NamedBrowser)
 }
 
 func (state *model) paintNamedBrowserMenu(canvas *gfx.Canvas, size gfx.Size, parentRight, parentY float32) {
+	palette := state.palette()
 	const rowHeight = 27
 	width := min(float32(190), size.Width-8)
 	height := float32(len(viewNamedBrowsers)*rowHeight + 8)
 	x := min(parentRight, size.Width-width-4)
 	y := max(menuHeight, min(parentY, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.popup)
 	for index, browser := range viewNamedBrowsers {
 		bounds := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*rowHeight, Width: width - 8, Height: rowHeight}
 		id := namedBrowserScope.At(index)

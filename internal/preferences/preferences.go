@@ -15,10 +15,29 @@ import (
 
 const (
 	maxSize = 64 << 10
-	version = 7
+	version = 8
 )
 
+type Theme string
+
+const (
+	ClassicLight Theme = "classic-light"
+	ModernDark   Theme = "modern-dark"
+	Monokai      Theme = "monokai"
+	FollowSystem Theme = "follow-system"
+)
+
+func (theme Theme) Normalized() Theme {
+	switch theme {
+	case ModernDark, Monokai, FollowSystem:
+		return theme
+	default:
+		return ClassicLight
+	}
+}
+
 type State struct {
+	Theme                Theme  `json:"theme,omitempty"`
 	FontSize             int    `json:"font_size"`
 	SubFontSize          int    `json:"sub_font_size"`
 	ZoomSync             bool   `json:"zoom_sync,omitempty"`
@@ -51,7 +70,7 @@ type diskState struct {
 }
 
 func Default() State {
-	return State{FontSize: 13, SubFontSize: 13, TabWidth: 4, LineNumbers: true, AutoIndent: true, AutoClose: true, IndentMode: "language", DateTimeFormat: datetime.DefaultFormat, ShowIndentGuides: true, ShowControls: true, NPCMode: "abbreviation", ChangeHistoryView: "margin", Print: printing.DefaultSettings()}
+	return State{Theme: ClassicLight, FontSize: 13, SubFontSize: 13, TabWidth: 4, LineNumbers: true, AutoIndent: true, AutoClose: true, IndentMode: "language", DateTimeFormat: datetime.DefaultFormat, ShowIndentGuides: true, ShowControls: true, NPCMode: "abbreviation", ChangeHistoryView: "margin", Print: printing.DefaultSettings()}
 }
 
 func (state State) validate() error {
@@ -133,6 +152,7 @@ func Load(path string) (State, error) {
 	if stored.State.NPCMode == "" {
 		stored.State.NPCMode = "abbreviation"
 	}
+	stored.State.Theme = stored.State.Theme.Normalized()
 	if err := stored.State.validate(); err != nil {
 		return State{}, err
 	}
@@ -140,6 +160,7 @@ func Load(path string) (State, error) {
 }
 
 func Save(path string, state State) error {
+	state.Theme = state.Theme.Normalized()
 	if err := state.validate(); err != nil {
 		return err
 	}

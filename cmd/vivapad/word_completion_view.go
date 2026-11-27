@@ -13,12 +13,13 @@ var autoCompletionCommands = [...]string{
 }
 
 func (state *model) paintAutoCompletionMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
+	palette := state.palette()
 	width := min(float32(275), size.Width-parentRight-4)
 	height := float32(len(autoCompletionCommands))*27 + 8
 	x := parentRight
 	y := min(menuHeight+4+17*27, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.popup)
 	selected := -1
 	for index, command := range autoCompletionCommands {
 		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
@@ -46,6 +47,7 @@ func (state *model) paintAutoCompletionMenu(canvas *gfx.Canvas, size gfx.Size, p
 }
 
 func (state *model) paintWordCompletionPopup(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	if !state.validWordCompletion() {
 		state.wordCompletion = nil
 		if state.wordFocusPending {
@@ -90,7 +92,7 @@ func (state *model) paintWordCompletionPopup(canvas *gfx.Canvas, size gfx.Size) 
 		y = max(menuHeight+toolbarHeight+tabHeight, caret.Y-height-2)
 	}
 	canvas.PushLayer(3)
-	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.popup)
 	chosen := -1
 	for index := current.offset; index < current.offset+visible; index++ {
 		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index-current.offset)*22, Width: width - 8, Height: 22}

@@ -6,19 +6,16 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 )
 
 type styleMarkState struct {
 	tracking indicatorTracker
-	styles   [5][]text.Span
+	styles   [tokenStyleCount][]text.Span
 }
 
-var styleColors = [5]gfx.Color{
-	gfx.RGB(0, 255, 255), gfx.RGB(255, 128, 0), gfx.RGB(255, 255, 0), gfx.RGB(128, 0, 255), gfx.RGB(0, 128, 0),
-}
+const tokenStyleCount = 5
 
 func (state *model) styleSpans(doc *document.Document, style int) []text.Span {
 	stored := state.styledMarks[doc]
@@ -34,7 +31,7 @@ func (state *model) styleSpans(doc *document.Document, style int) []text.Span {
 }
 
 func (state *model) styleToken(style int, all bool) {
-	if style < 0 || style >= len(styleColors) {
+	if style < 0 || style >= tokenStyleCount {
 		return
 	}
 	doc := state.space.Current()
@@ -86,7 +83,7 @@ func (state *model) copyStyles(style int) {
 	if style >= 0 {
 		spans = state.styleSpans(doc, style)
 	} else {
-		for index := range styleColors {
+		for index := range tokenStyleCount {
 			spans = append(spans, state.styleSpans(doc, index)...)
 		}
 		value := doc.Editor.String()

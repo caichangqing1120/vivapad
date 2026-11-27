@@ -26,7 +26,7 @@ func TestClassicLightTabColors(t *testing.T) {
 		state.command(tabColorCommands[i])
 		inactive, _ := state.tabColorPaint(doc, false)
 		active, bar := state.tabColorPaint(doc, true)
-		if inactive != gfx.RGB24(color.fill) || bar != gfx.RGB24(color.bar) || active != palette.white {
+		if inactive != gfx.RGB24(color.fill) || bar != gfx.RGB24(color.bar) || active != classicPalette.activeTab {
 			t.Errorf("color %d: inactive fill = %+v, selected fill = %+v, bar = %+v; want #%06x, white, #%06x", i+1, inactive, active, bar, color.fill, color.bar)
 		}
 	}

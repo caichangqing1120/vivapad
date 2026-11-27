@@ -6,21 +6,22 @@ import (
 )
 
 func (state *model) paintMarkDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(markCloseID)
 	canvas.PushLayer(1)
 	width, height := min(float32(560), size.Width-24), float32(314)
 	x := (size.Width - width) / 2
 	y := max(float32(28), min(float32(72), size.Height-statusHeight-height-8))
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.RoundedBorder(panel, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(panel, 4, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(markPanelID, panel, "Mark", gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
 	smallLabel(canvas, "Mark", gfx.Rect{X: x + 18, Y: y + 9, Width: width - 36, Height: 28}, palette.text, 15)
 	canvas.Fill(gfx.Rect{X: x + 1, Y: y + 42, Width: width - 2, Height: 1}, palette.border)
 
 	smallLabel(canvas, "Find what", gfx.Rect{X: x + 18, Y: y + 54, Width: 73, Height: 28}, palette.text, 11)
-	theme := gfx.LightTheme()
+	theme := state.uiTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 28, 12, 2
-	theme.Border, theme.Ring = palette.border, palette.blue
+	theme.Border, theme.Ring = palette.border, palette.accent
 	components.PaintInput(canvas, theme, gfx.Rect{X: x + 94, Y: y + 54, Width: width - 112, Height: 28}, components.InputSnapshot{
 		ID: queryID, Label: "Find what", Value: state.query.String(), PlatformEditing: canvas.Focused() == queryID,
 	})
@@ -31,9 +32,9 @@ func (state *model) paintMarkDialog(canvas *gfx.Canvas, size gfx.Size) {
 	checkbox := func(id gfx.ID, label string, checked *bool, left, top, itemWidth float32) {
 		bounds := gfx.Rect{X: x + left, Y: y + top, Width: itemWidth, Height: 25}
 		box := gfx.Rect{X: bounds.X, Y: bounds.Y + 4, Width: 15, Height: 15}
-		canvas.Border(box, 1, palette.border, palette.white)
+		canvas.Border(box, 1, palette.border, palette.popup)
 		if *checked {
-			canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.blue)
+			canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.accent)
 		}
 		smallLabel(canvas, label, gfx.Rect{X: bounds.X + 20, Y: bounds.Y, Width: itemWidth - 21, Height: bounds.Height}, palette.text, 11)
 		canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: *checked})
@@ -55,7 +56,7 @@ func (state *model) paintMarkDialog(canvas *gfx.Canvas, size gfx.Size) {
 		{"normal", "Normal"}, {"extended", "Extended"}, {"regex", "Regular expression"},
 	} {
 		bounds := gfx.Rect{X: x + 18 + float32(index)*(width-36)/3, Y: y + 187, Width: (width - 36) / 3, Height: 28}
-		if columnSegment(canvas, markModeScope.At(index), bounds, mode.label, state.markMode == mode.value) {
+		if state.columnSegment(canvas, markModeScope.At(index), bounds, mode.label, state.markMode == mode.value) {
 			state.markMode = mode.value
 			state.searchOptions.Regex = mode.value == "regex"
 		}

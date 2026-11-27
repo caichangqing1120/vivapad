@@ -37,7 +37,7 @@ func TestCompactStyleMenusPaintCopyAndNavigateIndependentIndicators(t *testing.T
 		t.Fatalf("style-all menu = %+v", state.styleSpans(doc, 0))
 	}
 	colored := 0
-	color := styleColors[0]
+	color := classicPalette.tokenMarks[0]
 	color.Alpha = 100.0 / 255
 	for _, rectangle := range driver.Snapshot().Primitives {
 		if rectangle.Color == color {

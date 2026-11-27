@@ -7,6 +7,7 @@ import (
 )
 
 func (state *model) paintColumnDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(columnCancelID)
 	canvas.PushLayer(3)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
@@ -14,7 +15,7 @@ func (state *model) paintColumnDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(4)
 	width, height := min(float32(520), size.Width-32), min(float32(340), size.Height-32)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.popup)
 	smallLabel(canvas, "Column / Multi-Selection Editor", gfx.Rect{X: x + 20, Y: y + 13, Width: width - 40, Height: 27}, palette.text, 15)
 	for _, mode := range []struct {
 		id     gfx.ID
@@ -25,14 +26,14 @@ func (state *model) paintColumnDialog(canvas *gfx.Canvas, size gfx.Size) {
 		{columnTextModeID, "Text", false, 20},
 		{columnNumberModeID, "Number", true, 126},
 	} {
-		if columnSegment(canvas, mode.id, gfx.Rect{X: x + mode.offset, Y: y + 51, Width: 98, Height: 28}, mode.label, state.columnNumber == mode.number) {
+		if state.columnSegment(canvas, mode.id, gfx.Rect{X: x + mode.offset, Y: y + 51, Width: 98, Height: 28}, mode.label, state.columnNumber == mode.number) {
 			state.columnNumber, state.columnError, state.columnFocus = mode.number, "", true
 		}
 	}
 	canvas.Fill(gfx.Rect{X: x + 1, Y: y + 89, Width: width - 2, Height: 1}, palette.border)
-	theme := gfx.LightTheme()
+	theme := state.uiTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 29, 12, 2
-	theme.Border, theme.Ring = palette.border, palette.blue
+	theme.Border, theme.Ring = palette.border, palette.accent
 	if state.columnNumber {
 		state.paintColumnNumbers(canvas, theme, x, y, width)
 	} else {
@@ -55,7 +56,7 @@ func (state *model) paintColumnDialog(canvas *gfx.Canvas, size gfx.Size) {
 			available -= 155
 		}
 		message := canvas.FitLine(state.columnError, 11, gfx.WeightRegular, available)
-		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + height - 68, Width: available, Height: 20}, palette.blue, 11)
+		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + height - 68, Width: available, Height: 20}, palette.accent, 11)
 	}
 	canvas.Fill(gfx.Rect{X: x + 1, Y: y + height - 49, Width: width - 2, Height: 1}, palette.border)
 	for _, button := range []struct {
@@ -79,6 +80,7 @@ func (state *model) paintColumnDialog(canvas *gfx.Canvas, size gfx.Size) {
 }
 
 func (state *model) paintColumnNumbers(canvas *gfx.Canvas, theme gfx.Theme, x, y, width float32) {
+	palette := state.palette()
 	fieldWidth := (width - 56) / 3
 	for index, field := range []struct {
 		id    gfx.ID
@@ -97,23 +99,23 @@ func (state *model) paintColumnNumbers(canvas *gfx.Canvas, theme gfx.Theme, x, y
 		base  int
 	}{{"Dec", 10}, {"Hex", 16}, {"Oct", 8}, {"Bin", 2}} {
 		bounds := gfx.Rect{X: x + 20 + float32(index)*(width-34)/4, Y: y + 186, Width: (width - 50) / 4, Height: 27}
-		if columnSegment(canvas, columnBaseScope.At(index), bounds, option.label, state.columnBase == option.base) {
+		if state.columnSegment(canvas, columnBaseScope.At(index), bounds, option.label, state.columnBase == option.base) {
 			state.changeColumnBase(option.base)
 		}
 	}
 	smallLabel(canvas, "Leading", gfx.Rect{X: x + 20, Y: y + 223, Width: width - 40, Height: 19}, palette.muted, 11)
 	for index, label := range []string{"None", "Zeros", "Spaces"} {
 		bounds := gfx.Rect{X: x + 20 + float32(index)*(width-32)/3, Y: y + 244, Width: (width - 48) / 3, Height: 27}
-		if columnSegment(canvas, columnLeadingScope.At(index), bounds, label, state.columnLeading == document.ColumnLeading(index)) {
+		if state.columnSegment(canvas, columnLeadingScope.At(index), bounds, label, state.columnLeading == document.ColumnLeading(index)) {
 			state.columnLeading = document.ColumnLeading(index)
 		}
 	}
 	if state.columnBase == 16 {
 		bounds := gfx.Rect{X: x + width - 171, Y: y + 270, Width: 151, Height: 22}
 		box := gfx.Rect{X: bounds.X, Y: bounds.Y + 3, Width: 16, Height: 16}
-		canvas.Border(box, 1, palette.border, palette.white)
+		canvas.Border(box, 1, palette.border, palette.popup)
 		if state.columnUppercase {
-			canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.blue)
+			canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.accent)
 		}
 		smallLabel(canvas, "Uppercase A-F", gfx.Rect{X: bounds.X + 24, Y: bounds.Y, Width: 127, Height: 22}, palette.text, 11)
 		canvas.HitWithOptions(columnUppercaseID, bounds, "Uppercase A-F", gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: state.columnUppercase})
@@ -123,15 +125,16 @@ func (state *model) paintColumnNumbers(canvas *gfx.Canvas, theme gfx.Theme, x, y
 	}
 }
 
-func columnSegment(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, label string, checked bool) bool {
-	background := palette.white
+func (state *model) columnSegment(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, label string, checked bool) bool {
+	palette := state.palette()
+	background := palette.popup
 	if checked || canvas.Hovered() == id {
 		background = palette.hover
 	}
 	canvas.Border(bounds, 1, palette.border, background)
 	color := palette.text
 	if checked {
-		color = palette.blue
+		color = palette.accent
 	}
 	canvas.LabelCenter(label, bounds, gfx.TextStyle{Size: 11, Color: color})
 	canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{Role: gfx.RoleRadio, Checked: checked})

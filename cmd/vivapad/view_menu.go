@@ -3,6 +3,7 @@ package main
 import "github.com/vivaui/viva/gfx"
 
 func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin float32) {
+	palette := state.palette()
 	commands := menuCommands[3]
 	width := min(float32(260), size.Width-8)
 	x := min(origin, size.Width-width-2)
@@ -24,7 +25,7 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 	canvas.PushLayer(2)
 	canvas.PushOverlayClip(gfx.Rect{Width: size.Width, Height: size.Height})
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.Border(panel, 1, palette.border, palette.white)
+	canvas.Border(panel, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(viewMenuPanelID, panel, "View menu", gfx.HitOptions{Role: gfx.RoleMenu})
 	if controls != 0 {
 		for _, control := range []struct {
@@ -47,7 +48,7 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 	rows := gfx.Rect{X: x + 4, Y: y + 4 + controls/2, Width: width - 8, Height: float32(visible) * rowHeight}
 	canvas.Clip(rows)
 	chosen := ""
-	browserY := rows.Y
+	browserY, themeY := rows.Y, float32(-1)
 	for row := 0; row < visible; row++ {
 		index := state.viewMenuOffset + row
 		command := commands[index]
@@ -58,14 +59,17 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 		}
 		checked := state.menuSelected(command)
 		if checked {
-			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 6, Y: item.Y + (rowHeight-14)/2, Width: 14, Height: 14}, palette.blue)
+			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 6, Y: item.Y + (rowHeight-14)/2, Width: 14, Height: 14}, palette.accent)
 		}
 		switch command {
-		case "Show Symbol", "Tab", "Fold Level", "Unfold Level", namedBrowserMenuCommand:
+		case "Show Symbol", "Tab", "Fold Level", "Unfold Level", namedBrowserMenuCommand, themeMenuCommand:
 			canvas.DrawIcon(rightIcon, gfx.Rect{X: item.X + item.Width - 20, Y: item.Y + (rowHeight-14)/2, Width: 14, Height: 14}, palette.muted)
 		}
 		if command == namedBrowserMenuCommand {
 			browserY = item.Y
+		}
+		if command == themeMenuCommand {
+			themeY = item.Y
 		}
 		label := canvas.FitLine(command, 11, gfx.WeightRegular, item.Width-35)
 		smallLabel(canvas, label, gfx.Rect{X: item.X + 27, Y: item.Y, Width: item.Width - 34, Height: item.Height}, palette.text, 11)
@@ -81,6 +85,9 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 		state.command(chosen)
 	}
 	if state.menuOpen == 3 {
+		if state.themeMenuOpen && themeY >= 0 {
+			state.paintThemeMenu(canvas, size, x+width, themeY)
+		}
 		if state.symbolMenuOpen {
 			state.paintSymbolMenu(canvas, size, x+width)
 		}

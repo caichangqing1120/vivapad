@@ -67,12 +67,13 @@ func (state *model) bookmarkMenuKey(event gfx.KeyEvent) (gfx.EventResult, bool) 
 }
 
 func (state *model) paintBookmarkMenu(canvas *gfx.Canvas, size gfx.Size, parentRight, parentY float32) {
+	palette := state.palette()
 	width := min(float32(320), size.Width-parentRight-4)
 	height := float32(len(bookmarkCommands))*27 + 8
 	x := parentRight
 	y := min(parentY, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.popup)
 	readOnly := state.isReadOnly(state.space.Current())
 	hot := canvas.Hovered()
 	if focus := canvas.FocusVisible(); focus.Scope() == bookmarkScope {

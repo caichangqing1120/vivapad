@@ -63,12 +63,12 @@ func TestChangeDecorationsUseExactByteRunsAndEditionPoints(t *testing.T) {
 		t.Fatalf("indicator layers = %d, want four run and four point layers", len(decorations.IndicatorLayers))
 	}
 	run, point := decorations.IndicatorLayers[2], decorations.IndicatorLayers[6]
-	color := palette.changeModified
+	color := classicPalette.changeModified
 	color.Alpha *= 50.0 / 255.0
 	if run.Style != components.CodeEditorUnderline || run.Color != color || !reflect.DeepEqual(run.Spans, []text.Span{{Start: 1, End: 3}}) {
 		t.Fatalf("modified UTF-8 run = %+v", run)
 	}
-	if point.Style != components.CodeEditorPointAbove || point.Color != palette.changeModified || !reflect.DeepEqual(point.Spans, []text.Span{{Start: 6, End: 6}}) {
+	if point.Style != components.CodeEditorPointAbove || point.Color != classicPalette.changeModified || !reflect.DeepEqual(point.Spans, []text.Span{{Start: 6, End: 6}}) {
 		t.Fatalf("modified deletion = %+v", point)
 	}
 	if err := doc.Save(""); err != nil {
@@ -80,7 +80,7 @@ func TestChangeDecorationsUseExactByteRunsAndEditionPoints(t *testing.T) {
 		t.Fatalf("saved run = %+v, want %+v", got, run.Spans)
 	}
 	point = decorations.IndicatorLayers[5]
-	if point.Style != components.CodeEditorPointBelow || point.Color != palette.changeSaved || !reflect.DeepEqual(point.Spans, []text.Span{{Start: 6, End: 6}}) {
+	if point.Style != components.CodeEditorPointBelow || point.Color != classicPalette.changeSaved || !reflect.DeepEqual(point.Spans, []text.Span{{Start: 6, End: 6}}) {
 		t.Fatalf("saved deletion = %+v", point)
 	}
 	if len(decorations.IndicatorLayers[2].Spans) != 0 || len(decorations.IndicatorLayers[6].Spans) != 0 {
@@ -104,9 +104,9 @@ func TestChangeDecorationsLayerMarginUsingFullNeighborMasks(t *testing.T) {
 	state.applyChangeDecorations(&snapshot, doc)
 	decorations := actualChangeDecorations(t, snapshot)
 	want := []components.CodeEditorGutterBar{
-		{Line: 0, Fill: palette.changeSaved, Stroke: palette.changeSaved, JoinAfter: true},
-		{Line: 0, Fill: palette.changeModified, Stroke: palette.changeModified},
-		{Line: 1, Fill: palette.changeSaved, Stroke: palette.changeSaved, JoinBefore: true},
+		{Line: 0, Fill: classicPalette.changeSaved, Stroke: classicPalette.changeSaved, JoinAfter: true},
+		{Line: 0, Fill: classicPalette.changeModified, Stroke: classicPalette.changeModified},
+		{Line: 1, Fill: classicPalette.changeSaved, Stroke: classicPalette.changeSaved, JoinBefore: true},
 	}
 	if !reflect.DeepEqual(decorations.GutterBars, want) {
 		t.Fatalf("layered bars = %+v, want %+v", decorations.GutterBars, want)
@@ -170,7 +170,7 @@ func TestChangeDecorationsKeepFinalEmptyLineDeletionInEveryMode(t *testing.T) {
 		state.applyChangeDecorations(&snapshot, doc)
 		decorations := actualChangeDecorations(t, snapshot)
 		if mode != "indicator" {
-			if len(decorations.GutterBars) != 1 || decorations.GutterBars[0].Line != 1 || decorations.GutterBars[0].Fill != palette.changeModified {
+			if len(decorations.GutterBars) != 1 || decorations.GutterBars[0].Line != 1 || decorations.GutterBars[0].Fill != classicPalette.changeModified {
 				t.Fatalf("mode=%s: final empty line bars = %+v", mode, decorations.GutterBars)
 			}
 		}

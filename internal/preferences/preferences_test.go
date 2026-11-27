@@ -14,7 +14,7 @@ import (
 
 func TestPrivateSettingsRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "VivaPad", "settings.json")
-	want := State{FontSize: 17, SubFontSize: 17, ZoomSync: true, TabWidth: 8, Wrap: true, LineNumbers: false, AutoIndent: false, AutoClose: true, IndentMode: "tabs", DateTimeFormat: "dd/MM/yyyy HH:mm", DateTimeReverseOrder: true, ShowWhitespace: true, ShowEOL: true, NPCMode: "abbreviation",
+	want := State{Theme: ClassicLight, FontSize: 17, SubFontSize: 17, ZoomSync: true, TabWidth: 8, Wrap: true, LineNumbers: false, AutoIndent: false, AutoClose: true, IndentMode: "tabs", DateTimeFormat: "dd/MM/yyyy HH:mm", DateTimeReverseOrder: true, ShowWhitespace: true, ShowEOL: true, NPCMode: "abbreviation",
 		Print: printing.Settings{LineNumbers: false, ColorMode: printing.ColorBlackOnWhite, FormFeedPageBreak: true,
 			MarginMM: printing.Margins{Left: 9, Top: 12, Right: 10, Bottom: 13}, Header: printing.TextBand{Left: "$(FILE_NAME)", Right: "$(CURRENT_PRINTING_PAGE)"}, Footer: printing.TextBand{Middle: "$(SHORT_DATE)"},
 			HeaderFont: printing.BandFont{Size: 12, Bold: true}, FooterFont: printing.BandFont{Size: 8, Italic: true}}}
@@ -47,7 +47,7 @@ func TestMissingAndInvalidSettings(t *testing.T) {
 	}
 	for name, content := range map[string]string{
 		"invalid JSON":   "{",
-		"future version": `{"version":8}`,
+		"future version": `{"version":9}`,
 		"bad width":      `{"version":1,"font_size":13,"tab_width":0,"line_numbers":true,"auto_indent":true,"auto_close":true,"indent_mode":"language"}`,
 		"unknown field":  `{"version":1,"font_size":13,"tab_width":4,"line_numbers":true,"auto_indent":true,"auto_close":true,"indent_mode":"language","surprise":1}`,
 	} {

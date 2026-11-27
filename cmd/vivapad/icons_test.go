@@ -73,7 +73,7 @@ func TestFigmaToolbarRetainsEditingCommandsAndFitsCompactWindows(t *testing.T) {
 }
 
 func TestToolbarTintKeepsDisabledCommandsDistinct(t *testing.T) {
-	if enabled, disabled := toolbarTint(true), toolbarTint(false); enabled == disabled {
+	if enabled, disabled := classicPalette.toolbarTint(true), classicPalette.toolbarTint(false); enabled == disabled {
 		t.Fatalf("enabled and disabled toolbar icons have the same tint: %+v", enabled)
 	}
 }

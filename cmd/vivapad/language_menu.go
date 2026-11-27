@@ -17,6 +17,7 @@ func (state *model) restoreSessionLanguages(flags map[string]string) {
 }
 
 func (state *model) paintLanguageMenu(canvas *gfx.Canvas, size gfx.Size, origin float32) {
+	palette := state.palette()
 	width := min(float32(252), size.Width-8)
 	x := min(origin, size.Width-width-4)
 	available := size.Height - menuHeight - statusHeight - 8
@@ -35,7 +36,7 @@ func (state *model) paintLanguageMenu(canvas *gfx.Canvas, size gfx.Size, origin 
 	canvas.PushLayer(2)
 	canvas.PushOverlayClip(gfx.Rect{Width: size.Width, Height: size.Height})
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.Border(panel, 1, palette.border, palette.white)
+	canvas.Border(panel, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(languagePanelID, panel, "Languages", gfx.HitOptions{Role: gfx.RoleMenu})
 	if scrolling {
 		for _, control := range []struct {
@@ -70,7 +71,7 @@ func (state *model) paintLanguageMenu(canvas *gfx.Canvas, size gfx.Size, origin 
 		}
 		checked := state.menuSelected(spec.Label)
 		if checked {
-			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 5, Y: item.Y + 4, Width: 14, Height: 14}, palette.blue)
+			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 5, Y: item.Y + 4, Width: 14, Height: 14}, palette.accent)
 		}
 		label := canvas.FitLine(spec.Label, 11, gfx.WeightRegular, item.Width-36)
 		smallLabel(canvas, label, gfx.Rect{X: item.X + 26, Y: item.Y, Width: item.Width - 32, Height: item.Height}, palette.text, 11)

@@ -57,13 +57,14 @@ func (state *model) redactSelection(bullet bool) {
 }
 
 func (state *model) paintOnSelectionMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
+	palette := state.palette()
 	width := min(float32(280), size.Width-parentRight-4)
 	height := float32(5*27 + 8)
 	x := parentRight
 	y := min(menuHeight+4+23*24, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.Border(panel, 1, palette.border, palette.white)
+	canvas.Border(panel, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(onSelectionScope.At(3), panel, "On Selection", gfx.HitOptions{Role: gfx.RoleMenu})
 	for index, item := range []struct {
 		label, command string

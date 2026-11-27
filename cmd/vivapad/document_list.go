@@ -72,7 +72,8 @@ func (state *model) documentListRowIndex(row documentListRow) int {
 }
 
 func (state *model) paintDocumentList(canvas *gfx.Canvas, bounds gfx.Rect) {
-	canvas.Fill(bounds, gfx.RGB(250, 250, 250))
+	palette := state.palette()
+	canvas.Fill(bounds, palette.dock)
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
 	canvas.Fill(gfx.Rect{Y: bounds.Y + 33, Width: bounds.Width, Height: 1}, palette.border)
 	smallLabel(canvas, "Document List", gfx.Rect{X: 9, Y: bounds.Y + 3, Width: bounds.Width - 39, Height: 27}, palette.text, 11)
@@ -156,7 +157,7 @@ func (state *model) paintDocumentList(canvas *gfx.Canvas, bounds gfx.Rect) {
 			name = "* " + name
 		}
 		if state.isPinned(row.doc) {
-			canvas.DrawIcon(pinIcon, gfx.Rect{X: item.X + 6, Y: item.Y + 5, Width: 13, Height: 13}, palette.blue)
+			canvas.DrawIcon(pinIcon, gfx.Rect{X: item.X + 6, Y: item.Y + 5, Width: 13, Height: 13}, palette.accent)
 		}
 		nameX := item.X + 8
 		if state.isPinned(row.doc) {

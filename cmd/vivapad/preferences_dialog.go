@@ -8,6 +8,7 @@ func (state *model) closePreferences() {
 }
 
 func (state *model) paintPreferencesDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(preferencesCloseID)
 	canvas.PushLayer(3)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
@@ -15,7 +16,7 @@ func (state *model) paintPreferencesDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(4)
 	width, height := min(float32(590), size.Width-32), min(float32(340), size.Height-32)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.popup)
 	smallLabel(canvas, "Preferences", gfx.Rect{X: x + 19, Y: y + 13, Width: width - 38, Height: 29}, palette.text, 15)
 	canvas.Fill(gfx.Rect{X: x + 1, Y: y + 51, Width: width - 2, Height: 1}, palette.border)
 	canvas.Fill(gfx.Rect{X: x + 146, Y: y + 52, Width: 1, Height: height - 109}, palette.border)
@@ -29,7 +30,7 @@ func (state *model) paintPreferencesDialog(canvas *gfx.Canvas, size gfx.Size) {
 		}
 		color := palette.text
 		if state.preferencesPage == index {
-			color = palette.blue
+			color = palette.accent
 		}
 		smallLabel(canvas, category.label, bounds.Inset(gfx.All(9)), color, 12)
 		canvas.HitWithOptions(category.id, bounds, category.label, gfx.HitOptions{Role: gfx.RoleTab, Selected: state.preferencesPage == index})
@@ -64,6 +65,7 @@ func (state *model) paintPreferencesDialog(canvas *gfx.Canvas, size gfx.Size) {
 }
 
 func (state *model) paintEditingPreferences(canvas *gfx.Canvas, x, y, width float32) {
+	palette := state.palette()
 	smallLabel(canvas, "Editing", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 27}, palette.text, 14)
 	smallLabel(canvas, "Tab width", gfx.Rect{X: x, Y: y + 91, Width: width, Height: 21}, palette.muted, 11)
 	for index, value := range []int{2, 4, 8} {
@@ -81,7 +83,14 @@ func (state *model) paintEditingPreferences(canvas *gfx.Canvas, x, y, width floa
 }
 
 func (state *model) paintViewPreferences(canvas *gfx.Canvas, x, y, width float32) {
+	palette := state.palette()
 	smallLabel(canvas, "View", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 27}, palette.text, 14)
+	smallLabel(canvas, "Theme", gfx.Rect{X: x, Y: y + 89, Width: width, Height: 18}, palette.muted, 11)
+	for index, option := range themeOptions {
+		segment := width / float32(len(themeOptions))
+		bounds := gfx.Rect{X: x + float32(index)*segment, Y: y + 108, Width: segment - 4, Height: 24}
+		state.preferenceChoice(canvas, preferencesThemeScope.At(index), bounds, option.label, option.command(), state.themeChoice.Normalized() == option.choice, option.command())
+	}
 	for index, option := range []struct {
 		id      gfx.ID
 		label   string
@@ -95,11 +104,12 @@ func (state *model) paintViewPreferences(canvas *gfx.Canvas, x, y, width float32
 		{preferencesIndentGuideID, "Show Indent Guide", state.showIndentGuides, "Show Indent Guide"},
 		{preferencesZoomSyncID, "Synchronize Zoom Across Views", state.zoomSync, "Synchronize Zoom Across Views"},
 	} {
-		state.preferenceCheckbox(canvas, option.id, gfx.Rect{X: x, Y: y + 97 + float32(index)*33, Width: width, Height: 27}, option.label, option.checked, option.command)
+		state.preferenceCheckbox(canvas, option.id, gfx.Rect{X: x, Y: y + 138 + float32(index)*24, Width: width, Height: 24}, option.label, option.checked, option.command)
 	}
 }
 
 func (state *model) paintSymbolPreferences(canvas *gfx.Canvas, x, y, width float32) {
+	palette := state.palette()
 	smallLabel(canvas, "Symbols", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 27}, palette.text, 14)
 	smallLabel(canvas, "Non-printing style", gfx.Rect{X: x, Y: y + 98, Width: width, Height: 21}, palette.muted, 11)
 	for index, option := range []struct {
@@ -115,14 +125,15 @@ func (state *model) paintSymbolPreferences(canvas *gfx.Canvas, x, y, width float
 }
 
 func (state *model) preferenceChoice(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, text, label string, checked bool, command string) {
-	background := palette.white
+	palette := state.palette()
+	background := palette.popup
 	if checked || canvas.Hovered() == id {
 		background = palette.hover
 	}
 	canvas.Border(bounds, 1, palette.border, background)
 	color := palette.text
 	if checked {
-		color = palette.blue
+		color = palette.accent
 	}
 	canvas.LabelCenter(text, bounds, gfx.TextStyle{Size: 11, Color: color})
 	canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{Role: gfx.RoleRadio, Checked: checked})
@@ -132,13 +143,14 @@ func (state *model) preferenceChoice(canvas *gfx.Canvas, id gfx.ID, bounds gfx.R
 }
 
 func (state *model) preferenceCheckbox(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, label string, checked bool, command string) {
+	palette := state.palette()
 	if canvas.Hovered() == id {
 		canvas.Fill(bounds, palette.hover)
 	}
 	box := gfx.Rect{X: bounds.X + 1, Y: bounds.Y + 5, Width: 17, Height: 17}
-	canvas.Border(box, 1, palette.border, palette.white)
+	canvas.Border(box, 1, palette.border, palette.popup)
 	if checked {
-		canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.blue)
+		canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.accent)
 	}
 	smallLabel(canvas, canvas.FitLine(label, 11, gfx.WeightRegular, bounds.Width-33), gfx.Rect{X: bounds.X + 30, Y: bounds.Y, Width: bounds.Width - 32, Height: bounds.Height}, palette.text, 11)
 	canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: checked})

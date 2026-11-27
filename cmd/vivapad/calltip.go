@@ -90,6 +90,7 @@ func (state *model) cycleCalltip(step int) {
 }
 
 func (state *model) paintCalltip(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	hint := state.refreshCalltip()
 	if hint == nil || state.wordCompletion != nil || state.editorCommandFocusBlocked() || state.menuOverflowOpen {
 		return
@@ -126,13 +127,13 @@ func (state *model) paintCalltip(canvas *gfx.Canvas, size gfx.Size) {
 	}
 	canvas.PushLayer(3)
 	box := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.Border(box, 1, palette.border, palette.white)
+	canvas.Border(box, 1, palette.border, palette.popup)
 	row := gfx.Rect{X: x + 8, Y: y, Width: width - 16 - controls, Height: 27}
 	smallLabel(canvas, canvas.FitLine(label, 11, gfx.WeightRegular, row.Width), row, palette.text, 11)
 	canvas.HitWithOptions(calltipLabelID, row, label, gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
 	if argument != "" {
 		row = gfx.Rect{X: x + 8, Y: y + 24, Width: width - 16, Height: 22}
-		smallLabel(canvas, canvas.FitLine(argument, 11, gfx.WeightSemibold, row.Width), row, palette.blue, 11)
+		smallLabel(canvas, canvas.FitLine(argument, 11, gfx.WeightSemibold, row.Width), row, palette.accent, 11)
 		canvas.HitWithOptions(calltipArgumentID, row, argument, gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
 	}
 	if count > 1 {

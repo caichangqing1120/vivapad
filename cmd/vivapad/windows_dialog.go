@@ -248,6 +248,7 @@ func windowDialogColumns(width float32) [5]float32 {
 }
 
 func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	state.refreshWindowsRows()
 	canvas.SetEscapeTarget(windowsOKID)
 	canvas.PushLayer(3)
@@ -256,11 +257,11 @@ func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(4)
 	width, height := min(float32(620), size.Width-24), min(float32(360), max(260, float32(len(state.windowsRows))*23+150), size.Height-28)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.popup)
 	title := "Windows - " + strconv.Itoa(len(state.windowsRows)) + " documents"
 	smallLabel(canvas, title, gfx.Rect{X: x + 14, Y: y + 10, Width: width - 28, Height: 27}, palette.text, 15)
 	list := gfx.Rect{X: x + 12, Y: y + 45, Width: width - 143, Height: height - 83}
-	canvas.Border(list, 1, palette.border, palette.white)
+	canvas.Border(list, 1, palette.border, palette.popup)
 	columns := windowDialogColumns(list.Width)
 	columnX := list.X
 	for index, label := range windowsColumns {
@@ -295,12 +296,12 @@ func (state *model) paintWindowsDialog(canvas *gfx.Canvas, size gfx.Size) {
 		if selected || canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		} else if doc == state.windowsFocused {
-			canvas.Fill(item, gfx.RGB(242, 243, 245))
+			canvas.Fill(item, palette.selectedRow)
 		}
 		box := gfx.Rect{X: item.X + 4, Y: item.Y + 5, Width: 13, Height: 13}
-		canvas.Border(box, 1, palette.border, palette.white)
+		canvas.Border(box, 1, palette.border, palette.popup)
 		if selected {
-			canvas.DrawIcon(checkIcon, box.Inset(gfx.All(1)), palette.blue)
+			canvas.DrawIcon(checkIcon, box.Inset(gfx.All(1)), palette.accent)
 		}
 		directory, _ := filepath.Split(doc.Path)
 		modified := "-"

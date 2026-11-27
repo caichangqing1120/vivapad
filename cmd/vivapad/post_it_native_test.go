@@ -25,6 +25,13 @@ type postItNativeWindow struct {
 }
 
 func TestMain(m *testing.M) {
+	if os.Getenv("VIVAPAD_THEME_CHILD") == "1" {
+		if err := runNativeTheme(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	// Cocoa must run the window loop on the process's original main thread.
 	if scenario := os.Getenv("VIVAPAD_POST_IT_CHILD"); scenario != "" {
 		if err := runNativePostIt(scenario); err != nil {

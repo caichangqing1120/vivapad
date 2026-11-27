@@ -150,6 +150,7 @@ func (state *model) functionListKey(event gfx.KeyEvent) (gfx.EventResult, bool) 
 }
 
 func (state *model) paintLeftDockTabs(canvas *gfx.Canvas, bounds gfx.Rect) {
+	palette := state.palette()
 	canvas.Fill(bounds, palette.tabs)
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
 	canvas.Fill(gfx.Rect{Y: bounds.Y + bounds.Height - 1, Width: bounds.Width, Height: 1}, palette.border)
@@ -191,8 +192,8 @@ func (state *model) paintLeftDockTabs(canvas *gfx.Canvas, bounds gfx.Rect) {
 		item := gfx.Rect{X: float32(index) * bounds.Width / float32(count), Y: bounds.Y, Width: bounds.Width / float32(count), Height: bounds.Height - 1}
 		selected := state.activeDock() == tab.mode
 		if selected {
-			canvas.Fill(item, palette.white)
-			canvas.Fill(gfx.Rect{X: item.X, Y: item.Y + item.Height - 2, Width: item.Width, Height: 2}, palette.blue)
+			canvas.Fill(item, palette.popup)
+			canvas.Fill(gfx.Rect{X: item.X, Y: item.Y + item.Height - 2, Width: item.Width, Height: 2}, palette.accent)
 		}
 		label := tab.label
 		if item.Width < 75 {
@@ -218,7 +219,8 @@ func (state *model) paintLeftDockTabs(canvas *gfx.Canvas, bounds gfx.Rect) {
 }
 
 func (state *model) paintFunctionPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
-	canvas.Fill(bounds, gfx.RGB(250, 250, 250))
+	palette := state.palette()
+	canvas.Fill(bounds, palette.dock)
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
 	canvas.Fill(gfx.Rect{X: 0, Y: bounds.Y + 32, Width: bounds.Width, Height: 1}, palette.border)
 	smallLabel(canvas, "Function List", gfx.Rect{X: 9, Y: bounds.Y + 3, Width: bounds.Width - 39, Height: 27}, palette.text, 11)
@@ -234,9 +236,9 @@ func (state *model) paintFunctionPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 			state.activeLeftDock = ""
 		}
 	}
-	theme := gfx.LightTheme()
+	theme := state.uiTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 26, 11, 2
-	theme.Border, theme.Ring = palette.border, palette.blue
+	theme.Border, theme.Ring = palette.border, palette.accent
 	components.PaintInput(canvas, theme, gfx.Rect{X: 8, Y: bounds.Y + 39, Width: bounds.Width - 17, Height: 26}, components.InputSnapshot{
 		ID: functionFilterID, Label: "Filter functions", Placeholder: "Filter", Value: state.functionFilter.String(), PlatformEditing: canvas.Focused() == functionFilterID,
 	})

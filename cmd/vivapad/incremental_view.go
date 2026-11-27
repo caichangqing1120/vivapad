@@ -13,8 +13,9 @@ func (state *model) incrementalHeight(width float32) float32 {
 }
 
 func (state *model) paintIncrementalSearch(canvas *gfx.Canvas, width, y float32) {
+	palette := state.palette()
 	height := state.incrementalHeight(width)
-	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: height}, palette.chrome)
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: height}, palette.menuBar)
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.border)
 	closeBounds := gfx.Rect{X: 8, Y: y + 7, Width: 22, Height: 22}
 	canvas.DrawIcon(closeIcon, closeBounds.Inset(gfx.All(4)), palette.muted)
@@ -28,12 +29,12 @@ func (state *model) paintIncrementalSearch(canvas *gfx.Canvas, width, y float32)
 	if width < 900 {
 		fieldWidth = min(280, max(120, width-230))
 	}
-	theme := gfx.LightTheme()
+	theme := state.uiTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 25, 11, 2
-	theme.Border, theme.Ring = palette.border, palette.blue
-	theme.Background, theme.Foreground = palette.white, palette.text
+	theme.Border, theme.Ring = palette.border, palette.accent
+	theme.Background, theme.Foreground = palette.inputBackground, palette.text
 	if state.incrementStatus == "Phrase not found" {
-		theme.Background = gfx.RGB(255, 234, 237)
+		theme.Background = palette.invalidInput
 	}
 	components.PaintInput(canvas, theme, gfx.Rect{X: 66, Y: y + 5, Width: fieldWidth, Height: 25}, components.InputSnapshot{
 		ID: incrementQueryID, Label: "Incremental find", Value: state.incrementQuery.String(), PlatformEditing: canvas.Focused() == incrementQueryID,
@@ -76,9 +77,9 @@ func (state *model) paintIncrementalSearch(canvas *gfx.Canvas, width, y float32)
 	for _, option := range toggles {
 		bounds := gfx.Rect{X: toggleX, Y: toggleY, Width: option.width, Height: 22}
 		box := gfx.Rect{X: toggleX, Y: toggleY + 4, Width: 14, Height: 14}
-		canvas.Border(box, 1, palette.border, palette.white)
+		canvas.Border(box, 1, palette.border, palette.popup)
 		if *option.checked {
-			canvas.Fill(box.Inset(gfx.All(3)), palette.blue)
+			canvas.Fill(box.Inset(gfx.All(3)), palette.accent)
 		}
 		smallLabel(canvas, option.label, gfx.Rect{X: toggleX + 19, Y: toggleY, Width: option.width - 20, Height: 22}, palette.text, 11)
 		canvas.HitWithOptions(option.id, bounds, option.label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: *option.checked})
@@ -105,7 +106,7 @@ func (state *model) paintIncrementalSearch(canvas *gfx.Canvas, width, y float32)
 	status := gfx.Rect{X: toggleX + 5, Y: toggleY, Width: max(20, width-toggleX-13), Height: 22}
 	color := palette.muted
 	if state.incrementStatus == "Phrase not found" {
-		color = palette.blue
+		color = palette.accent
 	}
 	smallLabel(canvas, canvas.FitLine(state.incrementStatus, 11, gfx.WeightRegular, status.Width), status, color, 11)
 	if state.incrementOpen && state.incrementFocusPending {

@@ -48,7 +48,7 @@ func TestChangeHistoryWorkflowTypingSaveUndoClear(t *testing.T) {
 	// 1. Typing marks the edited line as modified.
 	doc.Editor.MoveTo(len([]rune("alpha\n")), false)
 	doc.Editor.Insert("X")
-	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != palette.changeModified {
+	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != classicPalette.changeModified {
 		t.Fatalf("after typing kinds = %v, want one modified line", kinds)
 	}
 	if !doc.Dirty() {
@@ -63,7 +63,7 @@ func TestChangeHistoryWorkflowTypingSaveUndoClear(t *testing.T) {
 	if !doc.Editor.AtSavePoint() {
 		t.Fatal("the Save command did not move the editor save point")
 	}
-	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != palette.changeSaved {
+	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != classicPalette.changeSaved {
 		t.Fatalf("after save kinds = %v, want one saved line", kinds)
 	}
 	if doc.Dirty() {
@@ -78,14 +78,14 @@ func TestChangeHistoryWorkflowTypingSaveUndoClear(t *testing.T) {
 		t.Fatalf("Undo did not restore the loaded bytes: %q", doc.Editor.String())
 	}
 	lines := state.changeMarginLines(doc)
-	if len(lines) != 1 || lines[0].Line != 1 || lines[0].Fill != palette.changeReverted {
+	if len(lines) != 1 || lines[0].Line != 1 || lines[0].Fill != classicPalette.changeReverted {
 		t.Fatalf("after undo decorations = %+v, want the reverted deletion marker", lines)
 	}
 	if !doc.Dirty() {
 		t.Fatal("after undo the saved boundary lives in Redo, so the document is modified")
 	}
 	state.command("Redo")
-	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != palette.changeSaved {
+	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != classicPalette.changeSaved {
 		t.Fatalf("after redo kinds = %v, want the saved line again", kinds)
 	}
 	if doc.Dirty() {
@@ -96,7 +96,7 @@ func TestChangeHistoryWorkflowTypingSaveUndoClear(t *testing.T) {
 	doc.Editor.Undo()
 	doc.Editor.MoveTo(len([]rune("alpha\n")), false)
 	doc.Editor.Insert("Y")
-	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != palette.changeModified {
+	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != classicPalette.changeModified {
 		t.Fatalf("detached branch kinds = %v, want one modified line", kinds)
 	}
 	if doc.Editor.CanRedo() {
@@ -142,14 +142,14 @@ func TestChangeHistoryWorkflowTypingSaveUndoClear(t *testing.T) {
 	// 6. A later edit and Save work against the new generation.
 	doc.Editor.MoveTo(len([]rune("alpha\nYbeta\n")), false)
 	doc.Editor.Insert("Z")
-	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != palette.changeModified {
+	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != classicPalette.changeModified {
 		t.Fatalf("post-clear edit kinds = %v", kinds)
 	}
 	state.command("Save")
 	if doc.Dirty() {
 		t.Fatalf("the Save command after clear left the document dirty: %q", state.notice)
 	}
-	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != palette.changeSaved {
+	if kinds := workflowKinds(state); len(kinds) != 1 || kinds[0] != classicPalette.changeSaved {
 		t.Fatalf("post-clear save kinds = %v", kinds)
 	}
 	if doc.Dirty() {
@@ -245,7 +245,7 @@ func TestChangeHistoryWorkflowEditingVariants(t *testing.T) {
 				t.Fatalf("Save decorations = %+v, want %d saved lines", savedLines, variant.lineCount)
 			}
 			for index, line := range savedLines {
-				if line.Line != index || line.Fill != palette.changeSaved {
+				if line.Line != index || line.Fill != classicPalette.changeSaved {
 					t.Fatalf("Save decoration %d = %+v, want saved line %d", index, line, index)
 				}
 			}

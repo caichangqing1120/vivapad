@@ -36,6 +36,7 @@ func (state *model) openSaveSessionOptions() {
 }
 
 func (state *model) paintSaveSessionOptions(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(saveSessionCancelID)
 	canvas.PushLayer(3)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
@@ -43,13 +44,13 @@ func (state *model) paintSaveSessionOptions(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(4)
 	width, height := min(float32(420), size.Width-32), float32(180)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.popup)
 	smallLabel(canvas, "Save Session", gfx.Rect{X: x + 20, Y: y + 16, Width: width - 40, Height: 27}, palette.text, 15)
 	canvas.Fill(gfx.Rect{X: x + 1, Y: y + 52, Width: width - 2, Height: 1}, palette.border)
 	box := gfx.Rect{X: x + 22, Y: y + 71, Width: 17, Height: 17}
-	canvas.Border(box, 1, palette.border, palette.white)
+	canvas.Border(box, 1, palette.border, palette.popup)
 	if state.saveSessionIncludeWorkspace {
-		canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.blue)
+		canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.accent)
 	}
 	toggle := gfx.Rect{X: x + 20, Y: y + 65, Width: width - 40, Height: 29}
 	smallLabel(canvas, "Save Folder as Workspace", gfx.Rect{X: x + 48, Y: toggle.Y, Width: width - 70, Height: toggle.Height}, palette.text, 11)
@@ -60,7 +61,7 @@ func (state *model) paintSaveSessionOptions(canvas *gfx.Canvas, size gfx.Size) {
 	}
 	if state.saveSessionError != "" {
 		message := canvas.FitLine(state.saveSessionError, 11, gfx.WeightRegular, width-40)
-		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + 105, Width: width - 40, Height: 18}, palette.blue, 11)
+		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + 105, Width: width - 40, Height: 18}, palette.accent, 11)
 	}
 	canvas.Fill(gfx.Rect{X: x + 1, Y: y + height - 52, Width: width - 2, Height: 1}, palette.border)
 	for _, button := range []struct {

@@ -116,6 +116,7 @@ func (state *model) applyMacroDialog() {
 }
 
 func (state *model) paintSavedMacroMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
+	palette := state.palette()
 	width := min(float32(260), size.Width-8)
 	x := parentRight
 	if x+width > size.Width-4 {
@@ -136,7 +137,7 @@ func (state *model) paintSavedMacroMenu(canvas *gfx.Canvas, size gfx.Size, paren
 	y := max(menuHeight, min(menuHeight+4+7*27, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.Border(panel, 1, palette.border, palette.white)
+	canvas.Border(panel, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(savedMacroPanelID, panel, "Saved macros", gfx.HitOptions{Role: gfx.RoleMenu})
 	if scrolling {
 		for _, control := range []struct {
@@ -184,6 +185,7 @@ func (state *model) paintSavedMacroMenu(canvas *gfx.Canvas, size gfx.Size, paren
 }
 
 func (state *model) paintMacroDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(macroCancelID)
 	canvas.PushLayer(3)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
@@ -195,10 +197,10 @@ func (state *model) paintMacroDialog(canvas *gfx.Canvas, size gfx.Size) {
 		height = 260
 	}
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
-	theme := gfx.LightTheme()
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.popup)
+	theme := state.uiTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 30, 12, 2
-	theme.Border, theme.Ring = palette.border, palette.blue
+	theme.Border, theme.Ring = palette.border, palette.accent
 	if state.macroSaveOpen {
 		smallLabel(canvas, "Save Current Recorded Macro", gfx.Rect{X: x + 20, Y: y + 14, Width: width - 40, Height: 26}, palette.text, 15)
 		components.PaintInput(canvas, theme, gfx.Rect{X: x + 20, Y: y + 50, Width: width - 40, Height: 30}, components.InputSnapshot{
@@ -211,7 +213,7 @@ func (state *model) paintMacroDialog(canvas *gfx.Canvas, size gfx.Size) {
 			sourceName = state.namedMacros[state.macroRunIndex].Name
 		}
 		source := gfx.Rect{X: x + 20, Y: y + 46, Width: width - 40, Height: 30}
-		canvas.Border(source, 1, palette.border, palette.white)
+		canvas.Border(source, 1, palette.border, palette.popup)
 		label := canvas.FitLine(sourceName, 12, gfx.WeightRegular, source.Width-48)
 		smallLabel(canvas, label, gfx.Rect{X: source.X + 10, Y: source.Y, Width: source.Width - 42, Height: 30}, palette.text, 12)
 		canvas.DrawIcon(downIcon, gfx.Rect{X: source.X + source.Width - 27, Y: source.Y + 7, Width: 16, Height: 16}, palette.muted)
@@ -241,7 +243,7 @@ func (state *model) paintMacroDialog(canvas *gfx.Canvas, size gfx.Size) {
 			errorY = y + 181
 		}
 		message := canvas.FitLine(state.macroDialogError, 11, gfx.WeightRegular, width-40)
-		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: errorY, Width: width - 40, Height: 21}, palette.blue, 11)
+		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: errorY, Width: width - 40, Height: 21}, palette.accent, 11)
 	}
 	buttonY := y + height - 48
 	for _, button := range []struct {
@@ -278,10 +280,11 @@ func sourceRect(x, y, width float32) gfx.Rect {
 }
 
 func (state *model) macroRadio(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, label string, checked bool) {
+	palette := state.palette()
 	box := gfx.Rect{X: bounds.X, Y: bounds.Y + 4, Width: 16, Height: 16}
-	canvas.RoundedBorder(box, 8, 1, palette.border, palette.white)
+	canvas.RoundedBorder(box, 8, 1, palette.border, palette.popup)
 	if checked {
-		canvas.RoundedBorder(box.Inset(gfx.All(4)), 4, 0, palette.blue, palette.blue)
+		canvas.RoundedBorder(box.Inset(gfx.All(4)), 4, 0, palette.accent, palette.accent)
 	}
 	smallLabel(canvas, label, gfx.Rect{X: bounds.X + 24, Y: bounds.Y, Width: bounds.Width - 24, Height: bounds.Height}, palette.text, 12)
 	canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{Role: gfx.RoleRadio, Checked: checked})
@@ -291,6 +294,7 @@ func (state *model) macroRadio(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, l
 }
 
 func (state *model) paintMacroSources(canvas *gfx.Canvas, origin gfx.Rect, viewportHeight float32) {
+	palette := state.palette()
 	count := state.macroSourceCount()
 	visible := min(6, count)
 	scrolling := count > visible
@@ -303,7 +307,7 @@ func (state *model) paintMacroSources(canvas *gfx.Canvas, origin gfx.Rect, viewp
 	height := float32(visible)*24 + controls + 8
 	y := min(origin.Y, viewportHeight-statusHeight-height-4)
 	canvas.PushLayer(5)
-	canvas.Border(gfx.Rect{X: origin.X, Y: y, Width: origin.Width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: origin.X, Y: y, Width: origin.Width, Height: height}, 1, palette.border, palette.popup)
 	if scrolling {
 		for _, control := range []struct {
 			id    gfx.ID

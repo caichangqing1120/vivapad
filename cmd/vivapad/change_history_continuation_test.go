@@ -80,7 +80,7 @@ func TestChangeHistoryColorsMatchPinnedClassicTheme(t *testing.T) {
 		gfx.RGB(0xff, 0x80, 0x00),
 		gfx.RGB(0xa0, 0xc0, 0x00),
 	}
-	got := changeMarginColors()
+	got := classicPalette.changeMarginColors()
 	if got != want {
 		t.Fatalf("classic change colors = %v, want %v", got, want)
 	}

@@ -20,6 +20,7 @@ func (state *model) tabHitIndex(doc *document.Document) int {
 }
 
 func (state *model) paintSplitTabs(canvas *gfx.Canvas, width, origin float32) {
+	palette := state.palette()
 	position := state.splitPosition(width)
 	y := menuHeight + toolbarHeight
 	if state.fullscreen {
@@ -37,6 +38,7 @@ func (state *model) paintSplitTabs(canvas *gfx.Canvas, width, origin float32) {
 }
 
 func (state *model) paintPaneTabs(canvas *gfx.Canvas, pane int, bounds gfx.Rect) {
+	palette := state.palette()
 	canvas.Fill(bounds, palette.tabs)
 	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y + bounds.Height - 1, Width: bounds.Width, Height: 1}, palette.border)
 	paneID := leftPaneID
@@ -111,7 +113,7 @@ func (state *model) paintPaneTabs(canvas *gfx.Canvas, pane int, bounds gfx.Rect)
 		}
 		pinColor, pinLabel := palette.muted, "Pin "+doc.Name
 		if state.isPinned(doc) {
-			pinColor, pinLabel = gfx.RGB(8, 105, 87), "Unpin "+doc.Name
+			pinColor, pinLabel = palette.pin, "Unpin "+doc.Name
 		}
 		canvas.DrawIcon(pinIcon, controlIconBounds(pinRect), pinColor)
 		if hitButton(canvas, pinID, pinRect, pinLabel) {

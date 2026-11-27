@@ -138,6 +138,7 @@ func (state *model) recentMenuKey(event gfx.KeyEvent) (gfx.EventResult, bool) {
 }
 
 func (state *model) paintRecentMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
+	palette := state.palette()
 	rows := len(state.recentEntries)
 	if rows == 0 {
 		rows = 1
@@ -153,7 +154,7 @@ func (state *model) paintRecentMenu(canvas *gfx.Canvas, size gfx.Size, parentRig
 	x := parentRight
 	y := min(menuHeight+4+10*fileMenuRowHeight, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.popup)
 	hot := canvas.Hovered()
 	if visible := canvas.FocusVisible(); isRecentMenuItem(visible) {
 		hot = visible

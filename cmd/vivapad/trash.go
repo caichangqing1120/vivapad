@@ -112,6 +112,7 @@ func (state *model) confirmTrash() {
 }
 
 func (state *model) paintTrashDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	request := state.pendingTrash
 	if request == nil {
 		return
@@ -123,7 +124,7 @@ func (state *model) paintTrashDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(4)
 	width, height := min(float32(440), size.Width-32), float32(184)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.popup)
 	smallLabel(canvas, "Move to Recycle Bin?", gfx.Rect{X: x + 20, Y: y + 16, Width: width - 40, Height: 28}, palette.text, 15)
 	name := canvas.FitLine(request.doc.Name, 13, gfx.WeightRegular, width-40)
 	smallLabel(canvas, name, gfx.Rect{X: x + 20, Y: y + 52, Width: width - 40, Height: 22}, palette.text, 13)
@@ -133,7 +134,7 @@ func (state *model) paintTrashDialog(canvas *gfx.Canvas, size gfx.Size) {
 	if request.doc.Dirty() {
 		message = "Unsaved changes in this tab will be lost."
 	}
-	smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + 107, Width: width - 40, Height: 22}, palette.blue, 11)
+	smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + 107, Width: width - 40, Height: 22}, palette.accent, 11)
 	canvas.Fill(gfx.Rect{X: x + 1, Y: y + height - 51, Width: width - 2, Height: 1}, palette.border)
 	for _, button := range []struct {
 		id     gfx.ID

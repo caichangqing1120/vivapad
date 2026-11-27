@@ -5,6 +5,7 @@ import (
 
 	"github.com/vivaui/viva/gfx"
 	"vivapad/internal/document"
+	"vivapad/internal/syntax"
 )
 
 var tabColorCommands = [...]string{"Apply Color 1", "Apply Color 2", "Apply Color 3", "Apply Color 4", "Apply Color 5", "Remove Color"}
@@ -56,17 +57,27 @@ func (state *model) restoreTabColors(colors map[string]uint8) {
 }
 
 func (state *model) tabColorPaint(doc *document.Document, selected bool) (background, accent gfx.Color) {
-	background, accent = palette.tab, palette.blue
+	palette := state.palette()
+	background, accent = palette.tab, palette.accent
 	if selected {
-		background = palette.white
+		background = palette.activeTab
 	}
 	if color := state.tabColors[doc]; color >= 1 && color <= 5 {
 		accent = tabColorAccents[color-1]
 		if !selected {
-			background = tabColorPastels[color-1]
+			background = state.tabColorSwatch(color)
 		}
 	}
 	return background, accent
+}
+
+func (state *model) tabColorSwatch(color uint8) gfx.Color {
+	if state.renderTheme == syntax.ClassicLight {
+		return tabColorPastels[color-1]
+	}
+	tint := tabColorAccents[color-1]
+	tint.Alpha = 0.22
+	return tint.Over(state.palette().tab)
 }
 
 func (state *model) tabColorHint(doc *document.Document) string {
@@ -77,13 +88,14 @@ func (state *model) tabColorHint(doc *document.Document) string {
 }
 
 func (state *model) tabColorMenuRow(canvas *gfx.Canvas, item gfx.Rect, command string, checked bool) {
+	palette := state.palette()
 	if command == "Remove Color" {
 		canvas.DrawIcon(closeIcon, gfx.Rect{X: item.X + 8, Y: item.Y + 5, Width: 12, Height: 12}, palette.muted)
 		return
 	}
 	color := tabColorCommand(command)
 	if color > 0 {
-		canvas.Border(gfx.Rect{X: item.X + 8, Y: item.Y + 4, Width: 14, Height: 14}, 1, palette.border, tabColorPastels[color-1])
+		canvas.Border(gfx.Rect{X: item.X + 8, Y: item.Y + 4, Width: 14, Height: 14}, 1, palette.border, state.tabColorSwatch(color))
 		if checked {
 			canvas.Fill(gfx.Rect{X: item.X + 9, Y: item.Y + 17, Width: 12, Height: 2}, tabColorAccents[color-1])
 		}

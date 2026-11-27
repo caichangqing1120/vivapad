@@ -112,6 +112,7 @@ func (state *model) saveWebSearchSettings() {
 }
 
 func (state *model) paintWebSearchSettings(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	const title = "Search Engine"
 	width, height := min(float32(530), size.Width-24), float32(246)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
@@ -122,7 +123,7 @@ func (state *model) paintWebSearchSettings(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(4)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.RoundedBorder(panel, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(panel, 4, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(webSearchDialogID, panel, title, gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
 	smallLabel(canvas, title, gfx.Rect{X: x + 18, Y: y + 10, Width: width - 36, Height: 30}, palette.text, 15)
 	choiceWidth := (width - 48) / 3
@@ -132,7 +133,7 @@ func (state *model) paintWebSearchSettings(canvas *gfx.Canvas, size gfx.Size) {
 		checked := engine.ID == state.webSearchChoice
 		border, fill := palette.border, palette.toolbar
 		if checked || canvas.FocusVisible() == id {
-			border = palette.blue
+			border = palette.accent
 		}
 		if checked {
 			fill = palette.hover
@@ -153,7 +154,7 @@ func (state *model) paintWebSearchSettings(canvas *gfx.Canvas, size gfx.Size) {
 		if state.webSearchError != "" && value != state.webSearchErrorTemplate {
 			state.webSearchError = ""
 		}
-		components.PaintInput(canvas, gfx.LightTheme(), input, components.InputSnapshot{
+		components.PaintInput(canvas, state.uiTheme(), input, components.InputSnapshot{
 			ID: webSearchTemplateID, Label: "HTTPS search template", Value: value,
 			Placeholder: "https://example.com/search?q=" + websearch.Placeholder, PlatformEditing: canvas.Focused() == webSearchTemplateID,
 		})
@@ -167,7 +168,7 @@ func (state *model) paintWebSearchSettings(canvas *gfx.Canvas, size gfx.Size) {
 		bounds := gfx.Rect{X: x + width - 194 + float32(i)*92, Y: y + height - 45, Width: 84, Height: 28}
 		border := palette.border
 		if canvas.FocusVisible() == item.id {
-			border = palette.blue
+			border = palette.accent
 		}
 		canvas.RoundedBorder(bounds, 4, 1, border, palette.toolbar)
 		canvas.LabelCenter(item.label, bounds, gfx.TextStyle{Size: 12, Color: palette.text})

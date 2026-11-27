@@ -7,6 +7,7 @@ import (
 )
 
 func (state *model) paintRunMenu(canvas *gfx.Canvas, size gfx.Size, origin float32) {
+	palette := state.palette()
 	count := len(state.namedRuns) + 2
 	width := min(float32(290), size.Width-8)
 	x := min(origin, size.Width-width-2)
@@ -23,7 +24,7 @@ func (state *model) paintRunMenu(canvas *gfx.Canvas, size gfx.Size, origin float
 	canvas.PushLayer(2)
 	canvas.PushOverlayClip(gfx.Rect{Width: size.Width, Height: size.Height})
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.Border(panel, 1, palette.border, palette.white)
+	canvas.Border(panel, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(runMenuPanelID, panel, "Run menu", gfx.HitOptions{Role: gfx.RoleMenu})
 	if controls > 0 {
 		for _, control := range []struct {
@@ -83,6 +84,7 @@ func (state *model) paintRunMenu(canvas *gfx.Canvas, size gfx.Size, origin float
 }
 
 func (state *model) paintRunDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(runDialogCancelID)
 	canvas.PushLayer(3)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
@@ -90,15 +92,15 @@ func (state *model) paintRunDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(4)
 	width, height := min(float32(480), size.Width-32), float32(210)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.popup)
 	title := "Run..."
 	if state.runSaveMode {
 		title = "Save Run Command"
 	}
 	smallLabel(canvas, title, gfx.Rect{X: x + 20, Y: y + 14, Width: width - 40, Height: 27}, palette.text, 15)
-	theme := gfx.LightTheme()
+	theme := state.uiTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 30, 12, 2
-	theme.Border, theme.Ring = palette.border, palette.blue
+	theme.Border, theme.Ring = palette.border, palette.accent
 	if state.runSaveMode {
 		components.PaintInput(canvas, theme, gfx.Rect{X: x + 20, Y: y + 55, Width: width - 40, Height: 30}, components.InputSnapshot{
 			ID: runDialogNameID, Label: "Run command name", Value: state.runName.String(), PlatformEditing: canvas.Focused() == runDialogNameID,
@@ -139,7 +141,7 @@ func (state *model) paintRunDialog(canvas *gfx.Canvas, size gfx.Size) {
 		state.runDialogFocus = false
 	}
 	if state.runDialogError != "" {
-		smallLabel(canvas, canvas.FitLine(state.runDialogError, 11, gfx.WeightRegular, width-40), gfx.Rect{X: x + 20, Y: y + 129, Width: width - 40, Height: 20}, palette.blue, 11)
+		smallLabel(canvas, canvas.FitLine(state.runDialogError, 11, gfx.WeightRegular, width-40), gfx.Rect{X: x + 20, Y: y + 129, Width: width - 40, Height: 20}, palette.accent, 11)
 	}
 	buttons := []struct {
 		id    gfx.ID
@@ -182,6 +184,7 @@ func (state *model) paintRunDialog(canvas *gfx.Canvas, size gfx.Size) {
 }
 
 func (state *model) paintRunVariables(canvas *gfx.Canvas, size gfx.Size, x, y, width float32) {
+	palette := state.palette()
 	menuWidth := min(float32(225), size.Width-16)
 	popupHeight := float32(len(runVariableNames))*22 + 8
 	menuX := min(x+width-menuWidth, size.Width-menuWidth-4)
@@ -189,7 +192,7 @@ func (state *model) paintRunVariables(canvas *gfx.Canvas, size gfx.Size, x, y, w
 	menuY = max(menuHeight, menuY)
 	canvas.PushLayer(5)
 	canvas.PushOverlayClip(gfx.Rect{Width: size.Width, Height: size.Height})
-	canvas.Border(gfx.Rect{X: menuX, Y: menuY, Width: menuWidth, Height: popupHeight}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: menuX, Y: menuY, Width: menuWidth, Height: popupHeight}, 1, palette.border, palette.popup)
 	for index, name := range runVariableNames {
 		item := gfx.Rect{X: menuX + 4, Y: menuY + 4 + float32(index)*22, Width: menuWidth - 8, Height: 22}
 		id := runVariableScope.At(index)

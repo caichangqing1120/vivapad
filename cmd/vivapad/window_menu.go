@@ -7,6 +7,7 @@ import (
 )
 
 func (state *model) paintWindowMenu(canvas *gfx.Canvas, size gfx.Size, origin float32) {
+	palette := state.palette()
 	tabs := state.activeViewTabs()
 	count := min(40, len(tabs))
 	width := min(float32(300), size.Width-8)
@@ -25,7 +26,7 @@ func (state *model) paintWindowMenu(canvas *gfx.Canvas, size gfx.Size, origin fl
 	y := menuHeight
 	canvas.PushLayer(2)
 	canvas.PushOverlayClip(gfx.Rect{Width: size.Width, Height: size.Height})
-	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.popup)
 	selectedCommand, selectedIndex := "", -1
 	for index, command := range []string{"Sort By", "Windows..."} {
 		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*25, Width: width - 8, Height: 25}
@@ -80,7 +81,7 @@ func (state *model) paintWindowMenu(canvas *gfx.Canvas, size gfx.Size, origin fl
 		}
 		checked := doc == current
 		if checked {
-			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 5, Y: item.Y + 4, Width: 14, Height: 14}, palette.blue)
+			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 5, Y: item.Y + 4, Width: 14, Height: 14}, palette.accent)
 		}
 		label := strconv.Itoa(index+1) + "  " + doc.Name
 		if doc.Dirty() {
@@ -112,6 +113,7 @@ func (state *model) paintWindowMenu(canvas *gfx.Canvas, size gfx.Size, origin fl
 }
 
 func (state *model) paintOverflowMenu(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(menuDismissID)
 	canvas.PushLayer(1)
 	canvas.HitWithOptions(menuDismissID, gfx.Rect{Y: menuHeight, Width: size.Width, Height: size.Height - menuHeight}, "Close hidden menus", gfx.HitOptions{Role: gfx.RoleButton})
@@ -126,7 +128,7 @@ func (state *model) paintOverflowMenu(canvas *gfx.Canvas, size gfx.Size) {
 	count := len(menuLabels) - state.menuFirstHidden
 	height := float32(count)*25 + 8
 	canvas.PushLayer(2)
-	canvas.Border(gfx.Rect{X: x, Y: menuHeight, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: menuHeight, Width: width, Height: height}, 1, palette.border, palette.popup)
 	for index := state.menuFirstHidden; index < len(menuLabels); index++ {
 		label := menuLabels[index]
 		item := gfx.Rect{X: x + 4, Y: menuHeight + 4 + float32(index-state.menuFirstHidden)*25, Width: width - 8, Height: 25}
@@ -151,6 +153,7 @@ func (state *model) paintOverflowMenu(canvas *gfx.Canvas, size gfx.Size) {
 }
 
 func (state *model) paintWindowSortMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
+	palette := state.palette()
 	width := min(float32(252), size.Width-8)
 	x := parentRight
 	if x+width > size.Width-4 {
@@ -160,7 +163,7 @@ func (state *model) paintWindowSortMenu(canvas *gfx.Canvas, size gfx.Size, paren
 	y := min(menuHeight+4, size.Height-statusHeight-height-4)
 	canvas.PushLayer(3)
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.Border(panel, 1, palette.border, palette.white)
+	canvas.Border(panel, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(windowSortPanelID, panel, "Sort windows", gfx.HitOptions{Role: gfx.RoleMenu})
 	selected := -1
 	for index, command := range windowSortCommands {

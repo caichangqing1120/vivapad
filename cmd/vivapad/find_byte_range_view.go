@@ -6,19 +6,20 @@ import (
 )
 
 func (state *model) paintByteRangeDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(byteRangeCloseID)
 	canvas.PushLayer(3)
 	width, height := min(float32(470), size.Width-32), float32(270)
 	x, y := size.Width-width-16, min(float32(100), size.Height-height-statusHeight-4)
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.RoundedBorder(panel, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(panel, 4, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(byteRangePanelID, panel, "Find characters in range", gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
 	smallLabel(canvas, "Find Characters in Range", gfx.Rect{X: x + 20, Y: y + 15, Width: width - 40, Height: 27}, palette.text, 15)
 	canvas.Fill(gfx.Rect{X: x + 1, Y: y + 52, Width: width - 2, Height: 1}, palette.border)
 	for index, label := range []string{"Non-ASCII", "ASCII", "Custom range"} {
 		bounds := gfx.Rect{X: x + 20 + float32(index)*(width-32)/3, Y: y + 65, Width: (width - 48) / 3, Height: 29}
 		id := byteRangeModeScope.At(index)
-		if columnSegment(canvas, id, bounds, label, state.byteRangeMode == index) {
+		if state.columnSegment(canvas, id, bounds, label, state.byteRangeMode == index) {
 			state.byteRangeMode, state.byteRangeError = index, ""
 			state.byteRangeFocus = index == 2
 		}
@@ -30,9 +31,9 @@ func (state *model) paintByteRangeDialog(canvas *gfx.Canvas, size gfx.Size) {
 		start, end = state.byteRangeStart.String(), state.byteRangeEnd.String()
 	}
 	smallLabel(canvas, "Byte range", gfx.Rect{X: x + 20, Y: y + 103, Width: 100, Height: 20}, palette.muted, 11)
-	theme := gfx.LightTheme()
+	theme := state.uiTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 30, 12, 2
-	theme.Border, theme.Ring = palette.border, palette.blue
+	theme.Border, theme.Ring = palette.border, palette.accent
 	for _, field := range []struct {
 		id    gfx.ID
 		label string
@@ -55,14 +56,14 @@ func (state *model) paintByteRangeDialog(canvas *gfx.Canvas, size gfx.Size) {
 		up     bool
 		offset float32
 	}{{byteRangeDownID, "Down", false, 112}, {byteRangeUpID, "Up", true, 219}} {
-		if columnSegment(canvas, option.id, gfx.Rect{X: x + option.offset, Y: y + 146, Width: 96, Height: 27}, option.label, state.byteRangeUp == option.up) {
+		if state.columnSegment(canvas, option.id, gfx.Rect{X: x + option.offset, Y: y + 146, Width: 96, Height: 27}, option.label, state.byteRangeUp == option.up) {
 			state.byteRangeUp = option.up
 		}
 	}
 	box := gfx.Rect{X: x + 20, Y: y + 187, Width: 17, Height: 17}
-	canvas.Border(box, 1, palette.border, palette.white)
+	canvas.Border(box, 1, palette.border, palette.popup)
 	if state.byteRangeWrap {
-		canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.blue)
+		canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.accent)
 	}
 	wrap := gfx.Rect{X: x + 19, Y: y + 182, Width: 180, Height: 28}
 	smallLabel(canvas, "Wrap around", gfx.Rect{X: x + 48, Y: wrap.Y, Width: 145, Height: wrap.Height}, palette.text, 11)
@@ -72,7 +73,7 @@ func (state *model) paintByteRangeDialog(canvas *gfx.Canvas, size gfx.Size) {
 	}
 	if state.byteRangeError != "" {
 		message := canvas.FitLine(state.byteRangeError, 11, gfx.WeightRegular, width-40)
-		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + 211, Width: width - 40, Height: 18}, palette.blue, 11)
+		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + 211, Width: width - 40, Height: 18}, palette.accent, 11)
 	}
 	for _, button := range []struct {
 		id     gfx.ID

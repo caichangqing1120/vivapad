@@ -130,6 +130,7 @@ func (state *model) insertPrintVariable() {
 }
 
 func (state *model) paintPrintPreferences(canvas *gfx.Canvas, x, y, width float32) {
+	palette := state.palette()
 	smallLabel(canvas, "Print", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
 	smallLabel(canvas, "Color options", gfx.Rect{X: x, Y: y + 89, Width: width, Height: 18}, palette.muted, 11)
 	for index, option := range []struct {
@@ -143,14 +144,14 @@ func (state *model) paintPrintPreferences(canvas *gfx.Canvas, x, y, width float3
 	} {
 		bounds := gfx.Rect{X: x + float32(index%2)*(width/2), Y: y + 109 + float32(index/2)*29, Width: width/2 - 6, Height: 25}
 		id := printColorScope.At(index)
-		background := palette.white
+		background := palette.popup
 		if state.printSettings.ColorMode == option.mode || canvas.Hovered() == id {
 			background = palette.hover
 		}
 		canvas.Border(bounds, 1, palette.border, background)
 		color := palette.text
 		if state.printSettings.ColorMode == option.mode {
-			color = palette.blue
+			color = palette.accent
 		}
 		canvas.LabelCenter(option.label, bounds, gfx.TextStyle{Size: 11, Color: color})
 		canvas.HitWithOptions(id, bounds, option.label, gfx.HitOptions{Role: gfx.RoleRadio, Checked: state.printSettings.ColorMode == option.mode})
@@ -177,6 +178,7 @@ func (state *model) paintPrintPreferences(canvas *gfx.Canvas, x, y, width float3
 }
 
 func (state *model) paintPrintMarginStepper(canvas *gfx.Canvas, bounds gfx.Rect, index int, label string, value int) {
+	palette := state.palette()
 	smallLabel(canvas, label, gfx.Rect{X: bounds.X, Y: bounds.Y, Width: 52, Height: bounds.Height}, palette.text, 11)
 	for _, control := range []struct {
 		id    gfx.ID
@@ -200,10 +202,11 @@ func (state *model) paintPrintMarginStepper(canvas *gfx.Canvas, bounds gfx.Rect,
 }
 
 func (state *model) paintPrintBandsPreferences(canvas *gfx.Canvas, x, y, width float32) {
+	palette := state.palette()
 	smallLabel(canvas, "Header and Footer", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
-	theme := gfx.LightTheme()
+	theme := state.uiTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 27, 11, 2
-	theme.Border, theme.Ring = palette.border, palette.blue
+	theme.Border, theme.Ring = palette.border, palette.accent
 	for index := range state.printFields {
 		column, section := index%3, index/3
 		columnWidth := width / 3
@@ -227,7 +230,7 @@ func (state *model) paintPrintBandsPreferences(canvas *gfx.Canvas, x, y, width f
 		}
 	}
 	variableBounds := gfx.Rect{X: x, Y: y + 239, Width: width - 89, Height: 27}
-	canvas.Border(variableBounds, 1, palette.border, palette.white)
+	canvas.Border(variableBounds, 1, palette.border, palette.popup)
 	smallLabel(canvas, "Variable: "+printVariableOptions[state.printVariableIndex].label, variableBounds.Inset(gfx.All(8)), palette.text, 11)
 	canvas.DrawIcon(downIcon, gfx.Rect{X: variableBounds.X + variableBounds.Width - 22, Y: variableBounds.Y + 5, Width: 16, Height: 16}, palette.muted)
 	canvas.HitWithOptions(printVariableButtonID, variableBounds, "Choose print variable", gfx.HitOptions{Role: gfx.RoleButton})
@@ -253,9 +256,10 @@ func sectionLabelForField(index int) string {
 }
 
 func (state *model) paintPrintVariableMenu(canvas *gfx.Canvas, x, y float32) {
+	palette := state.palette()
 	canvas.PushLayer(5)
 	panel := gfx.Rect{X: x, Y: y + 63, Width: 216, Height: float32(len(printVariableOptions))*25 + 4}
-	canvas.Border(panel, 1, palette.border, palette.white)
+	canvas.Border(panel, 1, palette.border, palette.popup)
 	for index, item := range printVariableOptions {
 		bounds := gfx.Rect{X: panel.X + 2, Y: panel.Y + 2 + float32(index)*25, Width: panel.Width - 4, Height: 25}
 		id := printVariableScope.At(index)
@@ -287,6 +291,7 @@ func (state *model) adjustPrintFont(index int, delta int) {
 }
 
 func (state *model) paintPrintFontPreferences(canvas *gfx.Canvas, x, y, width float32) {
+	palette := state.palette()
 	smallLabel(canvas, "Print Fonts", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
 	for index, font := range []printing.BandFont{state.printSettings.HeaderFont, state.printSettings.FooterFont} {
 		name := "Header"
@@ -329,14 +334,14 @@ func (state *model) paintPrintFontPreferences(canvas *gfx.Canvas, x, y, width fl
 			{printFontItalicScope.At(index), x + width - 41, "I", "Italic", font.Italic},
 		} {
 			bounds := gfx.Rect{X: style.x, Y: baseY + 29, Width: 31, Height: 27}
-			background := palette.white
+			background := palette.popup
 			if style.checked || canvas.Hovered() == style.id {
 				background = palette.hover
 			}
 			canvas.Border(bounds, 1, palette.border, background)
 			color := palette.text
 			if style.checked {
-				color = palette.blue
+				color = palette.accent
 			}
 			canvas.LabelCenter(style.glyph, bounds, gfx.TextStyle{Size: 12, Color: color})
 			canvas.HitWithOptions(style.id, bounds, name+" "+style.label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: style.checked})

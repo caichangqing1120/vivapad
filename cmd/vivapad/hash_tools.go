@@ -132,6 +132,7 @@ func (state *model) copyHashResult() {
 }
 
 func (state *model) paintHashMenu(canvas *gfx.Canvas, size gfx.Size, parentLeft, parentRight float32) {
+	palette := state.palette()
 	width := min(float32(252), size.Width-8)
 	height := float32(len(hashCommands))*27 + 8
 	x := parentRight
@@ -140,7 +141,7 @@ func (state *model) paintHashMenu(canvas *gfx.Canvas, size gfx.Size, parentLeft,
 	}
 	y := min(menuHeight+4+float32(state.hashMenuIndex)*27, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.popup)
 	selected := -1
 	for index, command := range hashCommands {
 		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
@@ -162,6 +163,7 @@ func (state *model) paintHashMenu(canvas *gfx.Canvas, size gfx.Size, parentLeft,
 }
 
 func (state *model) paintHashDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(hashCloseID)
 	canvas.PushLayer(3)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
@@ -170,11 +172,11 @@ func (state *model) paintHashDialog(canvas *gfx.Canvas, size gfx.Size) {
 	width := min(float32(500), size.Width-32)
 	height := min(float32(310), size.Height-24)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.popup)
 	smallLabel(canvas, "Generate "+state.hashAlgorithm.String(), gfx.Rect{X: x + 20, Y: y + 13, Width: width - 40, Height: 28}, palette.text, 15)
-	theme := gfx.LightTheme()
+	theme := state.uiTheme()
 	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 28, 12, 2
-	theme.Border, theme.Ring = palette.border, palette.blue
+	theme.Border, theme.Ring = palette.border, palette.accent
 	if state.hashMode == hashFromText {
 		input := state.hashInput.String()
 		selection := state.hashInput.Selection()
@@ -192,9 +194,9 @@ func (state *model) paintHashDialog(canvas *gfx.Canvas, size gfx.Size) {
 			state.hashEachLine = !state.hashEachLine
 		}
 		box := gfx.Rect{X: checkbox.X, Y: checkbox.Y + 3, Width: 17, Height: 17}
-		canvas.Border(box, 1, palette.border, palette.white)
+		canvas.Border(box, 1, palette.border, palette.popup)
 		if state.hashEachLine {
-			canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.blue)
+			canvas.DrawIcon(checkIcon, box.Inset(gfx.All(2)), palette.accent)
 		}
 		smallLabel(canvas, "Hash each line", gfx.Rect{X: checkbox.X + 26, Y: checkbox.Y, Width: checkbox.Width - 26, Height: 23}, palette.text, 11)
 		canvas.HitWithOptions(hashEachLineID, checkbox, "Hash each line", gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: state.hashEachLine})
@@ -216,7 +218,7 @@ func (state *model) paintHashDialog(canvas *gfx.Canvas, size gfx.Size) {
 	})
 	if state.hashError != "" {
 		message := canvas.FitLine(state.hashError, 11, gfx.WeightRegular, width-40)
-		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + height - 52, Width: width - 40, Height: 18}, palette.blue, 11)
+		smallLabel(canvas, message, gfx.Rect{X: x + 20, Y: y + height - 52, Width: width - 40, Height: 18}, palette.accent, 11)
 	}
 	for _, button := range []struct {
 		id    gfx.ID

@@ -38,7 +38,7 @@ func TestChangeMarginLinesFollowTheRealConsumer(t *testing.T) {
 	doc.Editor.MoveTo(len([]rune("\u4e00\n")), false)
 	doc.Editor.Insert("X")
 	lines := state.changeMarginLines(doc)
-	if len(lines) != 1 || lines[0].Line != 1 || lines[0].Fill != palette.changeModified {
+	if len(lines) != 1 || lines[0].Line != 1 || lines[0].Fill != classicPalette.changeModified {
 		t.Fatalf("modified line decorations = %+v", lines)
 	}
 	// The cache must follow the text: another edit adds another decorated line.
@@ -84,7 +84,7 @@ func TestChangeMarginDeletionPoint(t *testing.T) {
 	if target == nil {
 		t.Fatalf("deletion point missing from decorations: %+v", lines)
 	}
-	if target.Fill != palette.changeModified {
+	if target.Fill != classicPalette.changeModified {
 		t.Fatalf("deletion edition did not contribute to the margin: %+v", *target)
 	}
 }
@@ -105,7 +105,7 @@ func TestChangeMarginProjectsSparseRunsAndDeletionPoints(t *testing.T) {
 		{Position: 10, Editions: 2},
 		{Position: 25, Editions: 4},
 	}
-	colors := changeMarginColors()
+	colors := classicPalette.changeMarginColors()
 	bar := func(line, edition int, before, after bool) components.CodeEditorGutterBar {
 		color := colors[edition-1]
 		return components.CodeEditorGutterBar{Line: line, Fill: color, Stroke: color, JoinBefore: before, JoinAfter: after}

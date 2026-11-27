@@ -42,6 +42,7 @@ func numericSortForCommand(command string) (document.SortMode, bool, bool) {
 }
 
 func (state *model) paintLineMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
+	palette := state.palette()
 	width := min(float32(310), size.Width-parentRight-4)
 	available := size.Height - menuHeight - statusHeight - 8
 	rowHeight := float32(24)
@@ -62,7 +63,7 @@ func (state *model) paintLineMenu(canvas *gfx.Canvas, size gfx.Size, parentRight
 	y := min(menuHeight+4+10*27, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
 	panel := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.Border(panel, 1, palette.border, palette.white)
+	canvas.Border(panel, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(linePanelID, panel, "Line Operations", gfx.HitOptions{Role: gfx.RoleMenu})
 	if scrolling {
 		previous := gfx.Rect{X: x + 4, Y: y + 4, Width: width - 8, Height: 22}

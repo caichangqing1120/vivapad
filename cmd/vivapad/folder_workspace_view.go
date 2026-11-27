@@ -42,7 +42,8 @@ func (state *model) folderHitsFor(rows []folderRow) []folderRowHit {
 }
 
 func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
-	canvas.Fill(bounds, gfx.RGB(250, 250, 250))
+	palette := state.palette()
+	canvas.Fill(bounds, palette.dock)
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
 	canvas.Fill(gfx.Rect{Y: bounds.Y + 33, Width: bounds.Width, Height: 1}, palette.border)
 	title := "Folder as Workspace"

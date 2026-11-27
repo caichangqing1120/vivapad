@@ -155,6 +155,7 @@ func (state *model) rebindReloadedDocument(previous, current *document.Document)
 }
 
 func (state *model) paintReloadDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	if state.pendingReload >= len(state.space.Documents) {
 		state.pendingReload = -1
 		return
@@ -166,7 +167,7 @@ func (state *model) paintReloadDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(4)
 	width := float32(388)
 	x, y := (size.Width-width)/2, (size.Height-158)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.popup)
 	name := state.space.Documents[state.pendingReload].Name
 	title := canvas.FitLine(fmt.Sprintf("Reload %s from disk?", name), 15, gfx.WeightRegular, width-40)
 	smallLabel(canvas, title, gfx.Rect{X: x + 20, Y: y + 18, Width: width - 40, Height: 30}, palette.text, 15)

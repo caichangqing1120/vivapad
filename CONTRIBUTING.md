@@ -1,67 +1,48 @@
 # Contributing To VivaPad
 
-VivaPad follows Motty's Issue-first contribution model. Keep VivaPad's product
-behavior here and propose reusable editor/windowing capabilities separately
-to [Viva](https://github.com/vivaui/viva). Do not claim complete Notepad++ parity
-without the required platform and original-reference verification.
+VivaPad 是一个原生支持 **Windows、Linux、macOS** 的跨平台编辑器，采用**里程碑批次驱动（Milestone-Batch）**的敏捷开发流程。
 
-## From Requirement To PR
+## 开发与提交流程
 
-1. Open a feature or bug Issue with scope, expected behavior and acceptance
-   criteria. For substantive changes, confirm unresolved decisions before
-   implementation. Summarize the approved behavior and acceptance criteria in
-   the Issue; keep detailed Specs, plans and work packages locally.
-2. Comment `/claim`. Wait for `github-actions[bot]` to confirm the assignment.
-   An existing assignment is not overwritten. Use `/unclaim` (or `/unclaimed`)
-   to release your own claim.
-3. Work in an isolated worktree on a focused branch such as
-   `codex/issue-123-short-name`. Preserve unrelated work. Add a regression test
-   before a behavior fix and keep implementation within the confirmed scope.
-4. Run the checks below and update local plans and verification evidence.
-   Keep headless, cross-compiled and native GUI results distinct. Report the
-   commands and results in text without uploading local evidence files.
-5. Open a PR containing `Closes #123`, `Fixes #123` or `Resolves #123` in its
-   description. The Issue must be in this repository and assigned to the PR
-   author. CI and Requirement policy must pass; only an authorized maintainer
-   decides whether to merge. No bot auto-merges or publishes releases.
-6. GitHub normally closes an Issue after its closing PR merges. When a linked
-   PR merged without a closing keyword, its author/current assignee may use
-   `/close`; the bot verifies author, repository and default branch first.
+1. **按里程碑批次推进**：围绕本地 `docs/specs/001-vivapad/plan.md` 中的单个里程碑（如 `M1`、`M2`、`M3`、`M4`）开展工作，每个功能必须保证 Windows、Linux、macOS 三端代码与构建完整可用，不在日常开发中将微小修复拆成数十个碎片 Issue。
+2. **远端 PR 与三端 CI 验收**：
+   - 每个里程碑创建 **1 个总括 Issue（Umbrella Issue）**，评论 `/claim` 获取机器人分配确认后，在该里程碑专属分支（如 `codex/m1-cross-platform-themes`）内连续完成全部子项。
+   - 收口时提交 1 个汇总 PR（正文包含 `Closes #123`），由 GitHub Actions 原生三端矩阵（Windows / Linux / macOS）执行自动化测试与三端构建校验。
+3. **Viva 框架边界**：保持 `go.mod` 中已固定的 Viva 版本稳定；除非阻塞核心跨平台功能且获用户明确同意，不在日常任务中频繁升级 Viva 依赖。
 
-## Checks
+## 验证分级
 
-Requires Go 1.26+, Node 22+ for automation tests, and Viva's platform build
-prerequisites. The committed module replacement is a published, pinned fork,
-not a sibling checkout. Do not silently replace it with upstream main.
+### 日常子任务验证（秒级）
+
+```sh
+GOWORK=off go test ./internal/<pkg> ./cmd/vivapad -run '<FocusedTest>' -count=1
+GOOS=windows GOARCH=amd64 GOWORK=off go vet ./internal/<pkg> ./cmd/vivapad
+GOOS=linux GOARCH=amd64 GOWORK=off go vet ./internal/<pkg> ./cmd/vivapad
+```
+
+### 里程碑收口门禁（每个里程碑跑一次）
 
 ```sh
 test -z "$(gofmt -l $(git ls-files '*.go'))"
-GOWORK=off go mod verify
 GOWORK=off go vet ./...
 GOWORK=off go test ./... -count=1
-GOWORK=off go test -race ./... -count=1
-node --test tools/github/*.test.cjs
+GOOS=linux GOARCH=amd64 GOWORK=off go build ./cmd/vivapad
+GOOS=windows GOARCH=amd64 GOWORK=off go build ./cmd/vivapad
 node tools/github/check-public-files.cjs
-GOWORK=off go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 ```
 
-## Local-Only Files
+三端打包命令参考：
 
-Do not commit or upload `docs/`, Specs, development plans, screenshots or
-verification captures. Keep these files only in your local workspace,
-including any evidence referenced by a plan. Do not attach them to Issues or
-PRs. Public README, contribution rules, licenses and application resources
-such as icons and fonts remain in Git.
+```sh
+# macOS (arm64)
+GOWORK=off go tool viva package --target darwin --arch arm64 --format app --no-sign -o build/VivaPad.app
+GOWORK=off go run ./tools/icon -app build/VivaPad.app
 
-The ignore rules prevent ordinary additions; never use `git add -f` to bypass
-them. CI checks both the tracked files and reachable commit history, so merging
-an old branch can also fail this policy even after deleting the files at its
-tip. Rebase or recreate such a branch from the current clean default branch.
-Before submitting, inspect `git diff --cached --name-only` and run the public
-file check above. An image being placed under `assets/` does not make a
-screenshot an application resource.
+# Windows / Linux（在对应平台或 CI Runner 执行）
+GOWORK=off go tool viva package --target windows --arch amd64 --no-sign
+GOWORK=off go tool viva package --target linux --arch amd64 --no-sign
+```
 
-Native printer/trash tests that require explicit opt-in are not enabled in CI.
-Never submit real print jobs or delete user files to satisfy a check. Remove
-credentials and private documents from bug reports. Existing fixtures and
-third-party licenses retain their bytes; original failure logs stay local.
+## 本地私有文件红线
+
+严禁将 `docs/`、`specs/`、`plans/`、`screenshots/`、`captures/`、`plan*.md`、`spec*.md` 提交至 Git 或上传至 Issue/PR 附件。`tools/github/check-public-files.cjs` 会在提交前与 CI 中强制拦截。

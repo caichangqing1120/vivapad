@@ -49,7 +49,7 @@ func TestIndentGuideMenuPaintsBothViewsWithoutEditingAndPersists(t *testing.T) {
 	if !state.showIndentGuides || !state.menuSelected("Show Indent Guide") || doc.Editor.String() != before || doc.Editor.CanUndo() {
 		t.Fatalf("toggle edited text or did not enable guides: %q, notice=%q", doc.Editor.String(), state.notice)
 	}
-	guide := symbolColor
+	guide := classicPalette.invisible
 	guide.Alpha *= 0.5
 	count := func() int {
 		var canvas gfx.Canvas

@@ -43,7 +43,7 @@ func TestViewSymbolMenuFitsCompactAndDoesNotEdit(t *testing.T) {
 	state.paint(&canvas, gfx.Size{Width: 640, Height: 400})
 	marks := 0
 	for _, rectangle := range canvas.Rectangles() {
-		if rectangle.Color == symbolColor {
+		if rectangle.Color == classicPalette.invisible {
 			marks++
 		}
 	}

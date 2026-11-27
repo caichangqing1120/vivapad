@@ -119,7 +119,7 @@ func TestFocusedResultPaneHasVisibleIndicatorBeforeRowSelection(t *testing.T) {
 	}
 	expectedY := 400 - statusHeight - resultPaneHeight(400) + 1
 	for _, primitive := range driver.Snapshot().Primitives {
-		if primitive.Color == palette.blue && primitive.Bounds.Width >= 630 && primitive.Bounds.Height <= 3 && primitive.Bounds.Y >= expectedY-1 && primitive.Bounds.Y <= expectedY+1 {
+		if primitive.Color == classicPalette.accent && primitive.Bounds.Width >= 630 && primitive.Bounds.Height <= 3 && primitive.Bounds.Y >= expectedY-1 && primitive.Bounds.Y <= expectedY+1 {
 			return
 		}
 	}

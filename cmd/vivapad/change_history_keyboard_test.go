@@ -100,7 +100,7 @@ func TestChangeHistoryKeyboardTakesOverPointerHighlight(t *testing.T) {
 	first := syncScrollHit(t, driver, changeHistoryScope.At(0))
 	highlights := 0
 	for _, primitive := range driver.Snapshot().Primitives {
-		if primitive.Layer == 3 && primitive.Color == palette.hover {
+		if primitive.Layer == 3 && primitive.Color == classicPalette.hover {
 			highlights++
 			if primitive.Bounds != first {
 				t.Errorf("keyboard highlight remains on a different row: %+v", primitive.Bounds)

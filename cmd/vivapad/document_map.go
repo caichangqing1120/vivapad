@@ -53,7 +53,8 @@ func (state *model) scrollFromDocumentMap(y float32) {
 }
 
 func (state *model) paintDocumentMap(canvas *gfx.Canvas, bounds gfx.Rect, editorHeight float32) {
-	canvas.Fill(bounds, gfx.RGB(247, 248, 249))
+	palette := state.palette()
+	canvas.Fill(bounds, palette.mapBackground)
 	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
 	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y + 30, Width: bounds.Width, Height: 1}, palette.border)
 	title := "Document Map"
@@ -80,7 +81,7 @@ func (state *model) paintDocumentMap(canvas *gfx.Canvas, bounds gfx.Rect, editor
 	value := doc.Editor.String()
 	canvas.Clip(content)
 	viewport := documentMapViewport(content, editor.ScrollY(), editor.MaxScrollY(), editorHeight)
-	canvas.RoundedBorder(viewport, 2, 1, palette.blue, gfx.RGB(255, 246, 247))
+	canvas.RoundedBorder(viewport, 2, 1, palette.accent, palette.mapViewport)
 	if content.Height > 0 && len(value) != 0 {
 		samples := max(1, int(content.Height/3))
 		step := content.Height / float32(samples)
@@ -111,7 +112,7 @@ func (state *model) paintDocumentMap(canvas *gfx.Canvas, bounds gfx.Rect, editor
 			if doc.RTL {
 				x = content.X + content.Width - (x - content.X) - width
 			}
-			canvas.Fill(gfx.Rect{X: x, Y: content.Y + float32(index)*step + 1, Width: width, Height: 1.5}, gfx.RGB(158, 165, 172))
+			canvas.Fill(gfx.Rect{X: x, Y: content.Y + float32(index)*step + 1, Width: width, Height: 1.5}, palette.mapLine)
 		}
 	}
 	canvas.Unclip()

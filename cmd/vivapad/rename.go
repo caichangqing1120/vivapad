@@ -132,6 +132,7 @@ func (state *model) cancelRename() {
 }
 
 func (state *model) paintRenameDialog(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(renameCancelID)
 	canvas.PushLayer(3)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
@@ -139,12 +140,12 @@ func (state *model) paintRenameDialog(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(4)
 	width := min(float32(388), size.Width-32)
 	x, y := (size.Width-width)/2, (size.Height-158)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.popup)
 	if state.renameDoc != nil {
 		smallLabel(canvas, "Rename Current Tab", gfx.Rect{X: x + 20, Y: y + 16, Width: width - 40, Height: 30}, palette.text, 15)
-		theme := gfx.LightTheme()
+		theme := state.uiTheme()
 		theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 28, 12, 2
-		theme.Border, theme.Ring = palette.border, palette.blue
+		theme.Border, theme.Ring = palette.border, palette.accent
 		components.PaintInput(canvas, theme, gfx.Rect{X: x + 20, Y: y + 55, Width: width - 40, Height: 28}, components.InputSnapshot{
 			ID: renameFieldID, Label: "New tab name", Value: state.renameField.String(), PlatformEditing: canvas.Focused() == renameFieldID,
 		})

@@ -5,6 +5,7 @@ import "github.com/vivaui/viva/gfx"
 var styleOrdinals = [...]string{"1st", "2nd", "3rd", "4th", "5th"}
 
 func (state *model) paintStylePopup(canvas *gfx.Canvas, size gfx.Size, parentRight, parentY float32, mode string) {
+	palette := state.palette()
 	labels := make([]string, 0, 7)
 	for _, ordinal := range styleOrdinals {
 		label := ordinal + " Style"
@@ -31,7 +32,7 @@ func (state *model) paintStylePopup(canvas *gfx.Canvas, size gfx.Size, parentRig
 	x := parentRight
 	y := min(parentY, max(menuHeight, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.popup)
 	selected := -1
 	for index, label := range labels {
 		item := gfx.Rect{X: x + 4, Y: y + 4 + float32(index)*27, Width: width - 8, Height: 27}
@@ -39,8 +40,8 @@ func (state *model) paintStylePopup(canvas *gfx.Canvas, size gfx.Size, parentRig
 		if canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
-		if index < len(styleColors) {
-			canvas.Border(gfx.Rect{X: item.X + 7, Y: item.Y + 7, Width: 13, Height: 13}, 1, palette.border, styleColors[index])
+		if index < len(palette.tokenMarks) {
+			canvas.Border(gfx.Rect{X: item.X + 7, Y: item.Y + 7, Width: 13, Height: 13}, 1, palette.border, palette.tokenMarks[index])
 		}
 		text := canvas.FitLine(label, 11, gfx.WeightRegular, item.Width-38)
 		smallLabel(canvas, text, gfx.Rect{X: item.X + 29, Y: item.Y, Width: item.Width - 38, Height: item.Height}, palette.text, 11)

@@ -700,6 +700,11 @@ type model struct {
 	autoIndent                    bool
 	autoClose                     bool
 	preferencesPath               string
+	themeChoice                   preferences.Theme
+	nativeThemeChoice             preferences.Theme
+	renderTheme                   syntax.Theme
+	stopAppearanceWatch           func()
+	themeMenuOpen                 bool
 	printSettings                 printing.Settings
 	preferencesOpen               bool
 	preferencesPage               int
@@ -1002,6 +1007,7 @@ func defaultSessionPath() (string, error) {
 }
 
 func (state *model) applyPreferences(stored preferences.State) {
+	state.themeChoice = stored.Theme.Normalized()
 	state.fontSize, state.subFontSize, state.zoomSync, state.tabWidth = stored.FontSize, stored.SubFontSize, stored.ZoomSync, stored.TabWidth
 	state.wrap, state.showLineNumbers = stored.Wrap, stored.LineNumbers
 	state.indentMode, state.autoIndent, state.autoClose = stored.IndentMode, stored.AutoIndent, stored.AutoClose
@@ -1023,6 +1029,7 @@ func (state *model) savePreferences() error {
 		return errors.New("settings storage unavailable")
 	}
 	stored := preferences.State{
+		Theme:    state.themeChoice,
 		FontSize: state.fontSize, SubFontSize: state.subFontSize, ZoomSync: state.zoomSync, TabWidth: state.tabWidth,
 		Wrap: state.wrap, LineNumbers: state.showLineNumbers,
 		IndentMode: state.indentMode, AutoIndent: state.autoIndent, AutoClose: state.autoClose,
@@ -1055,7 +1062,10 @@ func newConfig(state *model) app.Config {
 		Invalidator: &state.invalidator,
 		Icon:        assets.WindowIcon(),
 	}
-	config.Paint = state.paint
+	config.Paint = func(canvas *gfx.Canvas, size gfx.Size) {
+		state.beginThemeFrame()
+		state.paint(canvas, size)
+	}
 	config.OnActivate = func() {
 		if state.recoveryWriter != nil {
 			if err, _ := state.recoveryWriter.Status(); err != nil {
@@ -1893,6 +1903,10 @@ func newConfig(state *model) app.Config {
 				state.viewTabMenuOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
+			if state.themeMenuOpen {
+				state.themeMenuOpen = false
+				return gfx.EventResult{Handled: true, Repaint: true}
+			}
 			if state.namedBrowserMenuOpen {
 				state.namedBrowserMenuOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
@@ -2307,6 +2321,8 @@ func newConfig(state *model) app.Config {
 		state.observeRecoveryError()
 	}
 	config.OnClosed = func() {
+		state.unwatchAppearance()
+		state.nativeThemeChoice = ""
 		state.cancelFileSearch()
 		state.stopFolderWatching()
 		state.stopAllMonitors()
@@ -2897,6 +2913,9 @@ func (state *model) goToLine() {
 }
 
 func (state *model) command(command string) {
+	if state.themeCommand(command) {
+		return
+	}
 	// Post-It settles editor state only after the native transition is confirmed.
 	if command == postItCommand {
 		state.togglePostIt()
@@ -2966,6 +2985,7 @@ func (state *model) command(command string) {
 	state.hashMenuOpen = false
 	state.symbolMenuOpen = false
 	state.viewTabMenuOpen = false
+	state.themeMenuOpen = false
 	state.namedBrowserMenuOpen = false
 	state.foldMenuOpen = false
 	state.windowSortMenuOpen = false

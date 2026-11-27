@@ -126,6 +126,7 @@ func (state *model) openHelpLink(command string, openURL func(string) error) {
 }
 
 func (state *model) paintHelp(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	title := aboutHelpCommand
 	if state.helpMode == debugHelp {
 		title = "Debug Info"
@@ -141,7 +142,7 @@ func (state *model) paintHelp(canvas *gfx.Canvas, size gfx.Size) {
 	canvas.PushLayer(4)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
 	bounds := gfx.Rect{X: x, Y: y, Width: width, Height: height}
-	canvas.RoundedBorder(bounds, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(bounds, 4, 1, palette.border, palette.popup)
 	canvas.HitWithOptions(helpDialogID, bounds, title, gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
 	smallLabel(canvas, title, gfx.Rect{X: x + 18, Y: y + 12, Width: width - 36, Height: 26}, palette.text, 15)
 	canvas.Fill(gfx.Rect{X: x + 18, Y: y + 43, Width: width - 36, Height: 1}, palette.border)
@@ -156,7 +157,7 @@ func (state *model) paintHelp(canvas *gfx.Canvas, size gfx.Size) {
 		field := gfx.Rect{X: left, Y: buttonY, Width: 88, Height: 28}
 		border := palette.border
 		if canvas.FocusVisible() == id {
-			border = palette.blue
+			border = palette.accent
 		}
 		canvas.RoundedBorder(field, 4, 1, border, palette.toolbar)
 		canvas.LabelCenter(label, field, gfx.TextStyle{Size: 12, Color: palette.text})

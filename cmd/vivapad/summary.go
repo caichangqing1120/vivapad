@@ -74,6 +74,7 @@ func summarizeSelections(doc *document.Document, ranges []text.Range, rectangle 
 }
 
 func (state *model) paintSummary(canvas *gfx.Canvas, size gfx.Size) {
+	palette := state.palette()
 	canvas.SetEscapeTarget(summaryCloseID)
 	canvas.PushLayer(3)
 	canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, gfx.RGBA(0, 0, 0, 0.25))
@@ -82,7 +83,7 @@ func (state *model) paintSummary(canvas *gfx.Canvas, size gfx.Size) {
 	width := min(float32(580), size.Width-24)
 	height := min(float32(340), size.Height-24)
 	x, y := (size.Width-width)/2, (size.Height-height)/2
-	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.white)
+	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 4, 1, palette.border, palette.popup)
 	smallLabel(canvas, "Summary", gfx.Rect{X: x + 18, Y: y + 12, Width: width - 36, Height: 26}, palette.text, 15)
 	canvas.Fill(gfx.Rect{X: x + 18, Y: y + 43, Width: width - 36, Height: 1}, palette.border)
 	printer := message.NewPrinter(language.English)

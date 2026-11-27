@@ -7,13 +7,14 @@ import (
 )
 
 func (state *model) paintFoldLevelMenu(canvas *gfx.Canvas, size gfx.Size, parentRight float32) {
+	palette := state.palette()
 	width := min(float32(220), size.Width-8)
 	x := min(parentRight, size.Width-width-4)
 	rowHeight := float32(25)
 	height := 8*rowHeight + 8
 	y := max(menuHeight, min(menuHeight+4+15*20, size.Height-statusHeight-height-4))
 	canvas.PushLayer(3)
-	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.white)
+	canvas.Border(gfx.Rect{X: x, Y: y, Width: width, Height: height}, 1, palette.border, palette.popup)
 	selected := -1
 	for index := range 8 {
 		label := "Fold Level " + strconv.Itoa(index+1)

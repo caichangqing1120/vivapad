@@ -108,6 +108,7 @@ func (state *model) moveCharacterPanel(step int) {
 }
 
 func (state *model) paintCharacterPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
+	palette := state.palette()
 	doc := state.paneDocument(state.activePane)
 	encoding := characterEncoding(doc.Encoding())
 	if state.characterTable == nil || state.characterTable.encoding != encoding {
@@ -117,7 +118,7 @@ func (state *model) paintCharacterPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 		}
 		state.characterTable = table
 	}
-	canvas.Fill(bounds, gfx.RGB(250, 250, 250))
+	canvas.Fill(bounds, palette.dock)
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
 	canvas.HitWithOptions(characterPanelID, bounds, characterPanelCommand, gfx.HitOptions{Role: gfx.RoleGroup})
 	smallLabel(canvas, characterPanelCommand, gfx.Rect{X: 8, Y: bounds.Y + 3, Width: bounds.Width - 37, Height: 23}, palette.text, 11)
