@@ -260,7 +260,7 @@ func TestReplaceSelectedLiteralUsesMatchBoundaries(t *testing.T) {
 		selection    text.Range
 		options      SearchOptions
 	}{
-		{"aaaaa", "aa", text.Range{Start: 1, End: 3}, SearchOptions{MatchCase: true}},
+		{"aaaaa", "aa", text.Range{Start: 1, End: 4}, SearchOptions{MatchCase: true}},
 		{"cat_ cat", "cat", text.Range{Start: 0, End: 3}, SearchOptions{WholeWord: true}},
 	} {
 		doc := New("fixture")
@@ -271,6 +271,20 @@ func TestReplaceSelectedLiteralUsesMatchBoundaries(t *testing.T) {
 		if err != nil || changed || doc.Editor.String() != tc.value || doc.Editor.Selection() != tc.selection || doc.Editor.CanUndo() {
 			t.Fatalf("refusal for %q changed source or selection: changed=%v err=%v", tc.value, changed, err)
 		}
+	}
+}
+
+func TestReplaceSelectedLiteralAcceptsOverlappingFoldedMatch(t *testing.T) {
+	doc := New("fixture")
+	doc.Editor.Insert("k\u212Akkk")
+	doc.Editor.ClearHistory()
+	doc.Editor.SetSelection(text.Range{Start: 3, End: 1})
+	changed, edit, err := doc.ReplaceCurrentWithEdit("kk", "$1", SearchOptions{})
+	if err != nil || !changed || edit != (ReplacementEdit{Start: 1, End: 5, Text: "$1"}) || doc.Editor.String() != "k$1kk" {
+		t.Fatalf("replacement: changed=%v edit=%+v text=%q err=%v", changed, edit, doc.Editor.String(), err)
+	}
+	if !doc.Editor.Undo() || doc.Editor.String() != "k\u212Akkk" || doc.Editor.CanUndo() {
+		t.Fatal("replacement did not have exactly one undo step")
 	}
 }
 

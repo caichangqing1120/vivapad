@@ -2143,6 +2143,28 @@ func TestFindPanelEnterFindsNext(t *testing.T) {
 	}
 }
 
+func TestReplaceCurrentUsesOverlapSelectedByFindNext(t *testing.T) {
+	state, driver := startDriver(t)
+	doc := state.space.Current()
+	doc.Editor.Insert("aaaaa")
+	doc.Editor.ClearHistory()
+	doc.Editor.MoveTo(1, false)
+	state.query.Insert("aa")
+	state.replacement.Insert("!")
+	clickID(t, driver, searchID)
+	clickID(t, driver, findNextID)
+	if got := doc.Editor.Selection(); got != (text.Range{Start: 1, End: 3}) {
+		t.Fatalf("Find Next selected %+v, want [1,3)", got)
+	}
+	clickID(t, driver, replaceID)
+	if got := doc.Editor.String(); got != "a!aa" {
+		t.Fatalf("Replace changed the document to %q, want a!aa", got)
+	}
+	if !doc.Editor.Undo() || doc.Editor.String() != "aaaaa" || doc.Editor.CanUndo() {
+		t.Fatal("one Undo did not restore the original text")
+	}
+}
+
 func TestReplaceInFilesPreviewThenConfirmRefreshesOpenTab(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "replace.txt")
