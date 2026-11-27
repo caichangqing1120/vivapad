@@ -5,6 +5,20 @@ import (
 	"vivapad/internal/document"
 )
 
+func (state *model) tabHitIndex(doc *document.Document) int {
+	if index, ok := state.tabHitIndices[doc]; ok {
+		return index
+	}
+	if state.tabHitIndices == nil {
+		state.tabHitIndices = make(map[*document.Document]int)
+	}
+	// Reordering must not transfer a pointer press to a different document.
+	index := state.tabNextHitIndex
+	state.tabNextHitIndex = (index + 1) & ((1 << 31) - 1)
+	state.tabHitIndices[doc] = index
+	return index
+}
+
 func (state *model) paintSplitTabs(canvas *gfx.Canvas, width, origin float32) {
 	position := state.splitPosition(width)
 	y := menuHeight + toolbarHeight
@@ -85,13 +99,14 @@ func (state *model) paintPaneTabs(canvas *gfx.Canvas, pane int, bounds gfx.Rect)
 		}
 		name = canvas.FitLine(name, 11, gfx.WeightRegular, tabWidth-56)
 		smallLabel(canvas, name, gfx.Rect{X: x + 10, Y: bounds.Y + 2, Width: tabWidth - 56, Height: 24}, palette.text, 11)
-		id := tabScope.At(global)
+		hitIndex := state.tabHitIndex(doc)
+		id, pinID, closeID := tabScope.At(hitIndex), pinScope.At(hitIndex), closeScope.At(hitIndex)
 		canvas.HitWithOptions(id, rect, doc.Name, gfx.HitOptions{Role: gfx.RoleTab, Selected: doc == selected})
 		if canvas.Clicked(id) {
 			chosen = global
 		}
 		pinRect := gfx.Rect{X: x + tabWidth - 42, Y: bounds.Y + 5, Width: 17, Height: 18}
-		if canvas.Hovered() == pinScope.At(global) {
+		if canvas.Hovered() == pinID {
 			canvas.Fill(pinRect, palette.hover)
 		}
 		pinColor, pinLabel := palette.muted, "Pin "+doc.Name
@@ -99,15 +114,15 @@ func (state *model) paintPaneTabs(canvas *gfx.Canvas, pane int, bounds gfx.Rect)
 			pinColor, pinLabel = gfx.RGB(8, 105, 87), "Unpin "+doc.Name
 		}
 		canvas.DrawIcon(pinIcon, controlIconBounds(pinRect), pinColor)
-		if hitButton(canvas, pinScope.At(global), pinRect, pinLabel) {
+		if hitButton(canvas, pinID, pinRect, pinLabel) {
 			pinning = doc
 		}
 		closeRect := gfx.Rect{X: x + tabWidth - 22, Y: bounds.Y + 5, Width: 17, Height: 18}
-		if canvas.Hovered() == closeScope.At(global) {
+		if canvas.Hovered() == closeID {
 			canvas.Fill(closeRect, palette.hover)
 		}
 		canvas.DrawIcon(closeIcon, controlIconBounds(closeRect), palette.muted)
-		if hitButton(canvas, closeScope.At(global), closeRect, "Close "+doc.Name) {
+		if hitButton(canvas, closeID, closeRect, "Close "+doc.Name) {
 			closing = global
 		}
 	}

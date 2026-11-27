@@ -50,11 +50,11 @@ func TestPinControlInEachViewSharesCloneFlag(t *testing.T) {
 	if err := driver.Resize(640, 400); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, leftPinScope.At(0))
+	clickID(t, driver, leftPinScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if !state.isPinned(clone) || state.paneTabs(0)[0] != clone || state.paneTabs(1)[0] != clone {
 		t.Fatal("pin state or prefix not shared with cloned tab")
 	}
-	clickID(t, driver, rightPinScope.At(state.documentIndex(clone)))
+	clickID(t, driver, rightPinScope.At(state.tabHitIndex(clone)))
 	if state.isPinned(clone) || state.paneDocs[0] != clone || state.paneDocs[1] != clone {
 		t.Fatal("unpinning cloned tab changed its view bindings")
 	}
@@ -118,12 +118,12 @@ func TestPinButtonsFitCompactTabs(t *testing.T) {
 	if err := driver.Resize(640, 400); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, tabPinScope.At(0))
+	clickID(t, driver, tabPinScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if !state.isPinned(state.space.Current()) {
 		t.Fatal("single-view pin button did not toggle")
 	}
 	for _, hit := range driver.Snapshot().Hits {
-		if hit.ID == tabPinScope.At(0) && (hit.Bounds.X+hit.Bounds.Width > 640 || hit.Bounds.Y+hit.Bounds.Height > menuHeight+toolbarHeight+tabHeight) {
+		if hit.ID == tabPinScope.At(state.tabHitIndex(state.space.Documents[0])) && (hit.Bounds.X+hit.Bounds.Width > 640 || hit.Bounds.Y+hit.Bounds.Height > menuHeight+toolbarHeight+tabHeight) {
 			t.Fatalf("pin button is clipped: %+v", hit.Bounds)
 		}
 	}

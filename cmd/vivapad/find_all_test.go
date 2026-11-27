@@ -116,7 +116,7 @@ func TestFindAllCurrentCapsResultsAndReleasesClosedDocument(t *testing.T) {
 	if !state.fileResults.Truncated || len(state.fileResults.Matches) != 2000 || state.resultDocument != doc {
 		t.Fatalf("capped results = %+v source=%p", state.fileResults, state.resultDocument)
 	}
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	clickID(t, driver, discardID)
 	if state.resultsOpen || state.resultDocument != nil {
 		t.Fatal("closed document left active search results")

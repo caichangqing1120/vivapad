@@ -30,7 +30,7 @@ func TestRestoreRecentClosedLegacyFileAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer driver.Close()
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if len(state.closedHistory) != 1 || state.closedHistory[0].Encoding != document.GB18030 {
 		t.Fatalf("closed legacy history = %+v", state.closedHistory)
 	}
@@ -59,7 +59,7 @@ func TestRestoreAfterDiscardReadsSavedDiskEncodingOnly(t *testing.T) {
 	doc := state.space.Current()
 	doc.SetEncoding(document.GB18030)
 	doc.Editor.Insert(" local")
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	clickID(t, driver, discardID)
 	if len(state.closedHistory) != 1 || state.closedHistory[0].Encoding != document.UTF8 {
 		t.Fatalf("discarded encoding was remembered: %+v", state.closedHistory)
@@ -82,7 +82,7 @@ func TestMissingRecentlyClosedFileKeepsCurrentTabAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer driver.Close()
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	current := state.space.Current()
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
@@ -227,7 +227,7 @@ func TestOrdinaryReopenRemovesPathFromClosedHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer driver.Close()
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if len(state.closedHistory) != 1 {
 		t.Fatal("close was not recorded")
 	}
