@@ -1303,7 +1303,8 @@ func (state *model) paintFileResults(canvas *gfx.Canvas, width, y, height float3
 	}
 	canvas.HitWithOptions(resultsPaneID, gfx.Rect{Y: y + 29, Width: width, Height: height - 29}, "Find results", gfx.HitOptions{Role: gfx.RoleGroup})
 	visible := max(1, int((height-30)/22))
-	resized := visible != state.resultVisible
+	viewportMoved := visible != state.resultVisible || state.resultScrolled
+	state.resultScrolled = false
 	// On shrink, keep a visible selection in view without undoing manual scrolling.
 	if visible < state.resultVisible && state.resultSelected >= state.resultOffset+visible &&
 		state.resultSelected < state.resultOffset+state.resultVisible {
@@ -1311,7 +1312,7 @@ func (state *model) paintFileResults(canvas *gfx.Canvas, width, y, height float3
 	}
 	state.resultVisible = visible
 	state.resultOffset = min(state.resultOffset, max(0, len(state.fileResults.Matches)-visible))
-	if focused := canvas.Focused(); resized && focused.Scope() == resultScope {
+	if focused := canvas.Focused(); viewportMoved && focused.Scope() == resultScope {
 		end := min(state.resultOffset+visible, len(state.fileResults.Matches))
 		if !slices.Contains(state.resultRowIDs[state.resultOffset:end], focused) {
 			canvas.RequestFocusOnce(resultsPaneID)
