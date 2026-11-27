@@ -707,12 +707,9 @@ func (doc *Document) ReplaceCurrentWithEdit(query, replacement string, options S
 	from, to := byteAtRune(value, selection.Start), byteAtRune(value, selection.End)
 	if !options.Regex {
 		var matched bool
-		visitLiteralMatches(value, query, options, func(match text.Span) bool {
-			if match.Start < from {
-				return true
-			}
+		scanLiteralRegion(value, query, from, to, options, func(match text.Span) literalMatchDecision {
 			matched = match.Start == from && match.End == to
-			return false
+			return literalStop
 		})
 		if !matched {
 			return false, ReplacementEdit{}, nil
