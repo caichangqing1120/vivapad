@@ -17,6 +17,7 @@ type themePalette struct {
 	findMark, findMatch                                                                       gfx.Color
 	tokenMarks                                                                                [5]gfx.Color
 	changeReverted, changeSaved, changeModified, changeRevertedModified                       gfx.Color
+	diff                                                                                      [3]gfx.Color
 }
 
 var classicPalette = themePalette{
@@ -33,6 +34,7 @@ var classicPalette = themePalette{
 	findMark:       gfx.RGBA(255, 0, 0, 100.0/255),
 	tokenMarks:     [5]gfx.Color{gfx.RGB24(0x00ffff), gfx.RGB24(0xff8000), gfx.RGB24(0xffff00), gfx.RGB24(0x8000ff), gfx.RGB24(0x008000)},
 	changeReverted: gfx.RGB24(0x40a0bf), changeSaved: gfx.RGB24(0x00a000), changeModified: gfx.RGB24(0xff8000), changeRevertedModified: gfx.RGB24(0xa0c000),
+	diff: [3]gfx.Color{gfx.RGB24(0xbb3645), gfx.RGB24(0x237d4a), gfx.RGB24(0x946200)},
 }
 
 var modernPalette = themePalette{
@@ -49,6 +51,7 @@ var modernPalette = themePalette{
 	findMark: gfx.RGB24(0x512731), findMatch: gfx.RGB24(0x4b371d),
 	tokenMarks:     [5]gfx.Color{gfx.RGB24(0x23444a), gfx.RGB24(0x54321c), gfx.RGB24(0x45401d), gfx.RGB24(0x423055), gfx.RGB24(0x274330)},
 	changeReverted: gfx.RGB24(0x66c5e2), changeSaved: gfx.RGB24(0x63c77b), changeModified: gfx.RGB24(0xffa662), changeRevertedModified: gfx.RGB24(0xb8cd58),
+	diff: [3]gfx.Color{gfx.RGB24(0xff7686), gfx.RGB24(0x65d6a3), gfx.RGB24(0xf6c568)},
 }
 
 var monokaiPalette = func() themePalette {
@@ -63,6 +66,7 @@ var monokaiPalette = func() themePalette {
 	palette.accent, palette.selectedRow, palette.mapViewport = gfx.RGB24(0xc1e872), gfx.RGB24(0x3e4531), gfx.RGB24(0x3c442e)
 	palette.editorBackground, palette.editorForeground = gfx.RGB24(0x272822), gfx.RGB24(0xf8f8f2)
 	palette.selection = gfx.RGB24(0x515642)
+	palette.diff = [3]gfx.Color{gfx.RGB24(0xf96a9a), gfx.RGB24(0xa6e22e), gfx.RGB24(0xe6db74)}
 	return palette
 }()
 
@@ -165,6 +169,7 @@ func (state *model) editorTheme() gfx.Theme {
 
 func (state *model) themeCommand(command string) bool {
 	if command == themeMenuCommand {
+		state.productivityMenu = ""
 		state.menuOpen, state.themeMenuOpen = 3, !state.themeMenuOpen
 		state.symbolMenuOpen, state.viewTabMenuOpen, state.foldMenuOpen, state.namedBrowserMenuOpen = false, false, false, false
 		state.invalidator.Invalidate()

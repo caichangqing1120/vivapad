@@ -48,7 +48,7 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 	rows := gfx.Rect{X: x + 4, Y: y + 4 + controls/2, Width: width - 8, Height: float32(visible) * rowHeight}
 	canvas.Clip(rows)
 	chosen := ""
-	browserY, themeY := rows.Y, float32(-1)
+	browserY, themeY, compareY := rows.Y, float32(-1), float32(-1)
 	for row := 0; row < visible; row++ {
 		index := state.viewMenuOffset + row
 		command := commands[index]
@@ -62,7 +62,7 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 			canvas.DrawIcon(checkIcon, gfx.Rect{X: item.X + 6, Y: item.Y + (rowHeight-14)/2, Width: 14, Height: 14}, palette.accent)
 		}
 		switch command {
-		case "Show Symbol", "Tab", "Fold Level", "Unfold Level", namedBrowserMenuCommand, themeMenuCommand:
+		case "Show Symbol", "Tab", "Fold Level", "Unfold Level", namedBrowserMenuCommand, themeMenuCommand, compareMenu:
 			canvas.DrawIcon(rightIcon, gfx.Rect{X: item.X + item.Width - 20, Y: item.Y + (rowHeight-14)/2, Width: 14, Height: 14}, palette.muted)
 		}
 		if command == namedBrowserMenuCommand {
@@ -70,6 +70,9 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 		}
 		if command == themeMenuCommand {
 			themeY = item.Y
+		}
+		if command == compareMenu {
+			compareY = item.Y
 		}
 		label := canvas.FitLine(command, 11, gfx.WeightRegular, item.Width-35)
 		smallLabel(canvas, label, gfx.Rect{X: item.X + 27, Y: item.Y, Width: item.Width - 34, Height: item.Height}, palette.text, 11)
@@ -85,6 +88,9 @@ func (state *model) paintViewMenu(canvas *gfx.Canvas, size gfx.Size, origin floa
 		state.command(chosen)
 	}
 	if state.menuOpen == 3 {
+		if state.productivityMenu == compareMenu && compareY >= 0 {
+			state.paintProductivityMenu(canvas, size, x, x+width, compareY)
+		}
 		if state.themeMenuOpen && themeY >= 0 {
 			state.paintThemeMenu(canvas, size, x+width, themeY)
 		}

@@ -38,6 +38,9 @@ func (state *model) restoreSessionReadOnly(flags map[string]bool) {
 }
 
 func (state *model) textMutation(command string) bool {
+	if tool, _ := findTextTool(command); tool.transform != nil {
+		return true
+	}
 	if _, ok := document.EncodingFromLabel(command); ok {
 		return true
 	}

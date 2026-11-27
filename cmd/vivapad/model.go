@@ -598,6 +598,8 @@ type model struct {
 	lineMenuOpen                  bool
 	insertDateOpen                bool
 	hashMenuOpen                  bool
+	productivityMenu              string
+	comparison                    *compareView
 	symbolMenuOpen                bool
 	viewTabMenuOpen               bool
 	namedBrowserMenuOpen          bool
@@ -1099,6 +1101,18 @@ func newConfig(state *model) app.Config {
 		return input
 	}
 	config.OnPointer = func(event gfx.PointerEvent) gfx.EventResult {
+		if isComparePreview(event.Target) {
+			if view := state.activeComparison(); view != nil && view.saved {
+				result := view.preview.Pointer(event)
+				state.syncCompareFrom(view, view.savedPane)
+				result.Handled = true
+				if event.Kind == gfx.PointerDown {
+					result.Focus = comparePreviewID
+				}
+				return result
+			}
+			return gfx.EventResult{Handled: true}
+		}
 		if event.Kind == gfx.PointerDown {
 			state.pointerCompositionAway(event.Target)
 		}
@@ -1225,6 +1239,14 @@ func newConfig(state *model) app.Config {
 		return state.codeEditor().Pointer(event)
 	}
 	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult {
+		if isComparePreview(event.Target) {
+			if view := state.activeComparison(); view != nil && view.saved {
+				result := view.preview.Scroll(event)
+				state.syncCompareFrom(view, view.savedPane)
+				return result
+			}
+			return gfx.EventResult{Handled: true}
+		}
 		if state.saveSessionOptionsOpen {
 			return gfx.EventResult{Handled: true}
 		}
@@ -1447,6 +1469,9 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: event.Phase == gfx.FileDropDrop}
 	}
 	config.OnShortcut = func(event gfx.KeyEvent) gfx.EventResult {
+		if isComparePreview(event.Target) && event.Key != gfx.KeyF8 {
+			return gfx.EventResult{Handled: event.Modifiers&primary() != 0}
+		}
 		if state.saveSessionOptionsOpen {
 			return gfx.EventResult{Handled: true}
 		}
@@ -1846,6 +1871,9 @@ func newConfig(state *model) app.Config {
 		if result, handled := state.bookmarkMenuKey(event); handled {
 			return result
 		}
+		if result, handled := state.productivityMenuKey(event); handled {
+			return result
+		}
 		if result, handled := state.recentMenuKey(event); handled {
 			return result
 		}
@@ -2091,6 +2119,21 @@ func newConfig(state *model) app.Config {
 		}
 		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
 			return gfx.EventResult{Handled: true}
+		}
+		if state.comparison != nil && state.menuOpen < 0 && event.Key == gfx.KeyF8 && event.Modifiers&^gfx.ModifierShift == primary() {
+			command := nextDiffCommand
+			if event.Modifiers&gfx.ModifierShift != 0 {
+				command = previousDiffCommand
+			}
+			state.command(command)
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+		}
+		if isComparePreview(event.Target) {
+			result := gfx.EventResult{Handled: true}
+			if event.Key == gfx.KeyEscape || event.Key == gfx.KeyTab {
+				result.Focus = state.commandEditorFocusID()
+			}
+			return result
 		}
 		if result := state.folderWorkspaceKey(event); result.Handled {
 			return result
@@ -3016,7 +3059,9 @@ func (state *model) command(command string) {
 		return
 	}
 	doc := state.space.Current()
-	fromSearchMenu := state.menuOpen == 2
+	fromMenu := state.menuOpen
+	fromSearchMenu := fromMenu == 2
+	tool, wholeDocument := findTextTool(command)
 	// Clear refuses a live composition without mutating anything, so its preflight
 	// must run before the generic composition cancel below.
 	historyNotice := false
@@ -3059,7 +3104,7 @@ func (state *model) command(command string) {
 			state.bookmarkLines(doc)
 			state.relocateSelectAnchors(doc, before, doc.Editor.String(), editStart)
 		}
-		if historyNotice {
+		if historyNotice || tool.transform != nil {
 			// Bookmark synchronisation has its own warnings; a change-history command
 			// owns its result (success, refusal or unavailable reason).
 			state.notice = notice
@@ -3073,6 +3118,7 @@ func (state *model) command(command string) {
 	state.markJumpMenuOpen = false
 	state.styleMenuMode = ""
 	state.hashMenuOpen = false
+	state.productivityMenu = ""
 	state.symbolMenuOpen = false
 	state.viewTabMenuOpen = false
 	state.themeMenuOpen = false
@@ -3083,6 +3129,9 @@ func (state *model) command(command string) {
 	state.eolMenuOpen = false
 	state.charsetMenuOpen = false
 	state.savedMacroMenuOpen = false
+	if state.openProductivityMenu(command, fromMenu) {
+		return
+	}
 	if !isCompletionCommand(command) {
 		state.wordCompletion = nil
 		state.wordFocusPending = false
@@ -3107,6 +3156,14 @@ func (state *model) command(command string) {
 	}
 	if state.isReadOnly(doc) && state.textMutation(command) {
 		state.notice = "Read-only document"
+		return
+	}
+	if tool.transform != nil {
+		state.cancelMacroForCommand()
+		state.applyTextTool(doc, tool, wholeDocument)
+		return
+	}
+	if state.compareCommand(command) {
 		return
 	}
 	if all, options, ok := multiSelectModeForCommand(command); ok {

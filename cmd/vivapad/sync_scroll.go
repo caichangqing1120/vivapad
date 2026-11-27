@@ -17,6 +17,13 @@ func (state *model) captureSyncScroll() {
 }
 
 func (state *model) syncScrollFrom(pane int) {
+	view := state.activeComparison()
+	if view != nil && pane >= 0 && pane < 2 {
+		state.syncCompareFrom(view, pane)
+		if view.saved || !state.syncHorizontal {
+			return
+		}
+	}
 	if state.distractionFree || !state.splitEnabled || pane < 0 || pane > 1 || !state.syncVertical && !state.syncHorizontal {
 		return
 	}
@@ -29,7 +36,7 @@ func (state *model) syncScrollFrom(pane int) {
 	if pane == 0 {
 		sign = -1
 	}
-	if state.syncVertical {
+	if state.syncVertical && view == nil {
 		peer.SetScrollY(source.ScrollY() + sign*state.syncScrollOffsetY)
 	}
 	if state.syncHorizontal {
@@ -68,7 +75,7 @@ func (state *model) syncScrollAfterPaint() {
 		}
 		return state.activePane
 	}
-	if state.syncVertical && (changedDocs || vertical != state.syncScrollSeenY) {
+	if state.syncVertical && state.comparison == nil && (changedDocs || vertical != state.syncScrollSeenY) {
 		if choose(vertical, state.syncScrollSeenY) == 0 {
 			sub.SetScrollY(main.ScrollY() - state.syncScrollOffsetY)
 		} else {

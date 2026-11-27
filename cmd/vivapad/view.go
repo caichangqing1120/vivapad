@@ -27,11 +27,11 @@ var menuCommands = [...][]string{
 		"Replace in Files...", "Find All in Current Document", "Find All in Open Documents", "Replace All in Open Documents",
 		"Clear Marks", "Next Change", "Previous Change", "Clear Change History",
 	},
-	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", textDirectionRTL, textDirectionLTR, "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand, namedBrowserMenuCommand, postItCommand, themeMenuCommand},
+	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", textDirectionRTL, textDirectionLTR, "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand, namedBrowserMenuCommand, postItCommand, compareMenu, themeMenuCommand},
 	{"Unix (LF)", "Windows (CR LF)", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE", "GB18030", "Windows-1252", "Character sets"},
 	{"Normal Text", "Go", "JavaScript", "TypeScript", "Python", "JSON", "HTML", "CSS", "Markdown", "SQL"},
 	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off"},
-	{"MD5", "SHA-1", "SHA-256", "SHA-512"},
+	{"MD5", "SHA-1", "SHA-256", "SHA-512", structuredToolsMenu, encodingToolsMenu, compareMenu},
 	{"Record Macro", "Stop Recording", "Playback Macro", "Save Current Recorded Macro...", "Run a Macro Multiple Times...", "Playback 5 Times", "Clear Macro", "Saved Macros"},
 	{"Run..."},
 	{},
@@ -152,6 +152,7 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 		}
 	}
 	if state.distractionFree {
+		state.clearComparison()
 		padding := editorBounds.Width / 4
 		editorBounds.X, editorBounds.Width = padding, editorBounds.Width-2*padding
 		state.paintPane(canvas, editorBounds, state.activePane, state.paneDocument(state.activePane))
@@ -323,6 +324,7 @@ func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 				state.styleMenuMode = ""
 				state.insertDateOpen = false
 				state.hashMenuOpen = false
+				state.productivityMenu = ""
 				state.symbolMenuOpen = false
 				state.viewTabMenuOpen = false
 				state.themeMenuOpen = false
@@ -563,6 +565,14 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 func (state *model) paintEditor(canvas *gfx.Canvas, bounds gfx.Rect) {
 	palette := state.palette()
 	state.splitWidth = bounds.Width
+	if view := state.activeComparison(); view != nil {
+		if view.refresh() {
+			state.paintComparison(canvas, bounds, view)
+			return
+		}
+		state.clearComparison()
+		state.notice = "Compare is unavailable for large documents"
+	}
 	if !state.splitEnabled {
 		state.paintPane(canvas, bounds, 0, state.space.Current())
 		return
@@ -983,6 +993,9 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	if composing {
 		snapshot.CompositionStart = doc.Editor.ByteOffset(composition.Start)
 		snapshot.CompositionEnd = doc.Editor.ByteOffset(composition.End)
+	}
+	if view := state.comparison; view != nil && view.docs[pane] == doc {
+		view.decorate(&snapshot, pane, palette)
 	}
 	state.codeEditorForPane(pane).Paint(canvas, theme, bounds, snapshot)
 	for _, marker := range snapshot.FoldMarkers {
@@ -1471,6 +1484,7 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 		state.markJumpMenuOpen = false
 		state.styleMenuMode = ""
 		state.hashMenuOpen = false
+		state.productivityMenu = ""
 		state.symbolMenuOpen = false
 		state.viewTabMenuOpen = false
 		state.themeMenuOpen = false
@@ -1685,6 +1699,10 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 	}
 	if state.hashMenuOpen && state.menuOpen == 7 {
 		state.paintHashMenu(canvas, size, x, x+width)
+	}
+	if state.productivityMenu != "" && state.menuOpen == 7 {
+		index := slices.Index(commands, state.productivityMenu)
+		state.paintProductivityMenu(canvas, size, x, x+width, rows.Y+float32(index)*rowHeight)
 	}
 	if state.windowSortMenuOpen && state.menuOpen == 11 {
 		state.paintWindowSortMenu(canvas, size, x+width)

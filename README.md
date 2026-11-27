@@ -126,6 +126,22 @@ whose name would otherwise be interpreted as help, as in the last example.
   the process writing the log. Closing the tab stops monitoring and releases
   the file handle.
 
+### Programmer tools
+
+- **Tools > JSON / XML** formats, minifies, or sorts selected JSON (or the
+  whole document if nothing is selected). XML formatting preserves mixed
+  content and `xml:space` sections. Parse errors leave the source unchanged.
+- **Tools > Encode / Convert** works on the selection or current line.
+  Timestamp conversion also recognizes a Unix timestamp at the caret; dates
+  use local time unless an offset is supplied, and produce seconds followed
+  by milliseconds. URL conversion uses query/form escaping (`+` for spaces).
+  Each successful edit keeps the document's line ending and undoes in one step.
+- **Tools or View > Compare** compares two split editors, or the current buffer
+  with a read-only disk snapshot. Vertical scrolling follows corresponding
+  lines. Use **Next Difference** and **Previous Difference** with
+  Ctrl+F8 / Ctrl+Shift+F8 (Cmd on macOS). **Clear Compare** restores the normal
+  view without changing either file.
+
 ### Column selection
 
 Column selection marks the same range of columns on several lines. Use any

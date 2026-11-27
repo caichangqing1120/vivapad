@@ -24,7 +24,7 @@ func (state *model) restoreEditorCommandFocus(command string) {
 	// The change-history commands act on the editor even though they sit in the
 	// Search menu, so they hand focus back like the edit commands do.
 	historyCommand := command == "Next Change" || command == "Previous Change" || command == "Clear Change History"
-	returnsToEditor := state.textMutation(command) || historyCommand ||
+	returnsToEditor := state.textMutation(command) || historyCommand || slices.Contains(compareCommands, command) ||
 		slices.Contains(menuCommands[1][:], command) || slices.Contains(menuCommands[6][:], command) ||
 		slices.Contains(symbolCommands[:], command) || slices.Contains(copyPathsCommands[:], command) ||
 		slices.Contains(viewTabCommands[:], command) || foldLevelForCommand(command)
