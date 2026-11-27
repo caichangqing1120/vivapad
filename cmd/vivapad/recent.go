@@ -50,6 +50,7 @@ func (state *model) clearRecent() {
 			return
 		}
 	}
+	state.closedHistory = nil
 	if state.recentPath != "" {
 		if err := recent.Clear(state.recentPath); err != nil {
 			state.notice = "Recent files not cleared: " + err.Error()
@@ -57,7 +58,6 @@ func (state *model) clearRecent() {
 		}
 	}
 	state.recentEntries = nil
-	state.closedHistory = nil
 	state.menuOpen, state.recentOpen = -1, false
 	state.notice = "Recent files cleared"
 }

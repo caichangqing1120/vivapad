@@ -165,6 +165,52 @@ func TestRecentMissingFileDoesNotMutateTabsAndCanClear(t *testing.T) {
 	}
 }
 
+func TestClearRecentKeepsMemoryConsistentAfterPartialFailure(t *testing.T) {
+	root := t.TempDir()
+	state := newStartupModel(nil, filepath.Join(root, "settings", "session.json"))
+	original := state.space.Current()
+	state.recentEntries = []recent.Entry{{Path: filepath.Join(root, "recent.txt")}}
+	state.closedHistory = []recent.Entry{{Path: filepath.Join(root, "closed.txt")}}
+	if err := recent.Save(state.closedPath, state.closedHistory); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(state.recentPath, 0700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(state.recentPath, "keep")
+	if err := os.WriteFile(marker, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	state.clearRecent()
+	if _, err := os.Stat(state.closedPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("closed history remained on disk: %v", err)
+	}
+	if len(state.closedHistory) != 0 {
+		t.Fatalf("deleted closed history remained available in memory: %+v", state.closedHistory)
+	}
+	if len(state.recentEntries) != 1 || state.recentEntries[0].Path != filepath.Join(root, "recent.txt") ||
+		state.space.Current() != original || !strings.Contains(state.notice, "Recent files not cleared") {
+		t.Fatalf("partial clear lost recent entries or its error: entries=%+v notice=%q", state.recentEntries, state.notice)
+	}
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(state.recentPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := recent.Save(state.recentPath, state.recentEntries); err != nil {
+		t.Fatal(err)
+	}
+	state.clearRecent()
+	if len(state.recentEntries) != 0 || len(state.closedHistory) != 0 || state.space.Current() != original {
+		t.Fatalf("retry did not finish clearing: recent=%+v closed=%+v", state.recentEntries, state.closedHistory)
+	}
+	if _, err := os.Stat(state.recentPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("retry left recent history on disk: %v", err)
+	}
+}
+
 func TestRestoringSessionDoesNotReorderRecentButCLIFileDoes(t *testing.T) {
 	root := t.TempDir()
 	paths := []string{filepath.Join(root, "first.txt"), filepath.Join(root, "second.txt"), filepath.Join(root, "third.txt")}
