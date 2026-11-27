@@ -287,6 +287,14 @@ func (state *model) loadNPPSession() {
 		return
 	}
 	var prepared []preparedNPPFile
+	var opened []*document.Document
+	defer func() {
+		for _, doc := range opened {
+			if state.documentIndex(doc) < 0 {
+				_ = doc.Close()
+			}
+		}
+	}()
 	var paneFiles [2][]*document.Document
 	preparedByPath := make(map[string]int)
 	openByPath := make(map[string]*document.Document, len(state.space.Documents))
@@ -334,6 +342,7 @@ func (state *model) loadNPPSession() {
 					state.notice = "Session file unavailable: " + file.Path + ": " + err.Error()
 					return
 				}
+				opened = append(opened, doc)
 			}
 			// Compare the stored code page with the actual decoder, even after a pending conversion.
 			savedEncoding := doc.SavedEncoding()

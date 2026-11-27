@@ -580,6 +580,10 @@ func (state *model) paintEditor(canvas *gfx.Canvas, bounds gfx.Rect) {
 }
 
 func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc *document.Document) {
+	if doc.LargeFile() != nil {
+		state.paintLargePane(canvas, bounds, pane, doc)
+		return
+	}
 	palette := state.palette()
 	if state.isReadOnly(doc) {
 		state.cancelDocumentComposition(doc)
@@ -595,7 +599,10 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 	provisional := state.provisional.doc == doc
 	regions, hidden := state.foldCache[doc].regions, state.hiddenLines[doc]
 	if !provisional {
-		regions, hidden = state.foldRegions(doc), state.hiddenRanges(doc)
+		if !doc.Lightweight() {
+			regions = state.foldRegions(doc)
+		}
+		hidden = state.hiddenRanges(doc)
 		state.revealHiddenCaret(doc)
 		state.syncFindMarks(doc)
 	}
@@ -613,12 +620,15 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 		ShowCaret:      selection.Start == selection.End,
 		Caret:          doc.Editor.ByteOffset(doc.Editor.Caret()),
 		SelectionStart: doc.Editor.ByteOffset(selection.Start), SelectionEnd: doc.Editor.ByteOffset(selection.End),
-		FontSize: float32(fontSize), TabWidth: state.tabWidth, Wrap: state.wrap, LineNumbers: state.showLineNumbers,
+		FontSize: float32(fontSize), TabWidth: state.tabWidth, Wrap: state.wrap && !doc.Lightweight(), LineNumbers: state.showLineNumbers,
 		CurrentLine: true, MatchBrackets: true,
 		ShowWhitespace: state.showWhitespace, ShowEOL: state.showEOL, ShowIndentGuides: state.showIndentGuides, ShowWrapSymbol: state.showWrapSymbol, InvisibleColor: palette.invisible,
 		Representations: state.codeRepresentations(),
 		ScrollbarID:     barID, HorizontalScrollbarID: horizontalID,
 		Language: state.languageFor(doc), Highlight: state.syntax.Highlight,
+	}
+	if doc.Lightweight() {
+		snapshot.Language, snapshot.Highlight = "", nil
 	}
 	if snapshot.Language == ".nfo" {
 		snapshot.MonoFace, snapshot.Highlight = gfx.MonoClassic, nil
@@ -1086,6 +1096,10 @@ func (state *model) paintSearch(canvas *gfx.Canvas, width, y float32) {
 	canvas.DrawIcon(closeIcon, controlIconBounds(closeBounds), palette.muted)
 	if hitButton(canvas, searchCloseID, closeBounds, "Close search") {
 		state.searchOpen = false
+		if state.largeSearch != nil {
+			state.cancelLargeSearch()
+			state.notice = "Search canceled"
+		}
 	}
 }
 
@@ -1345,7 +1359,10 @@ func (state *model) paintFileResults(canvas *gfx.Canvas, width, y, height float3
 		smallLabel(canvas, label, gfx.Rect{X: 12, Y: bounds.Y, Width: width - 26, Height: 22}, palette.text, 11)
 		canvas.HitWithOptions(id, bounds, match.Path, gfx.HitOptions{Role: gfx.RoleButton, Hint: match.Preview, Selected: index == state.resultSelected})
 		if canvas.Clicked(id) {
-			state.openFileResult(index)
+			if state.openFileResult(index) && state.space.Current().LargeFile() != nil {
+				state.resultFocusMode = false
+				canvas.RequestFocusOnce(state.commandEditorFocusID())
+			}
 		}
 	}
 }
@@ -1355,6 +1372,21 @@ func (state *model) paintStatus(canvas *gfx.Canvas, width, y float32) {
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: statusHeight}, palette.statusBar)
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.border)
 	doc := state.space.Current()
+	if doc.LargeFile() != nil {
+		status := state.largeStatus(doc)
+		if state.largeView(doc, state.activePane).clipped {
+			status += "   Long line clipped"
+		}
+		if err := doc.LargeFile().Progress().Err; err != nil {
+			status += "   Index stopped: " + err.Error()
+		}
+		if state.notice != "" {
+			status = state.notice + "   |   " + status
+		}
+		box := gfx.Rect{X: 10, Y: y + 1, Width: max(1, width-20), Height: 21}
+		smallLabel(canvas, canvas.FitLine(status, 11, gfx.WeightRegular, box.Width), box, palette.text, 11)
+		return
+	}
 	if state.noChangeNoticeDoc != nil {
 		if state.notice != noChangeNavigationNotice || doc != state.noChangeNoticeDoc {
 			state.retireNoChangeNotice("")
@@ -1389,6 +1421,12 @@ func (state *model) paintStatus(canvas *gfx.Canvas, width, y float32) {
 	mode, modeWidth := "INS", float32(38)
 	if state.isReadOnly(doc) {
 		mode, modeWidth = "READ ONLY", 72
+	}
+	if doc.Lightweight() {
+		mode, modeWidth = "Lightweight Edit", 104
+		if state.isReadOnly(doc) {
+			mode, modeWidth = "Lightweight · Read-Only", 145
+		}
 	}
 	cells := [...]struct {
 		label string

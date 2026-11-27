@@ -14,13 +14,16 @@ import (
 
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/changehistory"
+	"vivapad/internal/largefile"
 )
 
 type Document struct {
-	Path   string
-	Name   string
-	Editor *text.Editor
-	RTL    bool // View state shared by clones of this document.
+	Path        string
+	Name        string
+	Editor      *text.Editor
+	RTL         bool // View state shared by clones of this document.
+	lightweight bool
+	large       *largefile.File
 
 	saved         string
 	savedDisk     []byte
@@ -88,7 +91,28 @@ func OpenWithEncoding(path string, encoding Encoding) (*Document, error) {
 }
 
 func open(path string, selected *Encoding, maxBytes int64) (*Document, error) {
-	file, err := readDecodedFile(path, selected, maxBytes)
+	absolute, err := canonicalOpenPath(path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(absolute)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", absolute)
+	}
+	interactive := maxBytes == 0
+	if interactive {
+		if info.Size() > LargeFileThreshold {
+			return openLarge(absolute, selected)
+		}
+		maxBytes = LargeFileThreshold
+	}
+	file, err := readDecodedAt(absolute, selected, maxBytes)
+	if errors.Is(err, ErrSearchFileTooLarge) && interactive {
+		return openLarge(absolute, selected)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +120,7 @@ func open(path string, selected *Encoding, maxBytes int64) (*Document, error) {
 	// Build the final editor first: there is no empty editor to replace and
 	// therefore no chance that a throwaway editor becomes the history source.
 	doc := newDocument(filepath.Base(file.path), text.NewEditor(value))
+	doc.lightweight = int64(len(file.data)) >= LightweightThreshold
 	doc.Path, doc.newline, doc.encoding = file.path, newline, file.encoding
 	labels := bytes.Repeat([]byte{lineEndingCode(newline)}, strings.Count(value, "\n"))
 	for index, ending := range breaks {
@@ -112,7 +137,9 @@ func open(path string, selected *Encoding, maxBytes int64) (*Document, error) {
 	doc.savedDigest = digest(file.data)
 	doc.savedNewline, doc.savedEncoding = newline, file.encoding
 	// Bind only after the editor is final and before the first undoable edit.
-	doc.bindChangeHistory()
+	if !doc.lightweight {
+		doc.bindChangeHistory()
+	}
 	return doc, nil
 }
 
@@ -123,15 +150,22 @@ type decodedFile struct {
 }
 
 func readDecodedFile(path string, selected *Encoding, maxBytes int64) (decodedFile, error) {
-	absolute, err := filepath.Abs(path)
+	absolute, err := canonicalOpenPath(path)
 	if err != nil {
 		return decodedFile{}, err
 	}
-	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
-		absolute = resolved
-	} else {
-		return decodedFile{}, err
+	return readDecodedAt(absolute, selected, maxBytes)
+}
+
+func canonicalOpenPath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
 	}
+	return filepath.EvalSymlinks(absolute)
+}
+
+func readDecodedAt(absolute string, selected *Encoding, maxBytes int64) (decodedFile, error) {
 	data, err := readDocumentFile(absolute, maxBytes)
 	if err != nil {
 		return decodedFile{}, err
@@ -150,6 +184,9 @@ func readDecodedFile(path string, selected *Encoding, maxBytes int64) (decodedFi
 }
 
 func (doc *Document) Dirty() bool {
+	if doc.large != nil {
+		return false
+	}
 	return doc.recovered || doc.uniformEOL || !doc.Editor.AtSavePoint() || doc.Editor.String() != doc.saved || doc.newline != doc.savedNewline || doc.encoding != doc.savedEncoding
 }
 
@@ -165,7 +202,7 @@ func digest(data []byte) string {
 }
 
 func (doc *Document) SetLineEnding(ending LineEnding) {
-	if ending != LF && ending != CRLF && ending != CR {
+	if doc.large != nil || ending != LF && ending != CRLF && ending != CR {
 		return
 	}
 	newline := "\n"
@@ -217,6 +254,9 @@ func (doc *Document) NewlineLabel() string {
 }
 
 func (doc *Document) Save(path string) error {
+	if doc.large != nil {
+		return ErrLargeFileReadOnly
+	}
 	if path == "" {
 		path = doc.Path
 	}
@@ -293,6 +333,9 @@ func CheckRecordedPath(path string) error {
 // DiskMatchesSaved compares the current file with the saved bytes without
 // decoding it or allocating another copy of the file.
 func (doc *Document) DiskMatchesSaved() (bool, error) {
+	if doc.large != nil {
+		return false, ErrLargeFileReadOnly
+	}
 	return diskBytesMatch(doc.Path, doc.savedDisk)
 }
 
@@ -339,6 +382,9 @@ func fileBytesMatch(file io.Reader, size int64, expected []byte) (bool, error) {
 }
 
 func (doc *Document) SaveCopy(path string) error {
+	if doc.large != nil {
+		return ErrLargeFileReadOnly
+	}
 	absolute, err := CanonicalSavePath(path)
 	if err != nil {
 		return err
@@ -460,4 +506,9 @@ func (doc *Document) Position() (line, column int) {
 	return strings.Count(prefix, "\n") + 1, utf8.RuneCountInString(prefix[lineStart:]) + 1
 }
 
-func (doc *Document) LineCount() int { return strings.Count(doc.Editor.String(), "\n") + 1 }
+func (doc *Document) LineCount() int {
+	if doc.large != nil {
+		return doc.large.Progress().Lines
+	}
+	return strings.Count(doc.Editor.String(), "\n") + 1
+}

@@ -142,6 +142,7 @@ func (space *Workspace) open(path string, encoding *document.Encoding, mode open
 		return err
 	}
 	if mode == openRecorded && doc.Path != path {
+		_ = doc.Close()
 		return document.ErrDiskPathRedirected
 	}
 	return space.AddOpened(doc)
@@ -178,6 +179,9 @@ func (space *Workspace) AddOpened(doc *document.Document) error {
 	}
 	for index, existing := range space.Documents {
 		if existing.Path == doc.Path {
+			if existing != doc {
+				_ = doc.Close()
+			}
 			space.Active = index
 			return nil
 		}
@@ -229,9 +233,11 @@ func (space *Workspace) reload(index int, discard bool) (*document.Document, err
 		return nil, err
 	}
 	if updated.Path != old.Path {
+		_ = updated.Close()
 		return nil, document.ErrDiskPathRedirected
 	}
 	space.Documents[index] = updated
+	_ = old.Close()
 	return old, nil
 }
 
@@ -242,6 +248,7 @@ func (space *Workspace) Close(index int, discard bool) error {
 	if space.Documents[index].Dirty() && !discard {
 		return ErrDirty
 	}
+	_ = space.Documents[index].Close()
 	space.Documents = slices.Delete(space.Documents, index, index+1)
 	if len(space.Documents) == 0 {
 		space.NewDocument()

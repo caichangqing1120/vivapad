@@ -78,7 +78,7 @@ const (
 )
 
 func (doc *Document) SetEncoding(encoding Encoding) {
-	if encoding.Valid() {
+	if doc.large == nil && encoding.Valid() {
 		doc.encoding = encoding
 	}
 }

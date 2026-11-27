@@ -84,7 +84,7 @@ func (state *model) documentTextInput(pane int) *app.TextInput {
 				return handle(event)
 			}
 			var tab *recovery.Tab
-			if doc.Dirty() {
+			if !doc.Lightweight() && doc.Dirty() {
 				before := state.recoveryTab(doc)
 				tab = &before
 			}
@@ -423,7 +423,7 @@ func (state *model) applyDocumentCompositionEvent(doc *document.Document, event 
 	base := doc.Editor.String()
 	anchor := doc.Editor.Selection().Start
 	var recoveryTab *recovery.Tab
-	if event.CompositionPhase == text.CompositionUpdate && state.provisional.doc != doc && doc.Dirty() {
+	if event.CompositionPhase == text.CompositionUpdate && state.provisional.doc != doc && !doc.Lightweight() && doc.Dirty() {
 		tab := state.recoveryTab(doc)
 		recoveryTab = &tab
 	}

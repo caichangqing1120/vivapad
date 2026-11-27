@@ -39,6 +39,9 @@ type TrashPlan struct {
 // PrepareTrash captures the source identity and keeps the file open. The caller
 // must Close (or Apply, which closes) on every path that abandons the plan.
 func (doc *Document) PrepareTrash() (*TrashPlan, error) {
+	if doc.large != nil {
+		return nil, ErrLargeFileReadOnly
+	}
 	if doc.Path == "" {
 		return nil, fmt.Errorf("untitled document has no disk file to trash")
 	}

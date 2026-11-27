@@ -109,6 +109,23 @@ reopens its previous session if available. A leading `-h` or `--help` prints
 usage and exits without opening a window. Use a leading `--` to open a file
 whose name would otherwise be interpreted as help, as in the last example.
 
+### Large files and live logs
+
+- Under 16 MiB, files open in the full editor. From 16 through 64 MiB, the
+  lightweight editor keeps editing, Undo, and Save, but disables word wrap,
+  syntax highlighting, Change History, and automatic crash recovery snapshots.
+- Over 64 MiB, the read-only UTF-8 viewer displays a window of lines while
+  building the line index in the background. Scroll, use **Go to Line** (which
+  also accepts `first` and `last`), or select and copy text in the visible window.
+  Long lines are clipped in the viewport, not in the search engine.
+- **Find Next**, **Find Previous**, and **Find All** search one logical line at a
+  time, with case, whole-word, and regular expression options. **Find All** lists
+  up to 2,000 results; choosing a result reveals the match. Press Escape to
+  cancel a search in progress.
+- **View > Monitoring (tail -f)** follows newly appended text without blocking
+  the process writing the log. Closing the tab stops monitoring and releases
+  the file handle.
+
 ### Column selection
 
 Column selection marks the same range of columns on several lines. Use any

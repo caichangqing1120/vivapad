@@ -21,6 +21,7 @@ import (
 	"vivapad/internal/external"
 	"vivapad/internal/foldertree"
 	"vivapad/internal/hashops"
+	"vivapad/internal/largefile"
 	"vivapad/internal/macro"
 	"vivapad/internal/preferences"
 	"vivapad/internal/printing"
@@ -358,6 +359,11 @@ var (
 
 type model struct {
 	invalidator                   app.Invalidator
+	largeViews                    map[*document.Document][2]*largeView
+	largeDragDoc                  *document.Document
+	largeDrag, largeDragPane      int
+	largeSearch                   *largeSearchJob
+	largeResultRevision           uint64
 	space                         *workspace.Workspace
 	editors                       map[*document.Document]*components.CodeEditor
 	secondEditors                 map[*document.Document]*components.CodeEditor
@@ -1102,6 +1108,9 @@ func newConfig(state *model) app.Config {
 		if result, handled := state.changeHistoryMenuPointer(event); handled {
 			return result
 		}
+		if result, handled := state.largePointer(event); handled {
+			return result
+		}
 		if state.rectangleDragging && (event.Kind == gfx.PointerMove || event.Kind == gfx.PointerUp) {
 			pane := state.rectangleDragPane
 			doc := state.paneDocument(pane)
@@ -1412,6 +1421,9 @@ func newConfig(state *model) app.Config {
 		if pane < 0 || pane == 1 && !state.splitEnabled {
 			return gfx.EventResult{}
 		}
+		if doc := state.paneDocument(pane); doc.LargeFile() != nil {
+			return state.scrollLarge(pane, doc, event)
+		}
 		result := state.codeEditorForPane(pane).Scroll(event)
 		state.syncScrollFrom(pane)
 		return result
@@ -1512,6 +1524,23 @@ func newConfig(state *model) app.Config {
 		}
 		if state.pendingClose >= 0 || state.pendingReload >= 0 || state.replaceConfirmOpen {
 			return gfx.EventResult{Handled: true}
+		}
+		if pane := paneForTarget(event.Target); (event.Target == editorID || event.Target == rightEditorID) &&
+			state.paneDocument(pane).LargeFile() != nil && event.Modifiers == primary() {
+			state.activatePane(pane)
+			doc := state.paneDocument(pane)
+			switch strings.ToLower(event.Text) {
+			case "c":
+				state.copyLarge(doc)
+				return gfx.EventResult{Handled: true, Repaint: true}
+			case "a":
+				view := state.largeView(doc, pane)
+				view.anchor, view.caret = 0, len(view.value)
+				return gfx.EventResult{Handled: true, Repaint: true}
+			case "x", "v", "z", "y":
+				state.notice = document.ErrLargeFileReadOnly.Error()
+				return gfx.EventResult{Handled: true, Repaint: true}
+			}
 		}
 		if command := directionShortcut(event); command != "" {
 			state.activatePane(paneForTarget(event.Target))
@@ -1668,6 +1697,11 @@ func newConfig(state *model) app.Config {
 	config.OnKey = func(event gfx.KeyEvent) gfx.EventResult {
 		if result := state.postItShortcut(event); result.Handled {
 			return result
+		}
+		if event.Key == gfx.KeyEscape && state.largeSearch != nil {
+			state.cancelLargeSearch()
+			state.notice = "Search canceled"
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.markDialogOpen {
 			if event.Key == gfx.KeyEscape && state.menuOpen < 0 {
@@ -2187,6 +2221,9 @@ func newConfig(state *model) app.Config {
 		}
 		if event.Target == goToFieldID && event.Key == gfx.KeyEnter {
 			state.goToLine()
+			if state.space.Current().LargeFile() != nil {
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+			}
 			return gfx.EventResult{Handled: true, Repaint: true, Focus: editorID}
 		}
 		if state.incrementOpen && event.Target == incrementQueryID && event.Key == gfx.KeyEnter {
@@ -2202,6 +2239,9 @@ func newConfig(state *model) app.Config {
 		}
 		state.activatePane(pane)
 		doc := state.paneDocument(pane)
+		if doc.LargeFile() != nil {
+			return state.largeKey(doc, event)
+		}
 		if state.extendRectangleKey(pane, event) {
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
@@ -2316,6 +2356,7 @@ func newConfig(state *model) app.Config {
 	}
 	config.OnWake = func() {
 		state.consumeFileSearch()
+		state.consumeLargeSearch()
 		state.consumeFolderChanges()
 		state.consumeMonitorChanges()
 		state.observeRecoveryError()
@@ -2324,8 +2365,12 @@ func newConfig(state *model) app.Config {
 		state.unwatchAppearance()
 		state.nativeThemeChoice = ""
 		state.cancelFileSearch()
+		state.cancelLargeSearch()
 		state.stopFolderWatching()
 		state.stopAllMonitors()
+		for _, doc := range state.space.Documents {
+			_ = doc.Close()
+		}
 		if state.recoveryWriter != nil {
 			state.recoveryWriter.Wait()
 		}
@@ -2413,6 +2458,7 @@ func (state *model) openDocumentBatch(paths []string, open func(string) error) (
 	}
 	if opened {
 		state.activateOpenedDocument(state.space.Current())
+		state.invalidator.Invalidate()
 	}
 	return opened
 }
@@ -2436,6 +2482,10 @@ func (state *model) openFilesWithEncoding(encoding document.Encoding) {
 
 func (state *model) save(index int, saveAs bool) bool {
 	doc := state.space.Documents[index]
+	if doc.LargeFile() != nil {
+		state.notice = document.ErrLargeFileReadOnly.Error()
+		return false
+	}
 	state.cancelFileCommandComposition(doc)
 	path := doc.Path
 	choosingPath := saveAs || path == ""
@@ -2485,6 +2535,10 @@ func (state *model) save(index int, saveAs bool) bool {
 
 func (state *model) saveCopy(index int) bool {
 	doc := state.space.Documents[index]
+	if doc.LargeFile() != nil {
+		state.notice = document.ErrLargeFileReadOnly.Error()
+		return false
+	}
 	state.cancelFileCommandComposition(doc)
 	defer state.requestNativeChooserFocus()
 	path, err := app.SaveFile(app.SaveFileOptions{Title: "Save a Copy As", SuggestedName: doc.Name, DefaultExtension: "txt"})
@@ -2534,6 +2588,14 @@ func (state *model) closeTab(index int) {
 func (state *model) releaseDocument(doc *document.Document) {
 	state.releaseDocumentComposition(doc)
 	state.stopMonitor(doc)
+	if state.largeSearch != nil && state.largeSearch.doc == doc {
+		state.cancelLargeSearch()
+	}
+	if state.largeDragDoc == doc {
+		state.largeDrag, state.largeDragDoc = 0, nil
+	}
+	delete(state.largeViews, doc)
+	_ = doc.Close()
 	// A tab strip may not paint again while its view is hidden. Rebuild its
 	// scratch list on demand instead of keeping a closed document alive.
 	state.paneTabScratch = [2][]*document.Document{}
@@ -2862,6 +2924,10 @@ func (state *model) sessionSettingsForTab(doc *document.Document) sessionTabSett
 }
 
 func (state *model) find(backward bool) {
+	if doc := state.space.Current(); doc.LargeFile() != nil {
+		state.startLargeSearch(doc, false, backward)
+		return
+	}
 	if state.query.String() == "" {
 		state.notice = "Enter text to find"
 		return
@@ -2904,7 +2970,31 @@ func (state *model) clearMarks() {
 }
 
 func (state *model) goToLine() {
-	line, err := strconv.Atoi(strings.TrimSpace(state.goToField.String()))
+	value := strings.TrimSpace(state.goToField.String())
+	line, err := strconv.Atoi(value)
+	if doc := state.space.Current(); doc.LargeFile() != nil {
+		progress := doc.LargeFile().Progress()
+		switch strings.ToLower(value) {
+		case "first", "start":
+			line, err = 1, nil
+		case "last", "end":
+			view := state.largeView(doc, state.activePane)
+			view.move(view.bottom(progress.Lines))
+			view.end = true
+			state.goToOpen, state.notice = false, ""
+			return
+		}
+		if err != nil || line < 1 || progress.Done && line > progress.Lines {
+			state.notice = fmt.Sprintf("Enter a line from 1 to %d", progress.Lines)
+			return
+		}
+		state.jumpLarge(doc, line, largefile.Match{})
+		state.goToOpen, state.notice = false, ""
+		if line > progress.Lines {
+			state.notice = fmt.Sprintf("Indexing to line %d...", line)
+		}
+		return
+	}
 	if err != nil || !state.space.Current().GoToLine(line) {
 		state.notice = "Enter a line from 1 to " + strconv.Itoa(state.space.Current().LineCount())
 		return
@@ -2996,6 +3086,24 @@ func (state *model) command(command string) {
 	if !isCompletionCommand(command) {
 		state.wordCompletion = nil
 		state.wordFocusPending = false
+	}
+	if doc.LargeFile() != nil {
+		switch command {
+		case "Copy":
+			state.copyLarge(doc)
+			return
+		case "Select All":
+			view := state.largeView(doc, state.activePane)
+			view.anchor, view.caret = 0, len(view.value)
+			return
+		case "Read-Only on Current Document", "Toggle File Read-Only Attribute", "Read-Only Attribute in Windows", "File Read-Only Attribute":
+			state.notice = document.ErrLargeFileReadOnly.Error()
+			return
+		}
+		if state.textMutation(command) {
+			state.notice = document.ErrLargeFileReadOnly.Error()
+			return
+		}
 	}
 	if state.isReadOnly(doc) && state.textMutation(command) {
 		state.notice = "Read-only document"

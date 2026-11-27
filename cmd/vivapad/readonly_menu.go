@@ -15,7 +15,7 @@ func (state *model) isReadOnly(doc *document.Document) bool {
 	if doc == nil {
 		return false
 	}
-	if state.readOnly[doc] || state.monitors[doc] != nil {
+	if doc.LargeFile() != nil || state.readOnly[doc] || state.monitors[doc] != nil {
 		return true
 	}
 	readonly, _ := document.FileReadOnly(doc.Path)

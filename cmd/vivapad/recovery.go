@@ -182,6 +182,9 @@ func (state *model) currentRecovery() recovery.State {
 }
 
 func (state *model) recoverySnapshot(doc *document.Document) (recovery.Tab, bool) {
+	if doc.Lightweight() || doc.LargeFile() != nil {
+		return recovery.Tab{}, false
+	}
 	// Text, selection and EOL labels must all come from the same side of preedit.
 	if state.provisional.doc == doc {
 		if tab := state.provisional.recoveryTab; tab != nil {

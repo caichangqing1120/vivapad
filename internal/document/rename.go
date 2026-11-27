@@ -29,6 +29,9 @@ type RenamePlan struct {
 }
 
 func (doc *Document) PrepareRename(path string) (*RenamePlan, error) {
+	if doc.large != nil {
+		return nil, ErrLargeFileReadOnly
+	}
 	if doc.Path == "" {
 		return nil, fmt.Errorf("untitled document has no disk file to rename")
 	}

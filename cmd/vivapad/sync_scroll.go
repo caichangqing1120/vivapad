@@ -3,7 +3,7 @@ package main
 import "vivapad/internal/document"
 
 func (state *model) captureSyncScroll() {
-	if !state.splitEnabled {
+	if !state.splitEnabled || state.paneDocument(0).LargeFile() != nil || state.paneDocument(1).LargeFile() != nil {
 		state.syncNeedsCapture = true
 		return
 	}
@@ -18,6 +18,10 @@ func (state *model) captureSyncScroll() {
 
 func (state *model) syncScrollFrom(pane int) {
 	if state.distractionFree || !state.splitEnabled || pane < 0 || pane > 1 || !state.syncVertical && !state.syncHorizontal {
+		return
+	}
+	if state.paneDocument(0).LargeFile() != nil || state.paneDocument(1).LargeFile() != nil {
+		state.syncNeedsCapture = true
 		return
 	}
 	source, peer := state.codeEditorForPane(pane), state.codeEditorForPane(1-pane)
@@ -39,6 +43,10 @@ func (state *model) syncScrollFrom(pane int) {
 
 func (state *model) syncScrollAfterPaint() {
 	if !state.splitEnabled || !state.syncVertical && !state.syncHorizontal {
+		return
+	}
+	if state.paneDocument(0).LargeFile() != nil || state.paneDocument(1).LargeFile() != nil {
+		state.syncNeedsCapture = true
 		return
 	}
 	if state.syncNeedsCapture {

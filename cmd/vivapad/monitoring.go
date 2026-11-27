@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"vivapad/internal/document"
+	"vivapad/internal/largefile"
 )
 
 func (state *model) toggleMonitoring() {
@@ -41,6 +42,12 @@ func (state *model) toggleMonitoring() {
 	}
 	state.monitors[doc] = watcher
 	state.notice = "Monitoring " + doc.Name
+	if doc.LargeFile() != nil {
+		state.refreshLargeMonitor(doc)
+		if state.documentIndex(doc) >= 0 {
+			state.followLargeTail(doc)
+		}
+	}
 	state.invalidator.Invalidate()
 }
 
@@ -109,6 +116,10 @@ func (state *model) consumeMonitorChanges() {
 			state.invalidator.Invalidate()
 			continue
 		}
+		if doc.LargeFile() != nil {
+			state.refreshLargeMonitor(doc)
+			continue
+		}
 		unchanged, err := doc.DiskMatchesSaved()
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -131,6 +142,12 @@ func (state *model) consumeMonitorChanges() {
 			state.invalidator.Invalidate()
 			continue
 		}
+		if updated.LargeFile() != nil {
+			state.followLargeTail(updated)
+			state.notice = monitoringUpdatedNotice(updated.Name, nil)
+			state.invalidator.Invalidate()
+			continue
+		}
 		updated.Editor.MoveTo(updated.Editor.RuneCount(), false)
 		for pane := range state.paneDocs {
 			if state.paneDocs[pane] == updated && (pane == 0 || state.splitEnabled) {
@@ -143,4 +160,44 @@ func (state *model) consumeMonitorChanges() {
 		state.notice = monitoringUpdatedNotice(updated.Name, historyErr)
 		state.invalidator.Invalidate()
 	}
+}
+
+func (state *model) followLargeTail(doc *document.Document) {
+	owner := state.paneOwner[doc]
+	if !state.splitEnabled {
+		owner = 0
+	}
+	for pane := range state.paneDocs {
+		if views := state.largeViews[doc]; views[pane] != nil || pane == owner || state.paneDocument(pane) == doc && (pane == 0 || state.splitEnabled) {
+			view := state.largeView(doc, pane)
+			view.move(view.bottom(doc.LineCount()))
+			view.end = true
+		}
+	}
+}
+
+func (state *model) refreshLargeMonitor(doc *document.Document) {
+	changed, err := doc.LargeFile().Refresh()
+	if errors.Is(err, largefile.ErrChanged) {
+		updated := state.reloadDocument(state.documentIndex(doc), false)
+		if updated != nil {
+			if updated.LargeFile() != nil {
+				state.followLargeTail(updated)
+			} else {
+				updated.Editor.MoveTo(updated.Editor.RuneCount(), false)
+				for pane := range state.paneDocs {
+					if state.paneDocument(pane) == updated && (pane == 0 || state.splitEnabled) {
+						state.codeEditorForPane(pane).Reveal(updated.Editor.ByteOffset(updated.Editor.Caret()))
+					}
+				}
+			}
+			state.notice = monitoringUpdatedNotice(updated.Name, nil)
+		}
+	} else if err != nil {
+		state.notice = "Monitoring read failed: " + err.Error()
+	} else if changed {
+		state.followLargeTail(doc)
+		state.notice = monitoringUpdatedNotice(doc.Name, nil)
+	}
+	state.invalidator.Invalidate()
 }

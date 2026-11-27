@@ -73,6 +73,10 @@ func (state *model) reloadDocumentWithHistory(index int, discard bool) (*documen
 	}
 	current := state.space.Documents[index]
 	state.rebindReloadedDocument(previous, current)
+	if current.Lightweight() || current.LargeFile() != nil {
+		state.notice = reloadedNotice(current.Name, nil)
+		return current, nil
+	}
 	// Observe the replacement once so a constructor failure is not hidden by
 	// an empty marker history or overwritten by the caller's success notice.
 	_, historyErr := current.ChangeHistory()

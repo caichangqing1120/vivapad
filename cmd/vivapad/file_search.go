@@ -99,6 +99,7 @@ func (state *model) browseFilesDirectory() {
 }
 
 func (state *model) startFileSearch() {
+	state.cancelLargeSearch()
 	generation := state.cancelFileSearch()
 	state.clearResultFocus()
 	state.resultSelected = -1
@@ -392,6 +393,9 @@ func (state *model) openFileResult(index int) bool {
 			state.notice = "Search result document is closed"
 			return false
 		}
+		if doc.LargeFile() != nil {
+			return state.openLargeResult(doc, match, index)
+		}
 	} else {
 		absolute, err := filepath.Abs(match.Path)
 		if err != nil {
@@ -426,6 +430,11 @@ func (state *model) openFileResult(index int) bool {
 				}
 				return false
 			}
+			defer func() {
+				if state.documentIndex(doc) < 0 {
+					_ = doc.Close()
+				}
+			}()
 			if doc.Path != absolute {
 				state.notice = staleSearchResultNotice
 				return false
@@ -508,6 +517,11 @@ func (state *model) openFileResult(index int) bool {
 }
 
 func (state *model) findAllCurrent() {
+	if doc := state.space.Current(); doc.LargeFile() != nil {
+		state.startLargeSearch(doc, true, false)
+		return
+	}
+	state.cancelLargeSearch()
 	state.cancelFileSearch()
 	state.clearResultFocus()
 	state.resultSelected = -1
@@ -536,7 +550,12 @@ func (state *model) findAllOpenDocuments() {
 	query := state.query.String()
 	result := searchfiles.Result{}
 	var sources []*document.Document
+	skippedLarge := false
 	for _, doc := range state.space.Documents {
+		if doc.LargeFile() != nil {
+			skippedLarge = true
+			continue
+		}
 		remaining := 2000 - len(result.Matches)
 		if remaining == 0 {
 			remaining = 1
@@ -571,6 +590,9 @@ func (state *model) findAllOpenDocuments() {
 	state.notice = fmt.Sprintf("%d matches in open documents", len(result.Matches))
 	if result.Truncated {
 		state.notice = "Showing first 2000 matches in open documents"
+	}
+	if skippedLarge {
+		state.notice += "; use Find All in Current Document for large files"
 	}
 }
 
