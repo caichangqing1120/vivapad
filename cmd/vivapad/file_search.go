@@ -50,8 +50,24 @@ func (state *model) clearResultFocus() {
 	state.resultFocusArmed, state.resultReturnToEditor = false, false
 }
 
+const resultRowIndexMask = 1<<31 - 1 // gfx.Index reserves 31 bits for the index.
+
+func (state *model) resultRowID(index int) gfx.ID {
+	return state.resultRowIDs[index]
+}
+
+func (state *model) replaceFileResults(result searchfiles.Result) {
+	// Give the new snapshot fresh IDs so it cannot consume a held press.
+	state.resultRowIDs = state.resultRowIDs[:0]
+	for range result.Matches {
+		state.resultRowIDs = append(state.resultRowIDs, resultScope.At(state.resultNextRowID))
+		state.resultNextRowID = (state.resultNextRowID + 1) & resultRowIndexMask
+	}
+	state.fileResults = result
+}
+
 func (state *model) discardFileResults() {
-	state.fileResults = searchfiles.Result{}
+	state.replaceFileResults(searchfiles.Result{})
 	state.resultQuery, state.resultOffset, state.resultSelected = "", 0, -1
 	state.resultsOpen, state.resultDocument, state.resultDocuments, state.resultOpenDocuments = false, nil, nil, false
 	state.clearResultFocus()
@@ -247,7 +263,8 @@ func (state *model) consumeFileSearch() {
 		state.notice = fmt.Sprintf("Preview: %d matches in %d files", reply.plan.Replacements, len(reply.plan.Changes))
 		return
 	}
-	state.fileResults, state.resultOffset, state.resultSelected = reply.result, 0, -1
+	state.replaceFileResults(reply.result)
+	state.resultOffset, state.resultSelected = 0, -1
 	state.clearResultFocus()
 	state.resultDocument = nil
 	state.resultDocuments, state.resultOpenDocuments = nil, false
@@ -489,7 +506,8 @@ func (state *model) findAllCurrent() {
 		state.notice = err.Error()
 		return
 	}
-	state.fileResults, state.resultOffset, state.resultSelected, state.resultDocument, state.resultQuery = result, 0, -1, doc, query
+	state.replaceFileResults(result)
+	state.resultOffset, state.resultSelected, state.resultDocument, state.resultQuery = 0, -1, doc, query
 	state.resultDocuments, state.resultOpenDocuments = nil, false
 	state.resultsOpen, state.searchOpen, state.goToOpen = true, false, false
 	state.notice = fmt.Sprintf("%d matches in current document", len(result.Matches))
@@ -533,7 +551,8 @@ func (state *model) findAllOpenDocuments() {
 			break
 		}
 	}
-	state.fileResults, state.resultOffset, state.resultSelected, state.resultQuery = result, 0, -1, query
+	state.replaceFileResults(result)
+	state.resultOffset, state.resultSelected, state.resultQuery = 0, -1, query
 	state.resultDocument, state.resultDocuments, state.resultOpenDocuments = nil, sources, true
 	state.resultsOpen, state.searchOpen, state.goToOpen = true, false, false
 	state.notice = fmt.Sprintf("%d matches in open documents", len(result.Matches))

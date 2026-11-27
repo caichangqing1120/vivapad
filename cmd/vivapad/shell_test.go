@@ -1246,7 +1246,7 @@ func TestSplitSearchResultOpensInActivePane(t *testing.T) {
 	}
 	state := newModel()
 	state.toggleSplit()
-	state.fileResults = searchfiles.Result{Matches: []searchfiles.Match{{Path: path, Source: "needle", Start: 0, End: 6, Text: "needle"}}}
+	state.replaceFileResults(searchfiles.Result{Matches: []searchfiles.Match{{Path: path, Source: "needle", Start: 0, End: 6, Text: "needle"}}})
 	state.resultsOpen = true
 	driver, err := app.NewDriver(newConfig(state), nil)
 	if err != nil {
@@ -1255,7 +1255,7 @@ func TestSplitSearchResultOpensInActivePane(t *testing.T) {
 	defer driver.Close()
 	left := state.paneDocs[0]
 	clickID(t, driver, rightPaneID)
-	clickID(t, driver, resultScope.At(0))
+	clickID(t, driver, state.resultRowID(0))
 	if state.paneDocs[0] != left || state.paneDocs[1].Name != "result.txt" || state.activePane != 1 {
 		t.Fatalf("result pane assignment = left:%p right:%q active:%d", state.paneDocs[0], state.paneDocs[1].Name, state.activePane)
 	}
@@ -1985,7 +1985,7 @@ func TestFindInFilesOpensExactResult(t *testing.T) {
 	if state.filesSearching || !state.resultsOpen || len(state.fileResults.Matches) != 1 {
 		t.Fatalf("find-in-files result = searching:%v open:%v %+v", state.filesSearching, state.resultsOpen, state.fileResults)
 	}
-	clickID(t, driver, resultScope.At(0))
+	clickID(t, driver, state.resultRowID(0))
 	doc := state.space.Current()
 	selection := doc.Editor.Selection()
 	if doc.Name != "example.go" || string([]rune(doc.Editor.String())[selection.Start:selection.End]) != "needle" {
@@ -2024,7 +2024,7 @@ func TestFindInFilesOpensLegacyResultInSelectedEncoding(t *testing.T) {
 	if len(state.fileResults.Matches) != 1 || state.fileResults.Matches[0].Encoding != document.GB18030 {
 		t.Fatalf("legacy results = %+v, notice=%q", state.fileResults, state.notice)
 	}
-	clickID(t, driver, resultScope.At(0))
+	clickID(t, driver, state.resultRowID(0))
 	doc := state.space.Current()
 	selection := doc.Editor.Selection()
 	if doc.Encoding() != document.GB18030 || string([]rune(doc.Editor.String())[selection.Start:selection.End]) != "中文" {

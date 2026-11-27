@@ -54,7 +54,7 @@ func TestFileOpenReleasesReplacedUntitledEditor(t *testing.T) {
 					t.Fatal(state.notice)
 				}
 			case "find result":
-				state.fileResults.Matches = []searchfiles.Match{{Path: path, Source: "note", Start: 0, End: 4, Text: "note"}}
+				state.replaceFileResults(searchfiles.Result{Matches: []searchfiles.Match{{Path: path, Source: "note", Start: 0, End: 4, Text: "note"}}})
 				if !state.openFileResult(0) {
 					t.Fatal(state.notice)
 				}

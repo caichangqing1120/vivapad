@@ -543,6 +543,8 @@ type model struct {
 	replacePlan                   *searchfiles.ReplacePlan
 	resultsOpen                   bool
 	fileResults                   searchfiles.Result
+	resultRowIDs                  []gfx.ID
+	resultNextRowID               int
 	resultDocument                *document.Document
 	resultDocuments               []*document.Document
 	resultOpenDocuments           bool
@@ -2616,15 +2618,21 @@ func (state *model) releaseDocument(doc *document.Document) {
 	if state.resultOpenDocuments {
 		matches := state.fileResults.Matches[:0]
 		sources := state.resultDocuments[:0]
+		rowIDs := state.resultRowIDs[:0]
 		previousCount := len(state.resultDocuments)
 		removedBefore, selectedRemoved := 0, false
+		offsetRemoved := 0
 		for index, source := range state.resultDocuments {
 			if source != doc {
 				matches = append(matches, state.fileResults.Matches[index])
 				sources = append(sources, source)
+				rowIDs = append(rowIDs, state.resultRowIDs[index])
 			} else {
 				if index < state.resultSelected {
 					removedBefore++
+				}
+				if index < state.resultOffset {
+					offsetRemoved++
 				}
 				selectedRemoved = selectedRemoved || index == state.resultSelected
 			}
@@ -2638,8 +2646,8 @@ func (state *model) releaseDocument(doc *document.Document) {
 			state.fileResults.Matches[index] = searchfiles.Match{}
 			state.resultDocuments[index] = nil
 		}
-		state.fileResults.Matches, state.resultDocuments = matches, sources
-		state.resultOffset = min(state.resultOffset, max(0, len(matches)-1))
+		state.fileResults.Matches, state.resultDocuments, state.resultRowIDs = matches, sources, rowIDs
+		state.resultOffset = min(state.resultOffset-offsetRemoved, max(0, len(matches)-1))
 		if len(sources) < previousCount {
 			if len(sources) == 0 {
 				state.discardFileResults()

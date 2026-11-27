@@ -95,7 +95,7 @@ func TestDistractionFreeEscapePreservesHiddenFinder(t *testing.T) {
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, resultScope.At(0))
+	clickID(t, driver, state.resultRowID(0))
 	if !state.resultsOpen || state.resultSelected != 0 || len(state.fileResults.Matches) != 2 {
 		t.Fatal("fixture did not select a Finder result")
 	}
@@ -121,7 +121,7 @@ func TestDistractionFreeEscapePreservesHiddenFinder(t *testing.T) {
 	if driver.Fullscreen() || !state.resultsOpen || state.resultSelected != 0 || len(state.fileResults.Matches) != 2 {
 		t.Fatal("second Escape did not exit fullscreen and restore the existing Finder")
 	}
-	clickID(t, driver, resultScope.At(1))
+	clickID(t, driver, state.resultRowID(1))
 	if doc.Editor.Selection() != (text.Range{Start: 4, End: 7}) || doc.Editor.String() != "cat cat" {
 		t.Fatal("restored Finder did not navigate to the second original result")
 	}
@@ -256,7 +256,7 @@ func TestDistractionFreeFinderShortcutLeavesFocusOnVisibleControls(t *testing.T)
 	if err := driver.Pump(); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, resultScope.At(0))
+	clickID(t, driver, state.resultRowID(0))
 	state.command(distractionFreeCommand)
 	if !driver.Fullscreen() || state.activePane != 1 {
 		t.Fatal("fixture did not enter fullscreen on the right pane")
