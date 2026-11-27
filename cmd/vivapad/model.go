@@ -1851,8 +1851,7 @@ func newConfig(state *model) app.Config {
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.resultsOpen && !state.distractionFree && !state.incrementOpen {
-				state.discardFileResults()
-				return gfx.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.dismissFileResults(event.Target)}
 			}
 			if state.pendingClose >= 0 {
 				state.cancelClose()

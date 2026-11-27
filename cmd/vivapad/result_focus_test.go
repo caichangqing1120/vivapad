@@ -181,6 +181,55 @@ func TestF7ReturnsToActiveSplitEditor(t *testing.T) {
 	}
 }
 
+func TestDismissingFocusedResultsRestoresSplitEditor(t *testing.T) {
+	for _, closeWith := range []string{"escape", "button"} {
+		t.Run(closeWith, func(t *testing.T) {
+			state, driver := startDriver(t)
+			if err := driver.Resize(640, 400); err != nil {
+				t.Fatal(err)
+			}
+			left := state.space.Current()
+			left.Editor.Insert("cat left")
+			right := state.space.NewDocument()
+			right.Editor.Insert("cat right")
+			state.toggleSplit()
+			state.paneDocs = [2]*document.Document{left, right}
+			state.paneOwner[left], state.paneOwner[right] = 0, 1
+			state.query.Insert("cat")
+			state.findAllOpenDocuments()
+			state.invalidator.Invalidate()
+			if err := driver.Pump(); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, rightEditorID)
+			right.Editor.SetSelection(text.Range{Start: 9, End: 4})
+			before, caret := right.Editor.Selection(), right.Editor.Caret()
+			if err := driver.Key(gfx.KeyF7, 0); err != nil {
+				t.Fatal(err)
+			}
+			if driver.Snapshot().Focused != resultsPaneID || state.space.Current() != right {
+				t.Fatal("could not establish results focus from the right editor")
+			}
+			if closeWith == "escape" {
+				if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				clickID(t, driver, resultsCloseID)
+			}
+			if state.resultsOpen || state.space.Current() != right || right.Editor.Selection() != before || right.Editor.Caret() != caret {
+				t.Fatal("dismissal retained the results or changed the active document, selection, or caret")
+			}
+			if got := driver.Snapshot().Focused; got != rightEditorID {
+				t.Errorf("focus after dismissing results = %v, want right editor %v", got, rightEditorID)
+			}
+			if err := driver.Type("X"); err != nil || right.Editor.String() != "cat X" || left.Editor.String() != "cat left" {
+				t.Fatalf("first edit after dismissal: right=%q left=%q err=%v", right.Editor.String(), left.Editor.String(), err)
+			}
+		})
+	}
+}
+
 func TestStaleResultEnterKeepsResultPaneFocus(t *testing.T) {
 	state, driver := startDriver(t)
 	doc := state.space.Current()
