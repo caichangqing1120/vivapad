@@ -74,6 +74,14 @@ func (state *model) discardFileResults() {
 	state.clearResultFocus()
 }
 
+func (state *model) dismissFileResults(focused gfx.ID) gfx.ID {
+	state.discardFileResults()
+	if focused == resultsCloseID || focused == resultsPaneID || focused.Scope() == resultScope {
+		return state.commandEditorFocusID()
+	}
+	return gfx.ID{}
+}
+
 func (state *model) browseFilesDirectory() {
 	path, err := app.OpenDirectory(app.OpenDirectoryOptions{Title: "Find in Files"})
 	if err != nil {

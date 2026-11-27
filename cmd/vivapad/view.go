@@ -1298,7 +1298,9 @@ func (state *model) paintFileResults(canvas *gfx.Canvas, width, y, height float3
 	closeBounds := gfx.Rect{X: width - 29, Y: y + 4, Width: 22, Height: 22}
 	canvas.DrawIcon(closeIcon, controlIconBounds(closeBounds), palette.muted)
 	if hitButton(canvas, resultsCloseID, closeBounds, "Close find results") {
-		state.discardFileResults()
+		if focus := state.dismissFileResults(canvas.Focused()); focus != (gfx.ID{}) {
+			canvas.RequestFocusOnce(focus)
+		}
 		return
 	}
 	canvas.HitWithOptions(resultsPaneID, gfx.Rect{Y: y + 29, Width: width, Height: height - 29}, "Find results", gfx.HitOptions{Role: gfx.RoleGroup})
