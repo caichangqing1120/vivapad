@@ -55,6 +55,58 @@ func TestSelectAndFindExpandsUnicodeWordAndGuardsThreshold(t *testing.T) {
 	}
 }
 
+func TestSelectAndFindResolvesWordBeforeApplyingLimit(t *testing.T) {
+	t.Run("Unicode numbers", func(t *testing.T) {
+		state := newModel()
+		doc := state.space.Current()
+		doc.Editor.Insert("a\u2163\u00b2 a\u2163\u00b2")
+		doc.Editor.ClearHistory()
+		state.searchOptions = document.SearchOptions{WholeWord: true}
+		for _, tc := range []struct {
+			command string
+			caret   int
+			want    text.Range
+		}{
+			{"Select and Find Next", 1, text.Range{Start: 4, End: 7}},
+			{"Select and Find Previous", 6, text.Range{Start: 0, End: 3}},
+		} {
+			doc.Editor.MoveTo(tc.caret, false)
+			state.command(tc.command)
+			if got := doc.Editor.Selection(); got != tc.want || state.query.String() != "a\u2163\u00b2" || doc.Editor.CanUndo() {
+				t.Errorf("%s: query %q, selection %+v, undo %t; want full token and %+v", tc.command, state.query.String(), got, doc.Editor.CanUndo(), tc.want)
+			}
+		}
+	})
+	t.Run("over limit", func(t *testing.T) {
+		state := newModel()
+		doc := state.space.Current()
+		value := strings.Repeat("x", 1025) + " y"
+		doc.Editor.Insert(value)
+		doc.Editor.ClearHistory()
+		doc.Editor.MoveTo(7, false)
+		state.query = text.NewEditor("prior")
+		options := document.SearchOptions{Regex: true, WholeWord: true}
+		state.searchOptions = options
+		dirty := doc.Dirty()
+		state.command("Select and Find Next")
+		if got := doc.Editor.Selection(); got != (text.Range{Start: 7, End: 7}) || state.query.String() != "prior" || state.searchOptions != options ||
+			doc.Editor.String() != value || doc.Dirty() != dirty || doc.Editor.CanUndo() || !strings.Contains(state.notice, "1024") {
+			t.Fatalf("overlong word changed search state: query %q, selection %+v, notice %q", state.query.String(), got, state.notice)
+		}
+	})
+	t.Run("exact limit", func(t *testing.T) {
+		state := newModel()
+		doc := state.space.Current()
+		word := strings.Repeat("\u732b", 1024)
+		doc.Editor.Insert(word + " " + word)
+		doc.Editor.MoveTo(1, false)
+		state.command("Select and Find Next")
+		if got := doc.Editor.Selection(); got != (text.Range{Start: 1025, End: 2049}) || state.query.String() != word {
+			t.Fatalf("word at limit: query length %d bytes, selection %+v", len(state.query.String()), got)
+		}
+	})
+}
+
 func TestVolatileFindForcesCaseInsensitiveNonWholeWrapWithoutChangingFindBar(t *testing.T) {
 	state := newModel()
 	doc := state.space.Current()

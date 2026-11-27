@@ -17,7 +17,7 @@ func (state *model) openIncrementalSearch(repeat bool) {
 		return
 	}
 	state.searchOpen, state.goToOpen, state.incrementOpen = false, false, true
-	if selected := state.space.Current().SelectedSearchText(false); selected != "" {
+	if selected, _ := state.space.Current().SelectedSearchTarget(false); selected != "" {
 		state.incrementQuery = text.NewEditor(selected)
 	}
 	state.incrementQuery.SetSelection(text.Range{Start: 0, End: state.incrementQuery.RuneCount()})
