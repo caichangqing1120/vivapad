@@ -43,14 +43,7 @@ func (state *model) styleToken(style int, all bool) {
 		state.notice = "Choose one ordinary selection to style"
 		return
 	}
-	selection, caret := doc.Editor.Selection(), doc.Editor.Caret()
-	query := doc.SelectedSearchText(true)
-	token := doc.Editor.Selection()
-	if caret == selection.Start {
-		doc.Editor.SetSelection(text.Range{Start: selection.End, End: selection.Start})
-	} else {
-		doc.Editor.SetSelection(selection)
-	}
+	query, token := doc.SelectedSearchTarget(true)
 	if query == "" {
 		state.notice = "Select a token to style"
 		return
