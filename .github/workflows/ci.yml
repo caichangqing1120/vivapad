@@ -167,7 +167,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'VivaPad native document path comparison failed' }
             go test ./tools/windows -run '^TestWindowsRecentClosedFileRestore$' -count=1 -v -timeout=2m
             if ($LASTEXITCODE -ne 0) { throw 'Native recent file restore comparison failed' }
-            go test ./tools/windows -run '^TestNotepadPlusPlusFinderFocusRoundTrip$' -count=1 -v -timeout=1m
+            go test ./tools/windows -run '^Test(NotepadPlusPlus|VivaPadWindows)FinderFocusRoundTrip$' -count=1 -v -timeout=2m
             if ($LASTEXITCODE -ne 0) { throw 'Native search results focus comparison failed' }
             $env:VIVAPAD_WINDOWS_HELP_TEST = '1'
             go test ./tools/windows -run '^TestVivaPadWindowsHelpDialogs$' -count=1 -v -timeout=3m
