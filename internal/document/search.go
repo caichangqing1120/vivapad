@@ -138,8 +138,8 @@ func (doc *Document) NextLiteralSelection(current text.Range, occupied []text.Ra
 		return literalStop
 	}
 	query := value[from:to]
-	if scanMultiSelectionRegion(value, query, to, len(value), options, visit) {
-		scanMultiSelectionRegion(value, query, 0, from, options, visit)
+	if scanLiteralRegion(value, query, to, len(value), options, visit) {
+		scanLiteralRegion(value, query, 0, from, options, visit)
 	}
 	return found, found.End != 0
 }
@@ -162,7 +162,7 @@ func (doc *Document) AppendLiteralSelections(current text.Range, selections []te
 	query := value[from:to]
 	for _, region := range [...]text.Span{{Start: to, End: len(value)}, {End: from}} {
 		remaining := occupied
-		scanMultiSelectionRegion(value, query, region.Start, region.End, options, func(match text.Span) literalMatchDecision {
+		scanLiteralRegion(value, query, region.Start, region.End, options, func(match text.Span) literalMatchDecision {
 			for len(remaining) > 0 && remaining[0].End <= match.Start {
 				remaining = remaining[1:]
 			}
@@ -176,7 +176,7 @@ func (doc *Document) AppendLiteralSelections(current text.Range, selections []te
 	return selections
 }
 
-func scanMultiSelectionRegion(value, query string, start, end int, options SearchOptions, visit func(text.Span) literalMatchDecision) bool {
+func scanLiteralRegion(value, query string, start, end int, options SearchOptions, visit func(text.Span) literalMatchDecision) bool {
 	return scanLiteralMatches(value[start:end], query, options.MatchCase, func(match text.Span) literalMatchDecision {
 		match.Start += start
 		match.End += start
@@ -265,28 +265,22 @@ func findRegexSpan(matches [][]int, byteStart int, backward bool) text.Span {
 }
 
 func findLiteralSpan(value, query string, options SearchOptions, byteStart int, backward bool) text.Span {
-	var chosen, wrap text.Span
-	visitLiteralMatches(value, query, options, func(match text.Span) bool {
+	var chosen text.Span
+	visit := func(match text.Span) literalMatchDecision {
+		chosen = match
 		if backward {
-			if match.End <= byteStart {
-				chosen = match
-			} else if chosen.End != 0 {
-				return false
-			}
-			wrap = match
-		} else {
-			if match.Start >= byteStart {
-				chosen = match
-				return false
-			}
-			if wrap.End == 0 {
-				wrap = match
-			}
+			// A later overlapping hit can still be closer to the caret.
+			return literalReject
 		}
-		return true
-	})
-	if chosen.End == 0 {
-		return wrap
+		return literalStop
+	}
+	start, end := byteStart, len(value)
+	if backward {
+		start, end = 0, byteStart
+	}
+	scanLiteralRegion(value, query, start, end, options, visit)
+	if chosen.End == 0 && (start != 0 || end != len(value)) {
+		scanLiteralRegion(value, query, 0, len(value), options, visit)
 	}
 	return chosen
 }

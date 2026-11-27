@@ -111,10 +111,13 @@ func TestLiteralFindKeepsMatchOrderAndDirectionalCaret(t *testing.T) {
 		backward           bool
 		want               text.Range
 	}{
-		{"forward across overlapping candidate", "aaaaa", "aa", SearchOptions{MatchCase: true}, 1, false, text.Range{Start: 2, End: 4}},
-		{"previous before partial match", "aaaaa", "aa", SearchOptions{}, 3, true, text.Range{Start: 0, End: 2}},
-		{"wrap backward", "aaaaa", "aa", SearchOptions{}, 0, true, text.Range{Start: 2, End: 4}},
+		{"forward across overlapping candidate", "aaaaa", "aa", SearchOptions{MatchCase: true}, 1, false, text.Range{Start: 1, End: 3}},
+		{"previous before partial match", "aaaaa", "aa", SearchOptions{}, 3, true, text.Range{Start: 1, End: 3}},
+		{"wrap backward", "aaaaa", "aa", SearchOptions{}, 0, true, text.Range{Start: 3, End: 5}},
 		{"wrap forward", "aaaaa", "aa", SearchOptions{MatchCase: true}, 5, false, text.Range{Start: 0, End: 2}},
+		{"folded overlap at caret", "kKkkk", "kk", SearchOptions{}, 1, false, text.Range{Start: 1, End: 3}},
+		{"whole word checks before forward caret", "xcat cat", "cat", SearchOptions{WholeWord: true}, 1, false, text.Range{Start: 5, End: 8}},
+		{"whole word checks after backward caret", "cat catx", "cat", SearchOptions{MatchCase: true, WholeWord: true}, 7, true, text.Range{Start: 0, End: 3}},
 		{"Unicode folding with different byte widths", "xK K", "k", SearchOptions{WholeWord: true}, 0, false, text.Range{Start: 3, End: 4}},
 		{"Unicode folding after wrap", "K K", "k", SearchOptions{WholeWord: true}, 3, false, text.Range{Start: 0, End: 1}},
 	} {
