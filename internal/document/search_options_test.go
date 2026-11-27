@@ -134,6 +134,54 @@ func TestLiteralFindKeepsMatchOrderAndDirectionalCaret(t *testing.T) {
 	}
 }
 
+func TestWholeWordLiteralSearchReconsidersRejectedOverlap(t *testing.T) {
+	for _, tc := range []struct {
+		name, value, query, replaced, single string
+		matchCase                            bool
+		want                                 [2]text.Span
+	}{
+		{"case sensitive", "xa.a.a a.a.a", "a.a", "xa.! !.a", "xa.! a.a.a", true, [2]text.Span{{Start: 3, End: 6}, {Start: 7, End: 10}}},
+		{"folded UTF-8", "x\u212a.k.k K.K", "k.k", "x\u212a.! !", "x\u212a.! K.K", false, [2]text.Span{{Start: 5, End: 8}, {Start: 9, End: 12}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := New("fixture")
+			doc.Editor.Insert(tc.value)
+			options := SearchOptions{MatchCase: tc.matchCase, WholeWord: true}
+			if matches, err := doc.MatchesWith(tc.query, options); err != nil || !slices.Equal(matches, tc.want[:]) {
+				t.Errorf("all matches = %v, %v; want %v", matches, err, tc.want)
+			}
+			for _, limit := range []int{0, 1, 2} {
+				if matches, truncated, err := doc.MatchesWithLimit(tc.query, options, limit); err != nil || truncated != (limit < len(tc.want)) || !slices.Equal(matches, tc.want[:limit]) {
+					t.Errorf("limit %d: matches %v, truncated %t, %v; want %v", limit, matches, truncated, err, tc.want[:limit])
+				}
+			}
+			for _, backward := range []bool{false, true} {
+				// Search backwards just after the first good hit, before the second.
+				start := 0
+				if backward {
+					start = doc.Editor.RuneIndex(tc.want[0].End)
+				}
+				doc.Editor.MoveTo(start, false)
+				found, err := doc.FindWith(tc.query, options, backward)
+				selection := doc.Editor.Selection()
+				got := text.Span{Start: doc.Editor.ByteOffset(selection.Start), End: doc.Editor.ByteOffset(selection.End)}
+				if err != nil || !found || got != tc.want[0] {
+					t.Errorf("find (backward %t) = %v, %t, %v; want %v", backward, got, found, err, tc.want[0])
+				}
+			}
+			one := New("single replacement")
+			one.Editor.Insert(tc.value)
+			one.Editor.SetSelection(text.Range{Start: one.Editor.RuneIndex(tc.want[0].Start), End: one.Editor.RuneIndex(tc.want[0].End)})
+			if changed, _, err := one.ReplaceCurrentWithEdit(tc.query, "!", options); err != nil || !changed || one.Editor.String() != tc.single {
+				t.Errorf("replace current = %t, %q, %v; want %q", changed, one.Editor.String(), err, tc.single)
+			}
+			if count, _, err := doc.ReplaceAllWithEdits(tc.query, "!", options); err != nil || count != 2 || doc.Editor.String() != tc.replaced {
+				t.Errorf("replace all = %d, %q, %v; want 2, %q", count, doc.Editor.String(), err, tc.replaced)
+			}
+		})
+	}
+}
+
 func TestLiteralFindAllocationsStaySmallOnDenseMatches(t *testing.T) {
 	doc := New("new 1")
 	doc.Editor.Insert(strings.Repeat("cat ", 50_000))
@@ -181,7 +229,7 @@ func TestLiteralMatchStreamAgreesWithQuotedRegexp(t *testing.T) {
 			}
 			want := expression.FindAllStringIndex(value, -1)
 			var got [][]int
-			visitLiteralMatches(value, query, matchCase, func(match text.Span) bool {
+			visitLiteralMatches(value, query, SearchOptions{MatchCase: matchCase}, func(match text.Span) bool {
 				got = append(got, []int{match.Start, match.End})
 				return true
 			})
