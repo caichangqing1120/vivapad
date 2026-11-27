@@ -1406,6 +1406,10 @@ func newConfig(state *model) app.Config {
 				state.activatePane(pane)
 			}
 			if state.openDocumentPaths(event.Paths) {
+				if state.recentOpen {
+					// Opening files can replace the row under a held menu click.
+					state.menuOpen, state.recentOpen = -1, false
+				}
 				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
 			}
 		}

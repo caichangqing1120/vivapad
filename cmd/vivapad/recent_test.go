@@ -255,6 +255,75 @@ func TestRecentSubmenuKeyboardNavigationRestoresFile(t *testing.T) {
 	}
 }
 
+func TestRecentMenuRejectsHeldClickAfterFileDrop(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second, third := filepath.Join(root, "first.txt"), filepath.Join(root, "second.txt"), filepath.Join(root, "third.txt")
+	for _, path := range []string{first, second, third} {
+		if err := os.WriteFile(path, []byte(filepath.Base(path)), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state, driver := startDriver(t)
+	drop := func(path string) {
+		t.Helper()
+		ok, err := driver.Drop(gfx.FileDropEvent{Phase: gfx.FileDropDrop, X: 500, Y: 250, Paths: []string{path}})
+		if err != nil || !ok || state.space.Current().Path != path {
+			t.Fatalf("drop %q: accepted=%v err=%v active=%q", path, ok, err, state.space.Current().Path)
+		}
+	}
+	openMenu := func() {
+		t.Helper()
+		clickID(t, driver, menuScope.At(0))
+		clickID(t, driver, menuItemScope.At(10))
+	}
+	drop(first)
+	drop(second)
+	openMenu()
+	missing := filepath.Join(root, "missing.txt")
+	if _, err := driver.Drop(gfx.FileDropEvent{Phase: gfx.FileDropDrop, X: 500, Y: 250, Paths: []string{missing}}); err != nil {
+		t.Fatal(err)
+	}
+	if !state.recentOpen || state.space.Current().Path != second || !strings.Contains(state.notice, "missing.txt") {
+		t.Fatal("a failed drop did not keep the current document, menu and error")
+	}
+	var bounds gfx.Rect
+	for _, hit := range driver.Snapshot().Hits {
+		if hit.ID.Scope() == recentScope && hit.Label == first {
+			bounds = hit.Bounds
+		}
+	}
+	if bounds.Width <= 0 {
+		t.Fatal("first file was not shown in Recent Files")
+	}
+	x, y := bounds.X+bounds.Width/2, bounds.Y+bounds.Height/2
+	if err := driver.Press(x, y, gfx.PointerButtonPrimary); err != nil {
+		t.Fatal(err)
+	}
+	drop(third)
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if state.recentEntries[1].Path != second {
+		t.Fatal("the file drop did not replace the pressed row")
+	}
+	if err := driver.Release(x, y, gfx.PointerButtonPrimary); err != nil {
+		t.Fatal(err)
+	}
+	if state.space.Current().Path != third {
+		t.Fatalf("the stale menu release activated %q instead of keeping the dropped file active", state.space.Current().Path)
+	}
+	if !state.recentOpen {
+		openMenu()
+	}
+	clickLabeledControl(t, driver, second)
+	if state.space.Current().Path != second {
+		t.Fatal("a fresh menu click did not activate the displayed file")
+	}
+}
+
 func TestFileDropAndFindResultUpdateRecentHistory(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
