@@ -1850,7 +1850,7 @@ func newConfig(state *model) app.Config {
 				state.selectedSearchMenuOpen = false
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			if state.resultsOpen && !state.distractionFree && !state.incrementOpen {
+			if state.fileResultsVisible() {
 				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.dismissFileResults(event.Target)}
 			}
 			if state.pendingClose >= 0 {

@@ -51,6 +51,10 @@ func (state *model) clearResultFocus() {
 	state.resultFocusArmed, state.resultReturnToEditor = false, false
 }
 
+func (state *model) fileResultsVisible() bool {
+	return state.resultsOpen && !state.distractionFree && !state.searchOpen && !state.goToOpen && !state.incrementOpen
+}
+
 const resultRowIndexMask = 1<<31 - 1 // gfx.Index reserves 31 bits for the index.
 
 func (state *model) resultRowID(index int) gfx.ID {
