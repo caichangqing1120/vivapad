@@ -731,6 +731,8 @@ type model struct {
 	tabOffset                     int
 	tabActive                     int
 	tabVisible                    int
+	tabHitIndices                 map[*document.Document]int
+	tabNextHitIndex               int
 	allowClose                    func()
 	sessionPath                   string
 	closingDocs                   []*document.Document
@@ -2513,6 +2515,7 @@ func (state *model) releaseDocument(doc *document.Document) {
 	// A tab strip may not paint again while its view is hidden. Rebuild its
 	// scratch list on demand instead of keeping a closed document alive.
 	state.paneTabScratch = [2][]*document.Document{}
+	delete(state.tabHitIndices, doc)
 	for pane, anchor := range state.paneTabAnchor {
 		if anchor == doc {
 			state.paneTabAnchor[pane] = nil

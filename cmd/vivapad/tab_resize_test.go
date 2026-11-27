@@ -23,7 +23,7 @@ func TestActiveTabRemainsVisibleAfterNarrowResize(t *testing.T) {
 	}
 	visible := false
 	for _, hit := range driver.Snapshot().Hits {
-		visible = visible || hit.ID == tabScope.At(active) && hit.Role == gfx.RoleTab && hit.Selected
+		visible = visible || hit.ID == tabScope.At(state.tabHitIndex(state.space.Documents[active])) && hit.Role == gfx.RoleTab && hit.Selected
 	}
 	if !visible {
 		t.Fatalf("active tab %d is hidden after resize; offset=%d", active, state.tabOffset)
@@ -59,7 +59,7 @@ func TestActiveSplitViewTabRemainsVisibleAfterNarrowResize(t *testing.T) {
 	}
 	visible := false
 	for _, hit := range driver.Snapshot().Hits {
-		visible = visible || hit.ID == rightTabScope.At(active) && hit.Role == gfx.RoleTab && hit.Selected
+		visible = visible || hit.ID == rightTabScope.At(state.tabHitIndex(state.space.Documents[active])) && hit.Role == gfx.RoleTab && hit.Selected
 	}
 	if !visible {
 		t.Fatalf("active right-view tab %d is hidden after resize; offset=%d", active, state.paneTabOffset[1])

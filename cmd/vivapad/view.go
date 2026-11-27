@@ -515,12 +515,14 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 		}
 		name = canvas.FitLine(name, 11, gfx.WeightRegular, 103)
 		smallLabel(canvas, name, gfx.Rect{X: x + 10, Y: y + 2, Width: 103, Height: 25}, palette.text, 11)
-		canvas.HitWithOptions(tabScope.At(index), rect, doc.Name, gfx.HitOptions{Role: gfx.RoleTab, Selected: index == state.space.Active})
-		if canvas.Clicked(tabScope.At(index)) {
+		hitIndex := state.tabHitIndex(doc)
+		id, pinID, closeID := tabScope.At(hitIndex), tabPinScope.At(hitIndex), tabCloseScope.At(hitIndex)
+		canvas.HitWithOptions(id, rect, doc.Name, gfx.HitOptions{Role: gfx.RoleTab, Selected: index == state.space.Active})
+		if canvas.Clicked(id) {
 			selected = index
 		}
 		pinRect := gfx.Rect{X: x + 113, Y: y + 5, Width: 17, Height: 18}
-		if canvas.Hovered() == tabPinScope.At(index) {
+		if canvas.Hovered() == pinID {
 			canvas.Fill(pinRect, palette.hover)
 		}
 		pinColor, pinLabel := palette.muted, "Pin "+doc.Name
@@ -528,15 +530,15 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 			pinColor, pinLabel = gfx.RGB(8, 105, 87), "Unpin "+doc.Name
 		}
 		canvas.DrawIcon(pinIcon, controlIconBounds(pinRect), pinColor)
-		if hitButton(canvas, tabPinScope.At(index), pinRect, pinLabel) {
+		if hitButton(canvas, pinID, pinRect, pinLabel) {
 			pinning = index
 		}
 		closeRect := gfx.Rect{X: x + 135, Y: y + 5, Width: 17, Height: 18}
-		if canvas.Hovered() == tabCloseScope.At(index) {
+		if canvas.Hovered() == closeID {
 			canvas.Fill(closeRect, palette.hover)
 		}
 		canvas.DrawIcon(closeIcon, controlIconBounds(closeRect), palette.muted)
-		if hitButton(canvas, tabCloseScope.At(index), closeRect, "Close "+doc.Name) {
+		if hitButton(canvas, closeID, closeRect, "Close "+doc.Name) {
 			closed = index
 		}
 	}

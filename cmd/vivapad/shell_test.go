@@ -250,7 +250,7 @@ func TestCanceledSaveAndDirtyClose(t *testing.T) {
 	if state.space.Current().Path != "" || !state.space.Current().Dirty() {
 		t.Fatal("canceled save changed document")
 	}
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if state.pendingClose != 0 {
 		t.Fatal("dirty tab did not ask for confirmation")
 	}
@@ -258,7 +258,7 @@ func TestCanceledSaveAndDirtyClose(t *testing.T) {
 	if state.pendingClose != -1 || state.space.Current().Editor.String() != "keep me" {
 		t.Fatal("cancel did not preserve the document")
 	}
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	clickID(t, driver, discardID)
 	if state.space.Current().Editor.String() != "" || state.pendingClose != -1 {
 		t.Fatal("explicit discard did not close the document")
@@ -359,7 +359,7 @@ func TestClickOutsideMenuClosesWithoutChangingDocument(t *testing.T) {
 func TestDirtyCloseDialogBlocksUnderlyingToolbar(t *testing.T) {
 	state, driver := startDriver(t)
 	state.space.Current().Editor.Insert("unsaved")
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if state.pendingClose != 0 {
 		t.Fatal("missing confirmation")
 	}
@@ -375,7 +375,7 @@ func TestDirtyCloseDialogBlocksEditingAndShortcuts(t *testing.T) {
 	if err := driver.Type("before"); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	_ = driver.Type("after")
 	if _, err := driver.ShortcutChord(primary(), 'n'); err != nil {
 		t.Fatal(err)
@@ -816,7 +816,7 @@ func TestOverflowTabsCanNavigateBackToFirst(t *testing.T) {
 	for range 10 {
 		clickID(t, driver, tabLeftID)
 	}
-	clickID(t, driver, tabScope.At(0))
+	clickID(t, driver, tabScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if state.space.Active != 0 || state.space.Current().Name != "new 1" {
 		t.Fatalf("could not revisit first tab: active=%d", state.space.Active)
 	}
@@ -1229,7 +1229,7 @@ func TestClosingSplitDocumentRebindsBothViews(t *testing.T) {
 	clickID(t, driver, menuScope.At(3))
 	clickID(t, driver, menuItemScope.At(5))
 	closed := state.paneDocs[1]
-	clickID(t, driver, rightCloseScope.At(1))
+	clickID(t, driver, rightCloseScope.At(state.tabHitIndex(state.space.Documents[1])))
 	if len(state.space.Documents) != 1 || state.paneDocs[0] != state.space.Current() || state.paneDocs[1] != state.space.Current() || state.secondEditors[closed] != nil {
 		t.Fatalf("split close retained document: %+v", state.paneDocs)
 	}
@@ -1301,10 +1301,10 @@ func TestSplitViewHasIndependentTabStrips(t *testing.T) {
 	for _, hit := range driver.Snapshot().Hits {
 		hits[hit.ID] = true
 	}
-	if !hits[leftTabScope.At(0)] || !hits[leftTabScope.At(1)] || !hits[rightTabScope.At(2)] || hits[tabScope.At(2)] {
+	if !hits[leftTabScope.At(state.tabHitIndex(state.space.Documents[0]))] || !hits[leftTabScope.At(state.tabHitIndex(state.space.Documents[1]))] || !hits[rightTabScope.At(state.tabHitIndex(state.space.Documents[2]))] || hits[tabScope.At(state.tabHitIndex(state.space.Documents[2]))] {
 		t.Fatalf("pane tab ownership = %+v", hits)
 	}
-	clickID(t, driver, leftTabScope.At(0))
+	clickID(t, driver, leftTabScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if state.activePane != 0 || state.paneDocs[0].Name != "new 1" || state.paneDocs[1].Name != "new 3" {
 		t.Fatalf("selected panes = %+v, active=%d", state.paneDocs, state.activePane)
 	}
@@ -1319,7 +1319,7 @@ func TestNewDocumentAppearsOnlyInActiveSplitView(t *testing.T) {
 	if state.paneOwner[state.space.Current()] != 1 {
 		t.Fatalf("new tab owner = %d", state.paneOwner[state.space.Current()])
 	}
-	clickID(t, driver, rightTabScope.At(2))
+	clickID(t, driver, rightTabScope.At(state.tabHitIndex(state.space.Documents[2])))
 	clickID(t, driver, leftPaneID)
 	clickID(t, driver, newID)
 	if state.paneOwner[state.space.Current()] != 0 {
@@ -1336,7 +1336,7 @@ func TestClosingClonedViewKeepsTheDirtyDocument(t *testing.T) {
 	clickID(t, driver, menuScope.At(3))
 	clickID(t, driver, menuItemScope.At(5))
 	original := state.space.Current()
-	clickID(t, driver, rightCloseScope.At(0))
+	clickID(t, driver, rightCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if state.splitEnabled || len(state.space.Documents) != 1 || state.space.Current() != original || !original.Dirty() || state.pendingClose >= 0 {
 		t.Fatalf("clone close discarded shared document: %+v", state.space)
 	}
@@ -1357,7 +1357,7 @@ func TestRightTabOverflowCanReachEarlierDocuments(t *testing.T) {
 	for range 10 {
 		clickID(t, driver, rightTabsBackID)
 	}
-	clickID(t, driver, rightTabScope.At(1))
+	clickID(t, driver, rightTabScope.At(state.tabHitIndex(state.space.Documents[1])))
 	if state.activePane != 1 || state.space.Current().Name != "new 2" {
 		t.Fatalf("right tab navigation = active:%d name:%q", state.activePane, state.space.Current().Name)
 	}
@@ -1373,7 +1373,7 @@ func TestMoveDocumentToOtherViewKeepsTheSourceDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer driver.Close()
-	clickID(t, driver, leftTabScope.At(1))
+	clickID(t, driver, leftTabScope.At(state.tabHitIndex(state.space.Documents[1])))
 	clickID(t, driver, menuScope.At(3))
 	clickID(t, driver, menuItemScope.At(6))
 	if !state.splitEnabled || state.activePane != 1 || state.paneDocs[0].Name != "new 1" || state.paneDocs[1].Name != "new 2" || state.paneOwner[state.paneDocs[1]] != 1 {
@@ -1411,7 +1411,7 @@ func TestControlTabCyclesOnlyActiveView(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer driver.Close()
-	clickID(t, driver, leftTabScope.At(0))
+	clickID(t, driver, leftTabScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if err := driver.Key(gfx.KeyTab, gfx.ModifierControl); err != nil {
 		t.Fatal(err)
 	}
@@ -1864,7 +1864,7 @@ func TestClosingTabReleasesItsCodeEditor(t *testing.T) {
 	if len(state.editors) != 2 {
 		t.Fatalf("editor count after new tab = %d", len(state.editors))
 	}
-	clickID(t, driver, tabCloseScope.At(1))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[1])))
 	if len(state.editors) != 1 {
 		t.Fatalf("closed tab retained an editor: %d", len(state.editors))
 	}
@@ -1911,7 +1911,7 @@ func TestLanguageMenuOverridesSyntaxPerTab(t *testing.T) {
 	if got := state.languageFor(state.space.Current()); got != "" {
 		t.Fatalf("new tab inherited language %q", got)
 	}
-	clickID(t, driver, tabScope.At(0))
+	clickID(t, driver, tabScope.At(state.tabHitIndex(state.space.Documents[0])))
 	if got := state.languageFor(state.space.Current()); got != ".go" {
 		t.Fatalf("original tab lost language %q", got)
 	}

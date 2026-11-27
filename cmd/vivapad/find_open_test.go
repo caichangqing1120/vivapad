@@ -85,7 +85,7 @@ func TestFindAllOpenDocumentsCapsGloballyAndDropsClosedSource(t *testing.T) {
 	if len(state.fileResults.Matches) != 2000 || !state.fileResults.Truncated || state.resultDocuments[0] != first || state.resultDocuments[1999] != second {
 		t.Fatalf("global result cap = %+v", state.fileResults)
 	}
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	clickID(t, driver, discardID)
 	if !state.resultsOpen || len(state.fileResults.Matches) != 1000 || len(state.resultDocuments) != 1000 {
 		t.Fatalf("closed-source results = %+v sources=%d", state.fileResults, len(state.resultDocuments))

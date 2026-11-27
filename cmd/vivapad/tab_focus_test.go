@@ -35,7 +35,7 @@ func TestRecoveredTabClickFocusesEditorAfterOpeningExplicitFile(t *testing.T) {
 	if err := driver.Resize(640, 400); err != nil {
 		t.Fatal(err)
 	}
-	clickID(t, driver, tabScope.At(1))
+	clickID(t, driver, tabScope.At(state.tabHitIndex(state.space.Documents[1])))
 	if got := state.space.Current().Editor.String(); got != "draft" {
 		t.Fatalf("selected wrong tab: %q", got)
 	}
@@ -74,7 +74,7 @@ func TestSplitTabClickFocusesSelectedPane(t *testing.T) {
 	for _, step := range []struct {
 		tab, editor gfx.ID
 		pane        int
-	}{{leftTabScope.At(0), editorID, 0}, {rightTabScope.At(1), rightEditorID, 1}} {
+	}{{leftTabScope.At(state.tabHitIndex(state.space.Documents[0])), editorID, 0}, {rightTabScope.At(state.tabHitIndex(state.space.Documents[1])), rightEditorID, 1}} {
 		clickID(t, driver, step.tab)
 		if state.activePane != step.pane || driver.Snapshot().Focused != step.editor {
 			t.Fatalf("split tab click left pane=%d focus=%v; want pane=%d focus=%v", state.activePane, driver.Snapshot().Focused, step.pane, step.editor)
@@ -102,11 +102,11 @@ func TestTabClickRequestsEditorFocusDuringTheClick(t *testing.T) {
 			right.Editor.Insert("right")
 			steps := []struct {
 				tab, editor gfx.ID
-			}{{tabScope.At(0), editorID}, {tabScope.At(1), editorID}}
+			}{{tabScope.At(state.tabHitIndex(state.space.Documents[0])), editorID}, {tabScope.At(state.tabHitIndex(state.space.Documents[1])), editorID}}
 			if split {
 				state.toggleSplit()
-				steps[0].tab = leftTabScope.At(0)
-				steps[1].tab, steps[1].editor = rightTabScope.At(1), rightEditorID
+				steps[0].tab = leftTabScope.At(state.tabHitIndex(state.space.Documents[0]))
+				steps[1].tab, steps[1].editor = rightTabScope.At(state.tabHitIndex(state.space.Documents[1])), rightEditorID
 			}
 			config := newConfig(state)
 			paint := config.Paint

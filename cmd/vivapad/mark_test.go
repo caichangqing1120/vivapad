@@ -87,7 +87,7 @@ func TestMarkedSpansFollowEditsAndClearOnSourceClose(t *testing.T) {
 	if len(state.markedSpans) != 1 {
 		t.Fatal("marking after edit failed")
 	}
-	clickID(t, driver, tabCloseScope.At(0))
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
 	clickID(t, driver, discardID)
 	if state.markedDocument != nil || len(state.markedSpans) != 0 {
 		t.Fatal("closed source retained marks")
