@@ -353,6 +353,11 @@ func TestNotepadPlusPlusMultiSelectAllFromMixedSelection(t *testing.T) {
 
 func focusedScintilla(t *testing.T, editor *desktopEditor) func(uintptr, uintptr, uintptr) uintptr {
 	t.Helper()
+	return scintillaAt(t, focusedDesktopControl(t, editor))
+}
+
+func focusedDesktopControl(t *testing.T, editor *desktopEditor) uintptr {
+	t.Helper()
 	info := struct {
 		size, flags                                   uint32
 		active, focus, capture, menu, moveSize, caret uintptr
@@ -363,15 +368,20 @@ func focusedScintilla(t *testing.T, editor *desktopEditor) func(uintptr, uintptr
 	if ok, _, _ := getGUIThreadInfo.Call(thread, uintptr(unsafe.Pointer(&info))); ok == 0 || info.focus == 0 {
 		t.Fatal("could not read focused control")
 	}
+	return info.focus
+}
+
+func scintillaAt(t *testing.T, hwnd uintptr) func(uintptr, uintptr, uintptr) uintptr {
+	t.Helper()
 	var name [128]uint16
-	getClassName.Call(info.focus, uintptr(unsafe.Pointer(&name[0])), uintptr(len(name)))
+	getClassName.Call(hwnd, uintptr(unsafe.Pointer(&name[0])), uintptr(len(name)))
 	if class := syscall.UTF16ToString(name[:]); class != "Scintilla" {
 		t.Fatalf("focus = %q, want Scintilla", class)
 	}
 	return func(message, first, second uintptr) uintptr {
 		t.Helper()
 		var result uintptr
-		if ok, _, err := sendMessageTimeout.Call(info.focus, message, first, second, 2, 1000, uintptr(unsafe.Pointer(&result))); ok == 0 {
+		if ok, _, err := sendMessageTimeout.Call(hwnd, message, first, second, 2, 1000, uintptr(unsafe.Pointer(&result))); ok == 0 {
 			t.Fatalf("Scintilla message %#x: %v", message, err)
 		}
 		return result
