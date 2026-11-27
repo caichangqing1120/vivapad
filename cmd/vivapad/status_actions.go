@@ -83,7 +83,7 @@ func (state *model) paintStatusAction(canvas *gfx.Canvas, id gfx.ID, bounds gfx.
 	}
 	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y + 2, Width: 1, Height: 18}, palette.border)
 	textBounds := gfx.Rect{X: bounds.X + 7, Y: bounds.Y, Width: bounds.Width - 9, Height: 21}
-	smallLabel(canvas, canvas.FitLine(label, 11, gfx.WeightRegular, textBounds.Width), textBounds, palette.text, 11)
+	state.interfaceLabel(canvas, label, textBounds, palette.text, 11)
 }
 
 func (state *model) useStatusAction(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect) {

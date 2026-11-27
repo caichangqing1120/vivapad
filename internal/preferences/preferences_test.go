@@ -14,7 +14,7 @@ import (
 
 func TestPrivateSettingsRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "VivaPad", "settings.json")
-	want := State{Theme: ClassicLight, FontSize: 17, SubFontSize: 17, ZoomSync: true, TabWidth: 8, Wrap: true, LineNumbers: false, AutoIndent: false, AutoClose: true, IndentMode: "tabs", DateTimeFormat: "dd/MM/yyyy HH:mm", DateTimeReverseOrder: true, ShowWhitespace: true, ShowEOL: true, NPCMode: "abbreviation",
+	want := State{Language: "system", UITextSize: "medium", Theme: ClassicLight, FontSize: 17, SubFontSize: 17, ZoomSync: true, TabWidth: 8, Wrap: true, LineNumbers: false, AutoIndent: false, AutoClose: true, IndentMode: "tabs", DateTimeFormat: "dd/MM/yyyy HH:mm", DateTimeReverseOrder: true, ShowWhitespace: true, ShowEOL: true, NPCMode: "abbreviation",
 		Print: printing.Settings{LineNumbers: false, ColorMode: printing.ColorBlackOnWhite, FormFeedPageBreak: true,
 			MarginMM: printing.Margins{Left: 9, Top: 12, Right: 10, Bottom: 13}, Header: printing.TextBand{Left: "$(FILE_NAME)", Right: "$(CURRENT_PRINTING_PAGE)"}, Footer: printing.TextBand{Middle: "$(SHORT_DATE)"},
 			HeaderFont: printing.BandFont{Size: 12, Bold: true}, FooterFont: printing.BandFont{Size: 8, Italic: true}}}

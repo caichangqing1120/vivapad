@@ -38,6 +38,10 @@ func (theme Theme) Normalized() Theme {
 }
 
 type State struct {
+	Language             string `json:"language,omitempty"`
+	UITextSize           string `json:"ui_text_size,omitempty"`
+	ShowTabNumbers       bool   `json:"show_tab_numbers,omitempty"`
+	AutoCheckUpdates     bool   `json:"auto_check_updates,omitempty"`
 	Styles               Styles `json:"styles,omitzero"`
 	Theme                Theme  `json:"theme,omitempty"`
 	FontSize             int    `json:"font_size"`
@@ -72,10 +76,29 @@ type diskState struct {
 }
 
 func Default() State {
-	return State{Theme: ClassicLight, FontSize: 13, SubFontSize: 13, TabWidth: 4, LineNumbers: true, AutoIndent: true, AutoClose: true, IndentMode: "language", DateTimeFormat: datetime.DefaultFormat, ShowIndentGuides: true, ShowControls: true, NPCMode: "abbreviation", ChangeHistoryView: "margin", Print: printing.DefaultSettings()}
+	return State{Language: "system", UITextSize: "medium", Theme: ClassicLight, FontSize: 13, SubFontSize: 13, TabWidth: 4, LineNumbers: true, AutoIndent: true, AutoClose: true, IndentMode: "language", DateTimeFormat: datetime.DefaultFormat, ShowIndentGuides: true, ShowControls: true, NPCMode: "abbreviation", ChangeHistoryView: "margin", Print: printing.DefaultSettings()}
+}
+
+func (state *State) defaultGeneral() {
+	if state.Language == "" {
+		state.Language = "system"
+	}
+	if state.UITextSize == "" {
+		state.UITextSize = "medium"
+	}
 }
 
 func (state State) validate() error {
+	switch state.Language {
+	case "system", "zh-CN", "en":
+	default:
+		return fmt.Errorf("invalid interface language %q", state.Language)
+	}
+	switch state.UITextSize {
+	case "small", "medium", "large":
+	default:
+		return fmt.Errorf("invalid interface text size %q", state.UITextSize)
+	}
 	for _, theme := range []Theme{ClassicLight, ModernDark, Monokai} {
 		if err := state.Styles.For(theme).Validate(); err != nil {
 			return err
@@ -160,6 +183,7 @@ func Load(path string) (State, error) {
 		stored.State.NPCMode = "abbreviation"
 	}
 	stored.State.Theme = stored.State.Theme.Normalized()
+	stored.State.defaultGeneral()
 	if err := stored.State.validate(); err != nil {
 		return State{}, err
 	}
@@ -168,6 +192,7 @@ func Load(path string) (State, error) {
 
 func Save(path string, state State) error {
 	state.Theme = state.Theme.Normalized()
+	state.defaultGeneral()
 	if err := state.validate(); err != nil {
 		return err
 	}

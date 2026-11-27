@@ -1,0 +1,208 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vivapad-stable-release
+  cancel-in-progress: false
+
+env:
+  GOWORK: 'off'
+
+jobs:
+  packages:
+    name: Package ${{ matrix.target }}/${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: macos-latest, target: darwin, arch: arm64}
+          - {runner: macos-15-intel, target: darwin, arch: amd64}
+          - {runner: windows-latest, target: windows, arch: amd64}
+          - {runner: ubuntu-24.04, target: linux, arch: amd64}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
+        with:
+          go-version-file: go.mod
+      - run: node tools/github/check-public-files.cjs
+      - run: go test ./... -count=1 -timeout=15m
+      - name: Locate or install NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Get-Command makensis -ErrorAction SilentlyContinue) { exit 0 }
+          $nsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS'
+          if (!(Test-Path (Join-Path $nsis 'makensis.exe'))) {
+            choco install nsis --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
+          }
+          if (!(Test-Path (Join-Path $nsis 'makensis.exe'))) { throw 'makensis.exe not found' }
+          $nsis | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build release executable
+        env:
+          BUILD_OS: ${{ matrix.target }}
+          BUILD_ARCH: ${{ matrix.arch }}
+          PUBLIC_KEY: ${{ vars.VIVAPAD_UPDATE_PUBLIC_KEY }}
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$PUBLIC_KEY" =~ ^[A-Za-z0-9+/]{43}=?$ || "$PUBLIC_KEY" =~ ^[A-Fa-f0-9]{64}$ ]]
+          release_version=${GITHUB_REF_NAME#v}
+          feed_url="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/latest.json"
+          mkdir -p build/release/config/assets build/release/packages
+          cp assets/vivapad-icon.png build/release/config/assets/
+          awk -v release="$release_version" '{print} /^\[app\]$/ {print "version = \"" release "\""}' \
+            viva.toml > build/release/config/viva.toml
+          identity="-X vivapad/internal/buildinfo.Version=$release_version -X vivapad/internal/buildinfo.Commit=$(git rev-parse HEAD) -X vivapad/internal/buildinfo.Channel=stable -X vivapad/internal/buildinfo.FeedURL=$feed_url -X vivapad/internal/buildinfo.PublicKey=$PUBLIC_KEY"
+          extra=''
+          program=build/release/vivapad
+          export CGO_ENABLED=0
+          if [[ "$BUILD_OS" == darwin ]]; then
+            min_system=$(sed -nE 's/^min_system = "([0-9.]+)"$/\1/p' viva.toml)
+            [[ -n "$min_system" ]]
+            deployment="-mmacosx-version-min=$min_system"
+            export CGO_ENABLED=1
+            export CGO_CFLAGS="${CGO_CFLAGS:-} $deployment"
+            export CGO_LDFLAGS="${CGO_LDFLAGS:-} $deployment"
+          fi
+          if [[ "$BUILD_OS" == windows ]]; then
+            extra='-H=windowsgui'
+            program+=.exe
+          fi
+          GOOS="$BUILD_OS" GOARCH="$BUILD_ARCH" go build -trimpath -ldflags "-s -w $extra $identity" -o "$program" ./cmd/vivapad
+      - name: Package and verify macOS bundle
+        if: runner.os == 'macOS'
+        env:
+          BUILD_ARCH: ${{ matrix.arch }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ vars.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ vars.APPLE_API_ISSUER }}
+        run: |
+          : "${APPLE_SIGNING_IDENTITY:?A Developer ID identity is required}"
+          [[ "$APPLE_SIGNING_IDENTITY" != '-' ]]
+          : "${APPLE_CERTIFICATE:?A Developer ID certificate is required}"
+          : "${APPLE_API_KEY_P8:?Notarization credentials are required}"
+          umask 077
+          APPLE_API_KEY=$(mktemp "$RUNNER_TEMP/vivapad-notary.XXXXXXXX")
+          export APPLE_API_KEY
+          trap 'rm -f -- "$APPLE_API_KEY"' EXIT
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY"
+          unset APPLE_API_KEY_P8
+          bundle=build/release/packages/VivaPad.app
+          go tool viva package -C build/release/config --target darwin --arch "$BUILD_ARCH" \
+            --format zip --program build/release/vivapad --notarize -o "$bundle"
+          codesign --verify --deep --strict "$bundle"
+          xcrun stapler validate "$bundle"
+      - name: Package Windows and Linux
+        if: runner.os != 'macOS'
+        env:
+          BUILD_OS: ${{ matrix.target }}
+          BUILD_ARCH: ${{ matrix.arch }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [[ "$BUILD_OS" == windows ]]; then
+            if [[ -n "$WINDOWS_CERTIFICATE" ]]; then
+              go tool viva sign --target windows --program build/release/vivapad.exe
+            fi
+            go tool viva package -C build/release/config --target windows --arch "$BUILD_ARCH" \
+              --format nsis,zip --program build/release/vivapad.exe -o build/release/packages
+            unzip -t build/release/packages/*.zip
+          else
+            go tool viva package -C build/release/config --target linux --arch "$BUILD_ARCH" \
+              --format deb,tar.gz --program build/release/vivapad -o build/release/packages
+            dpkg-deb --info build/release/packages/*.deb
+            tar -tzf build/release/packages/*.tar.gz
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-${{ matrix.target }}-${{ matrix.arch }}
+          path: |
+            build/release/packages/*.zip
+            build/release/packages/*.exe
+            build/release/packages/*.deb
+            build/release/packages/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    runs-on: ubuntu-24.04
+    needs: [packages]
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+        with:
+          pattern: release-*
+          path: build/release/current
+          merge-multiple: true
+      - name: Generate and verify signed feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VIVA_UPDATE_KEY: ${{ secrets.VIVA_UPDATE_KEY }}
+          VIVAPAD_UPDATE_PUBLIC_KEY: ${{ vars.VIVAPAD_UPDATE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          : "${VIVA_UPDATE_KEY:?Signing key is required}"
+          current=build/release/current
+          previous=build/release/previous
+          mkdir -p "$previous"
+          stable=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select((.draft or .prerelease) | not) | .tag_name' | sort -V)
+          prior_tag=''
+          while IFS= read -r tag; do
+            [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+            if [[ "$tag" == "$GITHUB_REF_NAME" ]]; then
+              echo 'Release already exists; refusing to replace its signed assets.' >&2
+              exit 1
+            fi
+            if [[ $(printf '%s\n' "$GITHUB_REF_NAME" "$tag" | sort -V | head -n1) == "$GITHUB_REF_NAME" ]]; then
+              echo 'Refusing to move the stable feed backwards.' >&2
+              exit 1
+            fi
+            prior_tag=$tag
+          done <<< "$stable"
+
+          sources=()
+          if [[ -n "$prior_tag" ]]; then
+            old=${prior_tag#v}
+            published=$(gh release view "$prior_tag" --json assets --jq '.assets[].name')
+            for target in darwin/arm64 darwin/amd64 windows/amd64 linux/amd64; do
+              ext=zip
+              [[ "$target" != linux/* ]] || ext=tar.gz
+              asset="vivapad-$old-${target/\//-}.$ext"
+              if grep -Fxq -- "$asset" <<< "$published"; then
+                gh release download "$prior_tag" --pattern "$asset" --dir "$previous"
+                sources+=("$target=$old=$previous/$asset")
+              fi
+            done
+          fi
+          bash scripts/build-update-feed.sh "$current" "${GITHUB_REF_NAME#v}" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME" "${sources[@]}"
+          (cd "$current" && sha256sum --check SHA256SUMS)
+      - name: Publish immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" build/release/current/* --verify-tag --latest --generate-notes

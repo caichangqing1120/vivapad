@@ -50,7 +50,7 @@ func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 	if bounds.Width < 210 {
 		title = "Workspace"
 	}
-	smallLabel(canvas, title, gfx.Rect{X: 8, Y: bounds.Y + 5, Width: bounds.Width - 77, Height: 23}, palette.text, 11)
+	state.interfaceLabel(canvas, state.preferenceText(title), gfx.Rect{X: 8, Y: bounds.Y + 5, Width: bounds.Width - 77, Height: 23}, palette.text, 11)
 	for _, button := range []struct {
 		id    gfx.ID
 		icon  gfx.Icon
@@ -118,8 +118,7 @@ func (state *model) paintFolderPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 		}
 		canvas.DrawIcon(icon, gfx.Rect{X: 7 + indent, Y: item.Y + 4, Width: 14, Height: 14}, palette.muted)
 		textX := 26 + indent
-		label := canvas.FitLine(row.name, 11, gfx.WeightRegular, max(20, item.Width-textX-4))
-		smallLabel(canvas, label, gfx.Rect{X: textX, Y: item.Y, Width: max(20, item.Width-textX-4), Height: 22}, palette.text, 11)
+		state.interfaceLabel(canvas, row.name, gfx.Rect{X: textX, Y: item.Y, Width: max(20, item.Width-textX-4), Height: 22}, palette.text, 11)
 		roleLabel := "Open " + row.name
 		if row.directory {
 			roleLabel = "Toggle folder " + row.name

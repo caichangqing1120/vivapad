@@ -45,6 +45,13 @@ GOWORK=off go tool viva package --target linux --arch amd64 --format deb,tar.gz 
 
 原生三端 CI 通过后，在对应任务的 `vivapad-packages-*` artifact 中提供未签名桌面包。
 
+## 签名更新发布
+
+- `.github/workflows/release.yml` 仅处理稳定版 `vX.Y.Z` tag。先构建、测试和打包，再与上一已发布稳定版的同平台压缩包生成增量补丁；补丁超过全量包的 60% 就不发布。应用内只信任该版本编入的公开 Feed 地址和 Ed25519 公钥。普通本地构建不联网检查，启动检查默认关闭。
+- 首次发布前，在可信环境运行 `GOWORK=off go tool viva update-keygen`。把私钥设为仓库 secret `VIVA_UPDATE_KEY`，公钥设为仓库变量 `VIVAPAD_UPDATE_PUBLIC_KEY`。不要提交或打印私钥；换钥前要考虑已经安装的版本仍只信任旧钥。
+- macOS 公开发布需要 `APPLE_SIGNING_IDENTITY`、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER` 仓库变量，以及 `APPLE_CERTIFICATE`（base64 `.p12`）、`APPLE_CERTIFICATE_PASSWORD`、`APPLE_API_KEY_P8`（`.p8` 文本内容）secret。Windows 可配置 `WINDOWS_CERTIFICATE`（base64 `.pfx`）和 `WINDOWS_CERTIFICATE_PASSWORD`。没有这些 Windows 凭证时，Feed 仍要求 Ed25519 签名，但 Windows 可能显示 SmartScreen 提示。
+- 本地可运行 `bash scripts/build-update-feed.sh RELEASE_DIR 1.2.3 HTTPS_BASE_URL [OS/ARCH=OLD_VERSION=ARCHIVE ...]` 验证签名、补丁生成和 `SHA256SUMS`，不会上传或发布。Linux `.deb` 由系统包管理器更新；可写目录里的归档安装可在应用内更新。
+
 ## 本地私有文件红线
 
 严禁将 `docs/`、`specs/`、`plans/`、`screenshots/`、`captures/`、`plan*.md`、`spec*.md` 提交至 Git 或上传至 Issue/PR 附件。`tools/github/check-public-files.cjs` 会在提交前与 CI 中强制拦截。

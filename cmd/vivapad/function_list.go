@@ -221,9 +221,10 @@ func (state *model) paintLeftDockTabs(canvas *gfx.Canvas, bounds gfx.Rect) {
 				label = "Chars"
 			}
 		}
-		label = canvas.FitLine(label, 11, gfx.WeightRegular, item.Width-8)
-		canvas.LabelCenter(label, item, gfx.TextStyle{Size: 11, Color: palette.text})
-		canvas.HitWithOptions(tab.id, item, tab.label, gfx.HitOptions{Role: gfx.RoleTab, Selected: selected})
+		size := state.interfaceSize(11)
+		label = canvas.FitLine(state.preferenceText(label), size, gfx.WeightRegular, item.Width-8)
+		canvas.LabelCenter(label, item, gfx.TextStyle{Size: size, Color: palette.text})
+		canvas.HitWithOptions(tab.id, item, state.preferenceText(tab.label), gfx.HitOptions{Role: gfx.RoleTab, Selected: selected})
 		if canvas.Clicked(tab.id) {
 			state.activeLeftDock = tab.mode
 			state.functionFilterFocus = tab.mode == "functions"
@@ -236,7 +237,7 @@ func (state *model) paintFunctionPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 	canvas.Fill(bounds, palette.dock)
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
 	canvas.Fill(gfx.Rect{X: 0, Y: bounds.Y + 32, Width: bounds.Width, Height: 1}, palette.border)
-	smallLabel(canvas, "Function List", gfx.Rect{X: 9, Y: bounds.Y + 3, Width: bounds.Width - 39, Height: 27}, palette.text, 11)
+	state.interfaceLabel(canvas, state.preferenceText("Function List"), gfx.Rect{X: 9, Y: bounds.Y + 3, Width: bounds.Width - 39, Height: 27}, palette.text, 11)
 	closeBounds := gfx.Rect{X: bounds.Width - 26, Y: bounds.Y + 7, Width: 18, Height: 18}
 	canvas.DrawIcon(closeIcon, closeBounds.Inset(gfx.All(3)), palette.muted)
 	if hitButton(canvas, functionCloseID, closeBounds, "Close Function List") {
@@ -302,8 +303,7 @@ func (state *model) paintFunctionPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 		if position == state.functionSelected || canvas.Hovered() == id {
 			canvas.Fill(item, palette.hover)
 		}
-		label := canvas.FitLine(symbol.Name, 11, gfx.WeightRegular, item.Width-17)
-		smallLabel(canvas, label, gfx.Rect{X: item.X + 10, Y: item.Y, Width: item.Width - 17, Height: item.Height}, palette.text, 11)
+		state.interfaceLabel(canvas, symbol.Name, gfx.Rect{X: item.X + 10, Y: item.Y, Width: item.Width - 17, Height: item.Height}, palette.text, 11)
 		canvas.HitWithOptions(id, item, symbol.Name, gfx.HitOptions{Role: gfx.RoleButton, Hint: symbol.Kind + " on line " + strconv.Itoa(symbol.Line)})
 		if canvas.Clicked(id) {
 			selected = position

@@ -79,7 +79,7 @@ func (state *model) paintDocumentList(canvas *gfx.Canvas, bounds gfx.Rect) {
 	canvas.Fill(bounds, palette.dock)
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
 	canvas.Fill(gfx.Rect{Y: bounds.Y + 33, Width: bounds.Width, Height: 1}, palette.border)
-	smallLabel(canvas, "Document List", gfx.Rect{X: 9, Y: bounds.Y + 3, Width: bounds.Width - 39, Height: 27}, palette.text, 11)
+	state.interfaceLabel(canvas, state.preferenceText("Document List"), gfx.Rect{X: 9, Y: bounds.Y + 3, Width: bounds.Width - 39, Height: 27}, palette.text, 11)
 	closeBounds := gfx.Rect{X: bounds.Width - 26, Y: bounds.Y + 7, Width: 18, Height: 18}
 	canvas.DrawIcon(closeIcon, closeBounds.Inset(gfx.All(3)), palette.muted)
 	if hitButton(canvas, documentListCloseID, closeBounds, "Close Document List") {
@@ -139,7 +139,7 @@ func (state *model) paintDocumentList(canvas *gfx.Canvas, bounds gfx.Rect) {
 		item := gfx.Rect{X: 3, Y: rowArea.Y + float32(index-state.documentListOffset)*23, Width: rowArea.Width - 5, Height: min(23, rowArea.Y+rowArea.Height-(rowArea.Y+float32(index-state.documentListOffset)*23))}
 		if row.heading != "" {
 			canvas.Fill(item, palette.tabs)
-			smallLabel(canvas, row.heading, gfx.Rect{X: item.X + 7, Y: item.Y, Width: item.Width - 14, Height: item.Height}, palette.muted, 10)
+			state.interfaceLabel(canvas, row.heading, gfx.Rect{X: item.X + 7, Y: item.Y, Width: item.Width - 14, Height: item.Height}, palette.muted, 10)
 			continue
 		}
 		rowIndex := state.documentListRowIndex(row)
@@ -166,8 +166,7 @@ func (state *model) paintDocumentList(canvas *gfx.Canvas, bounds gfx.Rect) {
 		if state.isPinned(row.doc) {
 			nameX += 16
 		}
-		name = canvas.FitLine(name, 11, gfx.WeightRegular, max(12, item.X+item.Width-nameX-27))
-		smallLabel(canvas, name, gfx.Rect{X: nameX, Y: item.Y, Width: max(12, item.X+item.Width-nameX-27), Height: item.Height}, palette.text, 11)
+		state.interfaceLabel(canvas, name, gfx.Rect{X: nameX, Y: item.Y, Width: max(12, item.X+item.Width-nameX-27), Height: item.Height}, palette.text, 11)
 		hint := []string{row.doc.Path}
 		if row.doc.Dirty() {
 			hint = append(hint, "Modified")

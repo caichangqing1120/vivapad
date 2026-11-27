@@ -36,7 +36,7 @@ var menuCommands = [...][]string{
 	{"Run..."},
 	{},
 	{"Sort By", "Windows...", "Recent Window"},
-	{aboutHelpCommand, debugHelpCommand, projectPageHelpCommand, userGuideHelpCommand, commandLineHelpCommand},
+	{aboutHelpCommand, debugHelpCommand, projectPageHelpCommand, userGuideHelpCommand, commandLineHelpCommand, checkUpdatesCommand},
 }
 
 func fileMenuCount() int {
@@ -304,8 +304,9 @@ func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 	canvas.Fill(gfx.Rect{Width: width, Height: menuHeight}, palette.menuBar)
 	canvas.Fill(gfx.Rect{Y: menuHeight - 1, Width: width, Height: 1}, palette.border)
 	allWidth := float32(8)
+	fontSize := state.interfaceSize(11)
 	for _, label := range menuLabels {
-		allWidth += canvas.TextWidth(label, 11) + 19
+		allWidth += canvas.TextWidth(state.preferenceText(label), fontSize) + 19
 	}
 	reserve := float32(0)
 	if allWidth > width-4 {
@@ -314,7 +315,8 @@ func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 	x := float32(8)
 	state.menuFirstHidden = len(menuLabels)
 	for index, label := range menuLabels {
-		itemWidth := canvas.TextWidth(label, 11) + 19
+		label = state.preferenceText(label)
+		itemWidth := canvas.TextWidth(label, fontSize) + 19
 		if x+itemWidth > width-reserve-4 {
 			state.menuFirstHidden = index
 			break
@@ -328,7 +330,7 @@ func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 		if !enabled {
 			color = palette.muted
 		}
-		smallLabel(canvas, label, gfx.Rect{X: x + 9, Y: 1, Width: itemWidth - 11, Height: 24}, color, 11)
+		smallLabel(canvas, label, gfx.Rect{X: x + 9, Y: 1, Width: itemWidth - 11, Height: 24}, color, fontSize)
 		if enabled {
 			canvas.HitWithOptions(menuScope.At(index), item, label, gfx.HitOptions{Role: gfx.RoleButton})
 			if canvas.Clicked(menuScope.At(index)) {
@@ -516,15 +518,15 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 		if index == state.space.Active {
 			canvas.Fill(gfx.Rect{X: x + 1, Y: y + 1, Width: 155, Height: 2}, accent)
 		}
-		name := doc.Name
+		label := state.numberedTabName(doc.Name, index)
+		name := label
 		if doc.Dirty() {
 			name = "* " + name
 		}
-		name = canvas.FitLine(name, 11, gfx.WeightRegular, 103)
-		smallLabel(canvas, name, gfx.Rect{X: x + 10, Y: y + 2, Width: 103, Height: 25}, palette.text, 11)
+		state.interfaceLabel(canvas, name, gfx.Rect{X: x + 10, Y: y + 2, Width: 103, Height: 25}, palette.text, 11)
 		hitIndex := state.tabHitIndex(doc)
 		id, pinID, closeID := tabScope.At(hitIndex), tabPinScope.At(hitIndex), tabCloseScope.At(hitIndex)
-		canvas.HitWithOptions(id, rect, doc.Name, gfx.HitOptions{Role: gfx.RoleTab, Selected: index == state.space.Active})
+		canvas.HitWithOptions(id, rect, label, gfx.HitOptions{Role: gfx.RoleTab, Selected: index == state.space.Active})
 		if canvas.Clicked(id) {
 			selected = index
 		}
@@ -1467,11 +1469,11 @@ func (state *model) paintStatus(canvas *gfx.Canvas, width, y float32) {
 		label string
 		width float32
 	}{
-		{gfx.ID{}, fmt.Sprintf("length: %d", doc.Editor.RuneCount()), 91},
-		{gfx.ID{}, fmt.Sprintf("lines: %d", doc.LineCount()), 78},
-		{statusGoToID, fmt.Sprintf("Ln: %d  Col: %d", line, column), 112},
+		{gfx.ID{}, fmt.Sprintf(state.tr("length: %d", "长度：%d"), doc.Editor.RuneCount()), 91},
+		{gfx.ID{}, fmt.Sprintf(state.tr("lines: %d", "行数：%d"), doc.LineCount()), 78},
+		{statusGoToID, fmt.Sprintf(state.tr("Ln: %d  Col: %d", "行：%d 列：%d"), line, column), 112},
 		{statusEncodingID, encoding, 85}, {statusEOLID, doc.NewlineLabel(), 112},
-		{statusLanguageID, state.languageLabel(doc), 105}, {gfx.ID{}, mode, modeWidth},
+		{statusLanguageID, state.languageLabel(doc), 105}, {gfx.ID{}, state.statusMessage(mode), modeWidth},
 	}
 	shown := cells[:]
 	if large || width < 850 {
@@ -1485,8 +1487,7 @@ func (state *model) paintStatus(canvas *gfx.Canvas, width, y float32) {
 		total += cell.width
 	}
 	messageWidth := max(0, width-total-20)
-	message = canvas.FitLine(message, 11, gfx.WeightRegular, messageWidth)
-	smallLabel(canvas, message, gfx.Rect{X: 10, Y: y + 1, Width: messageWidth, Height: 21}, palette.muted, 11)
+	state.interfaceLabel(canvas, state.statusMessage(message), gfx.Rect{X: 10, Y: y + 1, Width: messageWidth, Height: 21}, palette.muted, 11)
 	x := width - total
 	for _, cell := range shown {
 		if cell.width > 0 {
@@ -1689,7 +1690,9 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 		if rowHeight < 18 {
 			fontSize = 11
 		}
-		label := canvas.FitLine(command, fontSize, gfx.WeightRegular, item.Width-30)
+		fontSize = state.interfaceSize(fontSize)
+		display := state.preferenceText(command)
+		label := canvas.FitLine(display, fontSize, gfx.WeightRegular, item.Width-30)
 		disabled := state.menuOpen == 11 && command == "Recent Window" ||
 			command == postItCommand && (state.requestDecoration == nil || state.requestAlwaysOnTop == nil || state.postIt.pending)
 		color := palette.text
@@ -1697,7 +1700,7 @@ func (state *model) paintOpenMenu(canvas *gfx.Canvas, size gfx.Size) {
 			color = palette.muted
 		}
 		smallLabel(canvas, label, gfx.Rect{X: item.X + 27, Y: item.Y, Width: item.Width - 30, Height: item.Height}, color, fontSize)
-		canvas.HitWithOptions(id, item, command, gfx.HitOptions{Role: gfx.RoleMenuItem, Checked: checked, Hint: command, Disabled: disabled})
+		canvas.HitWithOptions(id, item, display, gfx.HitOptions{Role: gfx.RoleMenuItem, Checked: checked, Hint: display, Disabled: disabled})
 		if !disabled && canvas.Clicked(id) {
 			selected = command
 		}
@@ -1949,14 +1952,14 @@ func (state *model) paintCloseDialog(canvas *gfx.Canvas, size gfx.Size) {
 	width := float32(388)
 	x, y := (size.Width-width)/2, (size.Height-158)/2
 	canvas.RoundedBorder(gfx.Rect{X: x, Y: y, Width: width, Height: 158}, 4, 1, palette.border, palette.popup)
-	smallLabel(canvas, "Save changes to "+state.space.Documents[state.pendingClose].Name+"?", gfx.Rect{X: x + 20, Y: y + 18, Width: width - 40, Height: 30}, palette.text, 15)
-	smallLabel(canvas, "Your changes will be lost if you discard them.", gfx.Rect{X: x + 20, Y: y + 56, Width: width - 40, Height: 25}, palette.muted, 12)
+	state.interfaceLabel(canvas, fmt.Sprintf(state.tr("Save changes to %s?", "保存对 %s 的修改？"), state.space.Documents[state.pendingClose].Name), gfx.Rect{X: x + 20, Y: y + 18, Width: width - 40, Height: 30}, palette.text, 15)
+	state.interfaceLabel(canvas, state.tr("Your changes will be lost if you discard them.", "放弃后，未保存的修改将丢失。"), gfx.Rect{X: x + 20, Y: y + 56, Width: width - 40, Height: 25}, palette.muted, 12)
 	buttons := []struct {
 		id    gfx.ID
 		label string
 		x     float32
 	}{
-		{saveCloseID, "Save", x + 75}, {discardID, "Discard", x + 159}, {cancelCloseID, "Cancel", x + 270},
+		{saveCloseID, state.tr("Save", "保存"), x + 75}, {discardID, state.tr("Discard", "放弃"), x + 159}, {cancelCloseID, state.tr("Cancel", "取消"), x + 270},
 	}
 	for _, button := range buttons {
 		bounds := gfx.Rect{X: button.x, Y: y + 105, Width: 80, Height: 30}

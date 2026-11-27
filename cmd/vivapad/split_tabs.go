@@ -95,15 +95,15 @@ func (state *model) paintPaneTabs(canvas *gfx.Canvas, pane int, bounds gfx.Rect)
 		if doc == selected && pane == state.activePane {
 			canvas.Fill(gfx.Rect{X: x + 1, Y: bounds.Y + 1, Width: tabWidth - 2, Height: 2}, accent)
 		}
-		name := doc.Name
+		label := state.numberedTabName(doc.Name, local)
+		name := label
 		if doc.Dirty() {
 			name = "* " + name
 		}
-		name = canvas.FitLine(name, 11, gfx.WeightRegular, tabWidth-56)
-		smallLabel(canvas, name, gfx.Rect{X: x + 10, Y: bounds.Y + 2, Width: tabWidth - 56, Height: 24}, palette.text, 11)
+		state.interfaceLabel(canvas, name, gfx.Rect{X: x + 10, Y: bounds.Y + 2, Width: tabWidth - 56, Height: 24}, palette.text, 11)
 		hitIndex := state.tabHitIndex(doc)
 		id, pinID, closeID := tabScope.At(hitIndex), pinScope.At(hitIndex), closeScope.At(hitIndex)
-		canvas.HitWithOptions(id, rect, doc.Name, gfx.HitOptions{Role: gfx.RoleTab, Selected: doc == selected})
+		canvas.HitWithOptions(id, rect, label, gfx.HitOptions{Role: gfx.RoleTab, Selected: doc == selected})
 		if canvas.Clicked(id) {
 			chosen = global
 		}

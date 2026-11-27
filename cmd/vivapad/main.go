@@ -39,6 +39,8 @@ func main() {
 		log.Printf("session storage unavailable: %v", err)
 	}
 	state := newStartupModelMode(paths, sessionPath, independent)
+	state.systemLanguages = app.PreferredLanguages
+	state.resolveInterfaceLanguage()
 	config := newNativeConfig(state)
 	if err := app.RunApplication(func(application *app.Application) error {
 		window, err := application.OpenWindow(config, &canvas)
@@ -59,6 +61,9 @@ func main() {
 			return printing.Execute(job, float64(state.paneFontSize(state.activePane)), state.tabWidth, variables, state.syntax.Highlight)
 		}
 		application.OnOpenFile(state.queueSystemDocument)
+		if state.autoCheckUpdates && !independent {
+			state.startUpdateAtLaunch()
+		}
 		return nil
 	}); err != nil {
 		log.Fatal(err)

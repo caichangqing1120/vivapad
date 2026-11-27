@@ -33,6 +33,25 @@ func TestRevealUsesPlatformFileManagerWithoutShellInterpolation(t *testing.T) {
 	}
 }
 
+func TestOpenFolderUsesPlatformFileManager(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config & preferences")
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for goos, want := range map[string][]string{
+		"darwin": {"open", "-a", "Finder", path}, "windows": {"explorer.exe", path}, "linux": {"xdg-open", path},
+	} {
+		var got []string
+		err := openFolder(goos, path, func(program string, args ...string) error {
+			got = append([]string{program}, args...)
+			return nil
+		})
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s open = %v, %v; want %v", goos, got, err, want)
+		}
+	}
+}
+
 func TestRevealMissingFileOpensExistingParentAndRejectsUnsafeTargets(t *testing.T) {
 	root := t.TempDir()
 	missing := filepath.Join(root, "deleted.txt")

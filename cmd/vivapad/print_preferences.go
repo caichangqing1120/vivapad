@@ -32,7 +32,7 @@ func (state *model) openPrintPreferenceFields() {
 }
 
 func (state *model) printPreferenceField(id gfx.ID) bool {
-	if state.preferencesPage != 3 {
+	if state.preferencesPage != preferencesPrintBandsPage {
 		return false
 	}
 	for index := range state.printFields {
@@ -131,8 +131,8 @@ func (state *model) insertPrintVariable() {
 
 func (state *model) paintPrintPreferences(canvas *gfx.Canvas, x, y, width float32) {
 	palette := state.palette()
-	smallLabel(canvas, "Print", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
-	smallLabel(canvas, "Color options", gfx.Rect{X: x, Y: y + 89, Width: width, Height: 18}, palette.muted, 11)
+	state.preferenceLabel(canvas, "Print", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
+	state.preferenceLabel(canvas, "Color options", gfx.Rect{X: x, Y: y + 89, Width: width, Height: 18}, palette.muted, 11)
 	for index, option := range []struct {
 		label string
 		mode  printing.ColorMode
@@ -153,8 +153,9 @@ func (state *model) paintPrintPreferences(canvas *gfx.Canvas, x, y, width float3
 		if state.printSettings.ColorMode == option.mode {
 			color = palette.accent
 		}
-		canvas.LabelCenter(option.label, bounds, gfx.TextStyle{Size: 11, Color: color})
-		canvas.HitWithOptions(id, bounds, option.label, gfx.HitOptions{Role: gfx.RoleRadio, Checked: state.printSettings.ColorMode == option.mode})
+		label := state.preferenceText(option.label)
+		canvas.LabelCenter(label, bounds, gfx.TextStyle{Size: state.interfaceSize(11), Color: color})
+		canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{Role: gfx.RoleRadio, Checked: state.printSettings.ColorMode == option.mode})
 		if canvas.Clicked(id) {
 			state.printSettings.ColorMode = option.mode
 			state.savePreferences()
@@ -162,7 +163,7 @@ func (state *model) paintPrintPreferences(canvas *gfx.Canvas, x, y, width float3
 	}
 	state.preferenceCheckbox(canvas, printLineNumbersID, gfx.Rect{X: x, Y: y + 169, Width: width / 2, Height: 24}, "Print line numbers", state.printSettings.LineNumbers, "Print Line Numbers")
 	state.preferenceCheckbox(canvas, printFormFeedID, gfx.Rect{X: x + width/2, Y: y + 169, Width: width / 2, Height: 24}, "Form feed as page break", state.printSettings.FormFeedPageBreak, "Print Form Feed")
-	smallLabel(canvas, "Margins (mm)", gfx.Rect{X: x, Y: y + 201, Width: width, Height: 21}, palette.muted, 11)
+	state.preferenceLabel(canvas, "Margins (mm)", gfx.Rect{X: x, Y: y + 201, Width: width, Height: 21}, palette.muted, 11)
 	values := []struct {
 		label string
 		value int
@@ -179,7 +180,7 @@ func (state *model) paintPrintPreferences(canvas *gfx.Canvas, x, y, width float3
 
 func (state *model) paintPrintMarginStepper(canvas *gfx.Canvas, bounds gfx.Rect, index int, label string, value int) {
 	palette := state.palette()
-	smallLabel(canvas, label, gfx.Rect{X: bounds.X, Y: bounds.Y, Width: 52, Height: bounds.Height}, palette.text, 11)
+	state.preferenceLabel(canvas, label, gfx.Rect{X: bounds.X, Y: bounds.Y, Width: 52, Height: bounds.Height}, palette.text, 11)
 	for _, control := range []struct {
 		id    gfx.ID
 		x     float32
@@ -191,21 +192,21 @@ func (state *model) paintPrintMarginStepper(canvas *gfx.Canvas, bounds gfx.Rect,
 	} {
 		button := gfx.Rect{X: control.x, Y: bounds.Y, Width: 25, Height: bounds.Height}
 		canvas.Border(button, 1, palette.border, palette.toolbar)
-		canvas.LabelCenter(control.glyph, button, gfx.TextStyle{Size: 13, Color: palette.text})
+		canvas.LabelCenter(control.glyph, button, gfx.TextStyle{Size: state.interfaceSize(13), Color: palette.text})
 		canvas.HitWithOptions(control.id, button, fmt.Sprintf("%s %s margin", map[bool]string{true: "Increase", false: "Decrease"}[control.delta > 0], label), gfx.HitOptions{Role: gfx.RoleButton})
 		if canvas.Clicked(control.id) {
 			state.adjustPrintMargin(index, control.delta)
 		}
 	}
 	valueBounds := gfx.Rect{X: bounds.X + 82, Y: bounds.Y, Width: bounds.Width - 112, Height: bounds.Height}
-	canvas.LabelCenter(fmt.Sprint(value), valueBounds, gfx.TextStyle{Size: 11, Color: palette.text})
+	canvas.LabelCenter(fmt.Sprint(value), valueBounds, gfx.TextStyle{Size: state.interfaceSize(11), Color: palette.text})
 }
 
 func (state *model) paintPrintBandsPreferences(canvas *gfx.Canvas, x, y, width float32) {
 	palette := state.palette()
-	smallLabel(canvas, "Header and Footer", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
+	state.preferenceLabel(canvas, "Header and Footer", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
 	theme := state.uiTheme()
-	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 27, 11, 2
+	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 27, state.interfaceSize(11), 2
 	theme.Border, theme.Ring = palette.border, palette.accent
 	for index := range state.printFields {
 		column, section := index%3, index/3
@@ -217,13 +218,13 @@ func (state *model) paintPrintBandsPreferences(canvas *gfx.Canvas, x, y, width f
 			if section == 1 {
 				sectionLabel = "Footer"
 			}
-			smallLabel(canvas, sectionLabel, gfx.Rect{X: x, Y: y + 90 + float32(section)*71, Width: width, Height: 19}, palette.muted, 11)
+			state.preferenceLabel(canvas, sectionLabel, gfx.Rect{X: x, Y: y + 90 + float32(section)*71, Width: width, Height: 19}, palette.muted, 11)
 		}
-		smallLabel(canvas, label, gfx.Rect{X: position, Y: y + 111 + float32(section)*71, Width: columnWidth - 6, Height: 17}, palette.text, 10)
+		state.preferenceLabel(canvas, label, gfx.Rect{X: position, Y: y + 111 + float32(section)*71, Width: columnWidth - 6, Height: 17}, palette.text, 10)
 		id := printBandFieldScope.At(index)
-		value := canvas.FitLine(state.printFields[index].String(), 11, gfx.WeightRegular, columnWidth-36)
+		value := canvas.FitLine(state.printFields[index].String(), state.interfaceSize(11), gfx.WeightRegular, columnWidth-36)
 		components.PaintInput(canvas, theme, gfx.Rect{X: position, Y: y + 130 + float32(section)*71, Width: columnWidth - 7, Height: 27}, components.InputSnapshot{
-			ID: id, Label: sectionLabelForField(index) + " " + label, Value: value, PlatformEditing: canvas.Focused() == id,
+			ID: id, Label: state.preferenceText(sectionLabelForField(index)) + " " + state.preferenceText(label), Value: value, PlatformEditing: canvas.Focused() == id,
 		})
 		if canvas.Focused() == id || canvas.Clicked(id) {
 			state.printFieldSelected = index
@@ -231,7 +232,7 @@ func (state *model) paintPrintBandsPreferences(canvas *gfx.Canvas, x, y, width f
 	}
 	variableBounds := gfx.Rect{X: x, Y: y + 239, Width: width - 89, Height: 27}
 	canvas.Border(variableBounds, 1, palette.border, palette.popup)
-	smallLabel(canvas, "Variable: "+printVariableOptions[state.printVariableIndex].label, variableBounds.Inset(gfx.All(8)), palette.text, 11)
+	state.interfaceLabel(canvas, state.tr("Variable: ", "变量：")+printVariableOptions[state.printVariableIndex].label, variableBounds.Inset(gfx.Insets{Left: 8, Right: 25}), palette.text, 11)
 	canvas.DrawIcon(downIcon, gfx.Rect{X: variableBounds.X + variableBounds.Width - 22, Y: variableBounds.Y + 5, Width: 16, Height: 16}, palette.muted)
 	canvas.HitWithOptions(printVariableButtonID, variableBounds, "Choose print variable", gfx.HitOptions{Role: gfx.RoleButton})
 	if canvas.Clicked(printVariableButtonID) {
@@ -239,7 +240,7 @@ func (state *model) paintPrintBandsPreferences(canvas *gfx.Canvas, x, y, width f
 	}
 	insertBounds := gfx.Rect{X: x + width - 82, Y: y + 239, Width: 82, Height: 27}
 	canvas.Border(insertBounds, 1, palette.border, palette.toolbar)
-	canvas.LabelCenter("Insert", insertBounds, gfx.TextStyle{Size: 11, Color: palette.text})
+	canvas.LabelCenter(state.preferenceText("Insert"), insertBounds, gfx.TextStyle{Size: state.interfaceSize(11), Color: palette.text})
 	if hitButton(canvas, printInsertVariableID, insertBounds, "Insert variable") {
 		state.insertPrintVariable()
 	}
@@ -266,7 +267,7 @@ func (state *model) paintPrintVariableMenu(canvas *gfx.Canvas, x, y float32) {
 		if canvas.Hovered() == id || state.printVariableIndex == index {
 			canvas.Fill(bounds, palette.hover)
 		}
-		smallLabel(canvas, item.label, bounds.Inset(gfx.All(7)), palette.text, 11)
+		state.interfaceLabel(canvas, item.label, bounds.Inset(gfx.Insets{Left: 7, Right: 7}), palette.text, 11)
 		canvas.HitWithOptions(id, bounds, item.label, gfx.HitOptions{Role: gfx.RoleMenuItem})
 		if canvas.Clicked(id) {
 			state.printVariableIndex, state.printVariableOpen = index, false
@@ -292,15 +293,15 @@ func (state *model) adjustPrintFont(index int, delta int) {
 
 func (state *model) paintPrintFontPreferences(canvas *gfx.Canvas, x, y, width float32) {
 	palette := state.palette()
-	smallLabel(canvas, "Print Fonts", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
+	state.preferenceLabel(canvas, "Print Fonts", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
 	for index, font := range []printing.BandFont{state.printSettings.HeaderFont, state.printSettings.FooterFont} {
 		name := "Header"
 		if index == 1 {
 			name = "Footer"
 		}
 		baseY := y + 101 + float32(index)*83
-		smallLabel(canvas, name, gfx.Rect{X: x, Y: baseY, Width: width, Height: 21}, palette.muted, 11)
-		smallLabel(canvas, "Size", gfx.Rect{X: x, Y: baseY + 29, Width: 48, Height: 27}, palette.text, 11)
+		state.preferenceLabel(canvas, name, gfx.Rect{X: x, Y: baseY, Width: width, Height: 21}, palette.muted, 11)
+		state.preferenceLabel(canvas, "Size", gfx.Rect{X: x, Y: baseY + 29, Width: 48, Height: 27}, palette.text, 11)
 		for _, control := range []struct {
 			id    gfx.ID
 			x     float32
@@ -312,7 +313,7 @@ func (state *model) paintPrintFontPreferences(canvas *gfx.Canvas, x, y, width fl
 		} {
 			bounds := gfx.Rect{X: control.x, Y: baseY + 29, Width: 27, Height: 27}
 			canvas.Border(bounds, 1, palette.border, palette.toolbar)
-			canvas.LabelCenter(control.glyph, bounds, gfx.TextStyle{Size: 13, Color: palette.text})
+			canvas.LabelCenter(control.glyph, bounds, gfx.TextStyle{Size: state.interfaceSize(13), Color: palette.text})
 			label := "Increase " + name + " font size"
 			if control.delta < 0 {
 				label = "Decrease " + name + " font size"
@@ -322,7 +323,7 @@ func (state *model) paintPrintFontPreferences(canvas *gfx.Canvas, x, y, width fl
 				state.adjustPrintFont(index, control.delta)
 			}
 		}
-		canvas.LabelCenter(fmt.Sprintf("%d pt", font.Points()), gfx.Rect{X: x + 80, Y: baseY + 29, Width: 58, Height: 27}, gfx.TextStyle{Size: 11, Color: palette.text})
+		canvas.LabelCenter(fmt.Sprintf("%d pt", font.Points()), gfx.Rect{X: x + 80, Y: baseY + 29, Width: 58, Height: 27}, gfx.TextStyle{Size: state.interfaceSize(11), Color: palette.text})
 		for _, style := range []struct {
 			id      gfx.ID
 			x       float32
@@ -343,7 +344,7 @@ func (state *model) paintPrintFontPreferences(canvas *gfx.Canvas, x, y, width fl
 			if style.checked {
 				color = palette.accent
 			}
-			canvas.LabelCenter(style.glyph, bounds, gfx.TextStyle{Size: 12, Color: color})
+			canvas.LabelCenter(style.glyph, bounds, gfx.TextStyle{Size: state.interfaceSize(12), Color: color})
 			canvas.HitWithOptions(style.id, bounds, name+" "+style.label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: style.checked})
 			if canvas.Clicked(style.id) {
 				settings := state.printSettings

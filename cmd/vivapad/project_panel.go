@@ -76,7 +76,7 @@ func (state *model) paintProjectPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 	palette := state.palette()
 	canvas.Fill(bounds, palette.dock)
 	canvas.Fill(gfx.Rect{X: bounds.Width - 1, Y: bounds.Y, Width: 1, Height: bounds.Height}, palette.border)
-	smallLabel(canvas, "Projects", gfx.Rect{X: 9, Y: bounds.Y + 3, Width: bounds.Width - 40, Height: 26}, palette.text, 12)
+	state.interfaceLabel(canvas, state.preferenceText("Projects"), gfx.Rect{X: 9, Y: bounds.Y + 3, Width: bounds.Width - 40, Height: 26}, palette.text, 12)
 	closeBounds := gfx.Rect{X: bounds.Width - 25, Y: bounds.Y + 7, Width: 18, Height: 18}
 	canvas.DrawIcon(closeIcon, closeBounds.Inset(gfx.All(3)), palette.muted)
 	if hitButton(canvas, projectsCloseID, closeBounds, "Close Projects") {
@@ -126,7 +126,7 @@ func (state *model) paintProjectPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 		rows += len(panel.groups[panel.selected].Files)
 	}
 	if rows == 0 {
-		smallLabel(canvas, "No projects", gfx.Rect{X: 9, Y: list.Y, Width: list.Width - 6, Height: rowHeight}, palette.muted, 11)
+		state.interfaceLabel(canvas, state.preferenceText("No projects"), gfx.Rect{X: 9, Y: list.Y, Width: list.Width - 6, Height: rowHeight}, palette.muted, 11)
 		return
 	}
 	visible := max(1, int(list.Height/rowHeight))
@@ -166,7 +166,7 @@ func (state *model) paintProjectPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 				icon = downIcon
 			}
 			canvas.DrawIcon(icon, gfx.Rect{X: item.X + 5, Y: item.Y + 6, Width: 12, Height: 12}, palette.muted)
-			smallLabel(canvas, canvas.FitLine(group.Name, 11, gfx.WeightRegular, item.Width-27), gfx.Rect{X: item.X + 22, Y: item.Y, Width: item.Width - 26, Height: item.Height}, palette.text, 11)
+			state.interfaceLabel(canvas, group.Name, gfx.Rect{X: item.X + 22, Y: item.Y, Width: item.Width - 26, Height: item.Height}, palette.text, 11)
 			canvas.HitWithOptions(id, item, group.Name, gfx.HitOptions{Role: gfx.RoleButton, Selected: selected, Expanded: selected})
 			if canvas.Clicked(id) {
 				panel.selected = groupIndex
@@ -184,7 +184,7 @@ func (state *model) paintProjectPanel(canvas *gfx.Canvas, bounds gfx.Rect) {
 		if canvas.Hovered() == id || canvas.FocusVisible() == id {
 			canvas.Fill(item, palette.hover)
 		}
-		smallLabel(canvas, canvas.FitLine(name, 11, gfx.WeightRegular, item.Width-6), item.Inset(gfx.Insets{Left: 4}), palette.text, 11)
+		state.interfaceLabel(canvas, name, item.Inset(gfx.Insets{Left: 4, Right: 3}), palette.text, 11)
 		canvas.HitWithOptions(id, item, "Open "+name, gfx.HitOptions{Role: gfx.RoleButton, Hint: path})
 		if canvas.Clicked(id) {
 			if state.openDocumentPaths([]string{path}) {

@@ -736,6 +736,15 @@ type model struct {
 	printSettings                 printing.Settings
 	preferencesOpen               bool
 	preferencesPage               int
+	language                      string
+	uiTextSize                    string
+	showTabNumbers                bool
+	autoCheckUpdates              bool
+	chineseUI                     bool
+	systemLanguages               func() []string
+	resetPreferencesPending       bool
+	preferencesNotice             string
+	updates                       updateUI
 	printFields                   [6]*text.Editor
 	printFieldSelected            int
 	printVariableIndex            int
@@ -891,6 +900,7 @@ func newModel() *model {
 		tabWidth: 4, indentMode: "language", autoIndent: true, autoClose: true, npcMode: "abbreviation",
 		printSettings:  printing.DefaultSettings(),
 		dateTimeFormat: datetime.DefaultFormat, clock: time.Now,
+		language: "system", uiTextSize: "medium",
 		lastRecovery: recovery.State{Active: -1},
 	}
 	state.shortcuts, _ = shortcuts.Load("", state.shortcutCatalog())
@@ -1076,6 +1086,9 @@ func defaultSessionPath() (string, error) {
 }
 
 func (state *model) applyPreferences(stored preferences.State) {
+	state.language, state.uiTextSize = stored.Language, stored.UITextSize
+	state.showTabNumbers, state.autoCheckUpdates = stored.ShowTabNumbers, stored.AutoCheckUpdates
+	state.resolveInterfaceLanguage()
 	state.themeChoice = stored.Theme.Normalized()
 	state.styles = stored.Styles
 	state.fontSize, state.subFontSize, state.zoomSync, state.tabWidth = stored.FontSize, stored.SubFontSize, stored.ZoomSync, stored.TabWidth
@@ -1099,6 +1112,7 @@ func (state *model) savePreferences() error {
 		return errors.New("settings storage unavailable")
 	}
 	stored := preferences.State{
+		Language: state.language, UITextSize: state.uiTextSize, ShowTabNumbers: state.showTabNumbers, AutoCheckUpdates: state.autoCheckUpdates,
 		Styles:   state.styles,
 		Theme:    state.themeChoice,
 		FontSize: state.fontSize, SubFontSize: state.subFontSize, ZoomSync: state.zoomSync, TabWidth: state.tabWidth,
@@ -1722,7 +1736,7 @@ func newConfig(state *model) app.Config {
 		}
 		if state.preferencesOpen {
 			if event.Key == gfx.KeyEscape {
-				state.closePreferences()
+				state.escapePreferences()
 				return gfx.EventResult{Handled: true, Repaint: true}
 			}
 			if state.printPreferenceField(event.Target) {
@@ -2260,15 +2274,7 @@ func newConfig(state *model) app.Config {
 		for doc, pane := range state.paneOwner {
 			state.closingOwners[doc] = pane
 		}
-		for index, doc := range state.space.Documents {
-			if doc.Dirty() {
-				state.pendingClose, state.allowClose = index, allow
-				state.invalidator.Invalidate()
-				return
-			}
-		}
-		state.persistSession()
-		allow()
+		state.continueWindowClose(allow)
 	}
 	config.OnWake = func() {
 		state.consumeFileSearch()
@@ -2277,8 +2283,10 @@ func newConfig(state *model) app.Config {
 		state.consumeMonitorChanges()
 		state.consumeExternalChanges()
 		state.observeRecoveryError()
+		state.consumeUpdate()
 	}
 	config.OnClosed = func() {
+		state.closeUpdates()
 		state.unwatchAppearance()
 		state.nativeThemeChoice = ""
 		state.cancelFileSearch()
@@ -2687,6 +2695,13 @@ func (state *model) finishClose(discard bool) {
 		return
 	}
 	closed := state.space.Documents[index]
+	if state.updates.restarting && state.allowClose != nil {
+		state.updates.approved[closed] = true
+		allow := state.allowClose
+		state.pendingClose, state.allowClose = -1, nil
+		state.continueWindowClose(allow)
+		return
+	}
 	if err := state.space.Close(index, true); err != nil {
 		state.notice = err.Error()
 		return
@@ -2704,14 +2719,7 @@ func (state *model) finishClose(discard bool) {
 	if state.allowClose != nil {
 		allow := state.allowClose
 		state.allowClose = nil
-		for next, doc := range state.space.Documents {
-			if doc.Dirty() {
-				state.pendingClose, state.allowClose = next, allow
-				return
-			}
-		}
-		state.persistSession()
-		allow()
+		state.continueWindowClose(allow)
 	} else if state.batchActive {
 		state.batchClosed++
 		state.continueBatchClose()
@@ -2719,17 +2727,43 @@ func (state *model) finishClose(discard bool) {
 }
 
 func (state *model) cancelClose() {
+	if state.updates.restarting {
+		state.updates.restarting, state.updates.approved = false, nil
+		state.clearCloseSnapshot()
+		state.openUpdatePreferences()
+		return
+	}
 	if state.batchActive {
 		state.notice = "Batch close canceled after " + strconv.Itoa(state.batchClosed) + " tab(s)"
 		state.batchActive, state.batchQueue, state.batchKeep, state.batchClosed = false, nil, nil, 0
 	}
+	state.clearCloseSnapshot()
+	state.focusViewRequested, state.focusViewArmed = true, false
+	state.invalidator.Invalidate()
+}
+
+func (state *model) clearCloseSnapshot() {
 	state.pendingClose, state.allowClose = -1, nil
 	state.closingDocs, state.closingActive = nil, nil
 	state.closingTabSettings = nil
 	state.closingOwners, state.closingPaneDocs = nil, [2]*document.Document{}
 	state.closingSplit = false
-	state.focusViewRequested, state.focusViewArmed = true, false
-	state.invalidator.Invalidate()
+}
+
+func (state *model) continueWindowClose(allow func()) {
+	for index, doc := range state.space.Documents {
+		if doc.Dirty() && !state.updates.approved[doc] {
+			state.pendingClose, state.allowClose = index, allow
+			state.invalidator.Invalidate()
+			return
+		}
+	}
+	if state.updates.restarting {
+		state.finishUpdateInstall(allow)
+		return
+	}
+	state.persistSession()
+	allow()
 }
 
 func (state *model) persistSession() {
@@ -3232,6 +3266,9 @@ func (state *model) command(command string) {
 		state.summary, state.summaryOpen = state.summaryForPane(summaryDoc, state.activePane), true
 	case aboutHelpCommand:
 		state.openHelp(aboutHelp)
+	case checkUpdatesCommand:
+		state.openUpdatePreferences()
+		state.startUpdate(false)
 	case debugHelpCommand:
 		state.openHelp(debugHelp)
 	case projectPageHelpCommand, userGuideHelpCommand, commandLineHelpCommand, columnModeHelpCommand:
@@ -3724,8 +3761,10 @@ func (state *model) command(command string) {
 		state.printSettings.FormFeedPageBreak = !state.printSettings.FormFeedPageBreak
 		state.savePreferences()
 	case "Preferences...":
-		state.preferencesOpen, state.preferencesPage = true, 0
+		state.preferencesOpen, state.preferencesPage = true, preferencesEditingPage
+		state.preferencesNotice = ""
 		state.openPrintPreferenceFields()
+		state.invalidator.Invalidate()
 	case shortcutMapperCommand:
 		state.openShortcutMapper()
 		state.invalidator.Invalidate()

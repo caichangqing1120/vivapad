@@ -76,6 +76,9 @@ func (state *model) dispatchShortcut(event gfx.KeyEvent) gfx.EventResult {
 	if !ok {
 		return gfx.EventResult{}
 	}
+	if binding.Modifiers == shortcuts.Primary && len(binding.Key) == 1 && binding.Key[0] >= '1' && binding.Key[0] <= '9' && !isComparePreview(event.Target) {
+		return state.selectNumberedTab(int(binding.Key[0]-'1'), event.Target)
+	}
 	command := findShortcut(state.shortcuts, binding)
 	original := findShortcut(defaultShortcuts, binding)
 	editorTarget := event.Target == editorID || event.Target == rightEditorID
