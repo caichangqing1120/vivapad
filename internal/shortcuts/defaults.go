@@ -6,6 +6,8 @@ const (
 	MultiSelectSkip = "Skip Current Multi-Select"
 	MultiSelectUndo = "Undo Latest Multi-Select"
 	MultiSelectExit = "Exit Multi-Selection"
+	CommandPalette  = "Command Palette"
+	QuickSwitcher   = "Quick File Switcher"
 )
 
 func Defaults() []Command {
@@ -71,6 +73,8 @@ func Defaults() []Command {
 		{ID: "Next Difference", Default: Chord{Primary, "F8"}},
 		{ID: "Previous Difference", Default: Chord{Primary | Shift, "F8"}},
 		{ID: "Toggle Macro Recording", Default: Chord{Primary | Shift, "R"}},
-		{ID: "Playback Macro", Default: Chord{Primary | Shift, "P"}},
+		{ID: "Playback Macro", Default: Chord{Primary | Alt, "P"}, OptionalDefault: true},
+		{ID: CommandPalette, Default: Chord{Primary | Shift, "P"}, OptionalDefault: true},
+		{ID: QuickSwitcher, Default: Chord{Primary, "P"}, OptionalDefault: true},
 	}
 }

@@ -273,6 +273,7 @@ func (state *model) paintUpdatePreferences(canvas *gfx.Canvas, body gfx.Rect) {
 			state.preferencesNotice = ""
 			panel.copiedUntil = time.Now().Add(1500 * time.Millisecond)
 			time.AfterFunc(1500*time.Millisecond, state.invalidator.Invalidate)
+			state.showToast(state.tr("Diagnostics copied", "已复制诊断信息"))
 		}
 	}
 	updateBounds := body

@@ -108,6 +108,12 @@ func (state *model) documentTextInput(pane int) *app.TextInput {
 // wrapper in newConfig reconciles ownership after it so a dialog or non-editor
 // target cancels a live document composition exactly once.
 func (state *model) resolveTextInput(context app.TextInputContext) *app.TextInput {
+	if palette := state.commandPalette; palette != nil {
+		if context.ID == paletteInputID {
+			return &app.TextInput{Editor: palette.input}
+		}
+		return nil
+	}
 	if dialog := state.batchConvert; dialog != nil {
 		return dialog.textInput(context.ID)
 	}

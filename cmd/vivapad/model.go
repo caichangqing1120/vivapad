@@ -363,6 +363,8 @@ var (
 type model struct {
 	m5                            *m5Dialog
 	batchConvert                  *batchConvertDialog
+	commandPalette                *commandPalette
+	toast                         toastState
 	styles                        preferences.Styles
 	editorStyle                   *editorStyleCache
 	udlPath                       string
@@ -1178,7 +1180,7 @@ func newConfig(state *model) app.Config {
 		return input
 	}
 	config.OnPointer = func(event gfx.PointerEvent) gfx.EventResult {
-		if state.m5 != nil || state.batchConvert != nil {
+		if state.m5 != nil || state.batchConvert != nil || state.commandPalette != nil {
 			return gfx.EventResult{}
 		}
 		if isComparePreview(event.Target) {
@@ -1295,6 +1297,14 @@ func newConfig(state *model) app.Config {
 		return state.codeEditor().Pointer(event)
 	}
 	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult {
+		if palette := state.commandPalette; palette != nil {
+			if palette.visible > 0 && (event.Target == palettePanelID || event.Target.Scope() == paletteRowScope) {
+				palette.offset = min(max(0, palette.offset+scrollListStep(event)), max(0, len(palette.matches)-palette.visible))
+				palette.selected = min(max(palette.selected, palette.offset), palette.offset+palette.visible-1)
+				palette.navigated = true
+			}
+			return gfx.EventResult{Handled: true, Repaint: true}
+		}
 		if dialog := state.batchConvert; dialog != nil {
 			if event.Target == batchListID || event.Target.Scope() == batchRows {
 				dialog.offset = min(max(0, dialog.offset+scrollListStep(event)), max(0, dialog.rowCount()-dialog.visible))
@@ -1532,7 +1542,7 @@ func newConfig(state *model) app.Config {
 		return result
 	}
 	config.OnFileDrop = func(event gfx.FileDropEvent) gfx.EventResult {
-		if state.mapper != nil || state.m5 != nil || state.batchConvert != nil {
+		if state.mapper != nil || state.m5 != nil || state.batchConvert != nil || state.commandPalette != nil {
 			return gfx.EventResult{}
 		}
 		if state.saveSessionOptionsOpen || state.columnDialogOpen || state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.webSearchOpen || state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen || state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil || state.dateTimeDialogOpen || state.hashDialogOpen || state.windowsDialogOpen {
@@ -1553,8 +1563,15 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: event.Phase == gfx.FileDropDrop}
 	}
 	config.OnShortcut = func(event gfx.KeyEvent) gfx.EventResult {
+		if result := state.dispatchPaletteShortcut(event); result.Handled {
+			return result
+		}
 		if event.Key == gfx.KeyEscape && event.Modifiers == 0 {
 			return gfx.EventResult{}
+		}
+		if state.commandPalette != nil {
+			binding, ok := eventShortcut(event)
+			return gfx.EventResult{Handled: event.Target != paletteInputID || ok && findShortcut(state.shortcuts, binding) != ""}
 		}
 		if dialog := state.batchConvert; dialog != nil {
 			return gfx.EventResult{Handled: dialog.textInput(event.Target) == nil}
@@ -1655,6 +1672,12 @@ func newConfig(state *model) app.Config {
 		return state.dispatchShortcut(event)
 	}
 	config.OnKey = func(event gfx.KeyEvent) gfx.EventResult {
+		if result := state.dispatchPaletteShortcut(event); result.Handled {
+			return result
+		}
+		if state.commandPalette != nil {
+			return state.paletteKey(event)
+		}
 		if state.batchConvert != nil {
 			if event.Key == gfx.KeyEscape && !event.Release {
 				if state.closeBatchConvertDialog() {
@@ -2213,6 +2236,11 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	config.OnCloseRequest = func(allow func()) {
+		if state.commandPalette != nil {
+			state.closeCommandPalette()
+			state.requestEditorCommandFocus()
+			return
+		}
 		if state.batchConvert != nil {
 			state.closeBatchConvertDialog()
 			return
@@ -2286,6 +2314,7 @@ func newConfig(state *model) app.Config {
 		state.continueWindowClose(allow)
 	}
 	config.OnWake = func() {
+		state.consumePaletteIndex()
 		state.consumeBatchJob()
 		state.consumeFileSearch()
 		state.consumeLargeSearch()
@@ -2296,6 +2325,7 @@ func newConfig(state *model) app.Config {
 		state.consumeUpdate()
 	}
 	config.OnClosed = func() {
+		state.closeCommandPalette()
 		if dialog := state.batchConvert; dialog != nil && dialog.job != nil {
 			dialog.job.cancel()
 		}
@@ -2482,6 +2512,7 @@ func (state *model) save(index int, saveAs bool) bool {
 		return false
 	}
 	state.notice = "Saved " + filepath.Base(doc.Path)
+	state.showToast(state.statusMessage(state.notice))
 	state.stopMonitorAfterPathChange(doc)
 	state.rememberRecent(doc)
 	return true

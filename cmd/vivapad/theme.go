@@ -10,6 +10,7 @@ import (
 
 type themePalette struct {
 	menuBar, toolbarBar, toolbar, tabs, tab, activeTab, dock, mapBackground, statusBar, popup gfx.Color
+	chromeLine                                                                                gfx.Color
 	border, hover, text, muted, gutter, accent, selectedRow, inputBackground, invalidInput    gfx.Color
 	editorBackground, editorForeground, gutterForeground, selection, selectionText            gfx.Color
 	toolbarInk, toolbarDisabled, toolbarSelected, toolbarHover, toolbarPressed                gfx.Color
@@ -21,15 +22,16 @@ type themePalette struct {
 }
 
 var classicPalette = themePalette{
-	menuBar: gfx.RGB24(0xf8f8f9), toolbarBar: gfx.RGB24(0xfbfcfc), toolbar: gfx.RGB24(0xfdfdfd),
-	tabs: gfx.RGB24(0xeeeff1), tab: gfx.RGB24(0xe6e8eb), activeTab: gfx.RGB24(0xffffff),
-	dock: gfx.RGB24(0xfafafa), mapBackground: gfx.RGB24(0xf7f8f9), statusBar: gfx.RGB24(0xf8f8f9), popup: gfx.RGB24(0xffffff),
-	border: gfx.RGB24(0xcfd2d6), hover: gfx.RGB24(0xfcecef), text: gfx.RGB24(0x272a2f), muted: gfx.RGB24(0x70747b),
+	menuBar: gfx.RGB24(0xfafafb), toolbarBar: gfx.RGB24(0xfafafb), toolbar: gfx.RGB24(0xfdfdfd),
+	tabs: gfx.RGB24(0xf6f7f9), tab: gfx.RGB24(0xe6e8eb), activeTab: gfx.RGB24(0xffffff),
+	dock: gfx.RGB24(0xfafafa), mapBackground: gfx.RGB24(0xf7f8f9), statusBar: gfx.RGB24(0xfafafb), popup: gfx.RGB24(0xffffff),
+	chromeLine: gfx.RGB24(0xe4e7eb),
+	border:     gfx.RGB24(0xcfd2d6), hover: gfx.RGB24(0xfcecef), text: gfx.RGB24(0x272a2f), muted: gfx.RGB24(0x70747b),
 	gutter: gfx.RGB24(0xe0e0e0), accent: gfx.RGB24(0xd7263d), selectedRow: gfx.RGB24(0xf1f3f6), inputBackground: gfx.RGB24(0xffffff), invalidInput: gfx.RGB24(0xffeaed),
 	editorBackground: gfx.RGB24(0xffffff), editorForeground: gfx.RGB24(0x272a2f), gutterForeground: gfx.RGB24(0x737373),
 	selection: gfx.RGB24(0xb5d3ff), selectionText: gfx.RGB24(0x111827),
 	toolbarInk: gfx.RGB24(0x343d43), toolbarDisabled: gfx.RGB24(0xa6afb6), toolbarSelected: gfx.RGB24(0xddf3ed),
-	toolbarHover: gfx.RGB24(0xe8ecee), toolbarPressed: gfx.RGB24(0xdce2e5), toolbarFocus: gfx.RGB24(0x09836e), toolbarSeparator: gfx.RGB24(0x7d8a91),
+	toolbarHover: gfx.RGB24(0xe8ecee), toolbarPressed: gfx.RGB24(0xdce2e5), toolbarFocus: gfx.RGB24(0x09836e), toolbarSeparator: gfx.RGB24(0xd9dde3),
 	pin: gfx.RGB24(0x086957), bookmark: gfx.RGB24(0x2b68bb), mapViewport: gfx.RGB24(0xfff6f7), mapLine: gfx.RGB24(0x9ea5ac), invisible: gfx.RGB24(0x92969d),
 	findMark:       gfx.RGBA(255, 0, 0, 100.0/255),
 	tokenMarks:     [5]gfx.Color{gfx.RGB24(0x00ffff), gfx.RGB24(0xff8000), gfx.RGB24(0xffff00), gfx.RGB24(0x8000ff), gfx.RGB24(0x008000)},
@@ -38,15 +40,16 @@ var classicPalette = themePalette{
 }
 
 var modernPalette = themePalette{
-	menuBar: gfx.RGB24(0x27282c), toolbarBar: gfx.RGB24(0x2b2c30), toolbar: gfx.RGB24(0x303238),
-	tabs: gfx.RGB24(0x242529), tab: gfx.RGB24(0x2c2e33), activeTab: gfx.RGB24(0x1e1f22),
-	dock: gfx.RGB24(0x24252a), mapBackground: gfx.RGB24(0x23252a), statusBar: gfx.RGB24(0x27282c), popup: gfx.RGB24(0x292b31),
-	border: gfx.RGB24(0x4d505a), hover: gfx.RGB24(0x3b3d46), text: gfx.RGB24(0xe4e6eb), muted: gfx.RGB24(0xa6adb9),
+	menuBar: gfx.RGB24(0x25262a), toolbarBar: gfx.RGB24(0x25262a), toolbar: gfx.RGB24(0x303238),
+	tabs: gfx.RGB24(0x232428), tab: gfx.RGB24(0x2c2e33), activeTab: gfx.RGB24(0x1e1f22),
+	dock: gfx.RGB24(0x24252a), mapBackground: gfx.RGB24(0x23252a), statusBar: gfx.RGB24(0x25262a), popup: gfx.RGB24(0x292b31),
+	chromeLine: gfx.RGB24(0x34363d),
+	border:     gfx.RGB24(0x4d505a), hover: gfx.RGB24(0x3b3d46), text: gfx.RGB24(0xe4e6eb), muted: gfx.RGB24(0xa6adb9),
 	gutter: gfx.RGB24(0x292b31), accent: gfx.RGB24(0x9abfff), selectedRow: gfx.RGB24(0x333d50), inputBackground: gfx.RGB24(0x202126), invalidInput: gfx.RGB24(0x502e39),
 	editorBackground: gfx.RGB24(0x1e1f22), editorForeground: gfx.RGB24(0xe5e7eb), gutterForeground: gfx.RGB24(0xa2aab8),
 	selection: gfx.RGB24(0x345785), selectionText: gfx.RGB24(0xffffff),
 	toolbarInk: gfx.RGB24(0xc8d0dc), toolbarDisabled: gfx.RGB24(0x777e8b), toolbarSelected: gfx.RGB24(0x28453d),
-	toolbarHover: gfx.RGB24(0x393d47), toolbarPressed: gfx.RGB24(0x444a57), toolbarFocus: gfx.RGB24(0x7eddbd), toolbarSeparator: gfx.RGB24(0x535a67),
+	toolbarHover: gfx.RGB24(0x393d47), toolbarPressed: gfx.RGB24(0x444a57), toolbarFocus: gfx.RGB24(0x7eddbd), toolbarSeparator: gfx.RGB24(0x383b43),
 	pin: gfx.RGB24(0x7eddbd), bookmark: gfx.RGB24(0x87baff), mapViewport: gfx.RGB24(0x303b53), mapLine: gfx.RGB24(0x788394), invisible: gfx.RGB24(0x8890a0),
 	findMark: gfx.RGB24(0x512731), findMatch: gfx.RGB24(0x4b371d),
 	tokenMarks:     [5]gfx.Color{gfx.RGB24(0x23444a), gfx.RGB24(0x54321c), gfx.RGB24(0x45401d), gfx.RGB24(0x423055), gfx.RGB24(0x274330)},
@@ -56,9 +59,10 @@ var modernPalette = themePalette{
 
 var monokaiPalette = func() themePalette {
 	palette := modernPalette
-	palette.menuBar, palette.statusBar = gfx.RGB24(0x30312b), gfx.RGB24(0x30312b)
-	palette.toolbarBar, palette.toolbar = gfx.RGB24(0x32332c), gfx.RGB24(0x383a31)
-	palette.tabs, palette.tab, palette.activeTab = gfx.RGB24(0x24251f), gfx.RGB24(0x32342b), gfx.RGB24(0x272822)
+	palette.menuBar, palette.statusBar = gfx.RGB24(0x2e2f28), gfx.RGB24(0x2e2f28)
+	palette.toolbarBar, palette.toolbar = palette.menuBar, gfx.RGB24(0x383a31)
+	palette.tabs, palette.tab, palette.activeTab = gfx.RGB24(0x2b2c25), gfx.RGB24(0x32342b), gfx.RGB24(0x272822)
+	palette.chromeLine, palette.toolbarSeparator = gfx.RGB24(0x3e4036), gfx.RGB24(0x45473d)
 	palette.dock, palette.mapBackground, palette.popup = gfx.RGB24(0x2d2e27), gfx.RGB24(0x2d2e27), gfx.RGB24(0x313229)
 	palette.inputBackground = gfx.RGB24(0x26271f)
 	palette.text, palette.muted, palette.border, palette.hover = gfx.RGB24(0xf8f8f2), gfx.RGB24(0xb6b5a7), gfx.RGB24(0x53554a), gfx.RGB24(0x424438)

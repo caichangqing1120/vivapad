@@ -29,7 +29,7 @@ func (state *model) paintSplitTabs(canvas *gfx.Canvas, width, origin float32) {
 	state.paintPaneTabs(canvas, 0, gfx.Rect{X: origin, Y: y, Width: position, Height: tabHeight})
 	divider := gfx.Rect{X: origin + position, Y: y, Width: 8, Height: tabHeight}
 	canvas.Fill(divider, palette.tabs)
-	canvas.Fill(gfx.Rect{X: divider.X + 3, Y: y, Width: 1, Height: tabHeight}, palette.border)
+	canvas.Fill(gfx.Rect{X: divider.X + 3, Y: y, Width: 1, Height: tabHeight}, palette.chromeLine)
 	rightWidth := width - position - 8
 	if state.fullscreen {
 		rightWidth -= 30
@@ -40,7 +40,7 @@ func (state *model) paintSplitTabs(canvas *gfx.Canvas, width, origin float32) {
 func (state *model) paintPaneTabs(canvas *gfx.Canvas, pane int, bounds gfx.Rect) {
 	palette := state.palette()
 	canvas.Fill(bounds, palette.tabs)
-	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y + bounds.Height - 1, Width: bounds.Width, Height: 1}, palette.border)
+	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y + bounds.Height - 1, Width: bounds.Width, Height: 1}, palette.chromeLine)
 	paneID := leftPaneID
 	tabScope, closeScope := leftTabScope, leftCloseScope
 	backID, nextID := leftTabsBackID, leftTabsNextID
@@ -90,26 +90,17 @@ func (state *model) paintPaneTabs(canvas *gfx.Canvas, pane int, bounds gfx.Rect)
 		}
 		x := bounds.X + 7 + float32(local-state.paneTabOffset[pane])*(tabWidth+4)
 		rect := gfx.Rect{X: x, Y: bounds.Y + 2, Width: tabWidth, Height: tabHeight - 2}
-		background, accent := state.tabColorPaint(doc, doc == selected)
-		canvas.Border(rect, 1, palette.border, background)
-		if doc == selected && pane == state.activePane {
-			canvas.Fill(gfx.Rect{X: x + 1, Y: bounds.Y + 1, Width: tabWidth - 2, Height: 2}, accent)
-		}
 		label := state.numberedTabName(doc.Name, local)
-		name := label
-		if doc.Dirty() {
-			name = "* " + name
-		}
-		state.interfaceLabel(canvas, name, gfx.Rect{X: x + 10, Y: bounds.Y + 2, Width: tabWidth - 56, Height: 24}, palette.text, 11)
 		hitIndex := state.tabHitIndex(doc)
 		id, pinID, closeID := tabScope.At(hitIndex), pinScope.At(hitIndex), closeScope.At(hitIndex)
+		state.paintTabFace(canvas, doc, rect, id, pinID, closeID, label, doc == selected)
 		canvas.HitWithOptions(id, rect, label, gfx.HitOptions{Role: gfx.RoleTab, Selected: doc == selected})
 		if canvas.Clicked(id) {
 			chosen = global
 		}
 		pinRect := gfx.Rect{X: x + tabWidth - 42, Y: bounds.Y + 5, Width: 17, Height: 18}
 		if canvas.Hovered() == pinID {
-			canvas.Fill(pinRect, palette.hover)
+			canvas.Rounded(pinRect, 4, palette.toolbarHover)
 		}
 		pinColor, pinLabel := palette.muted, "Pin "+doc.Name
 		if state.isPinned(doc) {
@@ -121,9 +112,9 @@ func (state *model) paintPaneTabs(canvas *gfx.Canvas, pane int, bounds gfx.Rect)
 		}
 		closeRect := gfx.Rect{X: x + tabWidth - 22, Y: bounds.Y + 5, Width: 17, Height: 18}
 		if canvas.Hovered() == closeID {
-			canvas.Fill(closeRect, palette.hover)
+			canvas.Rounded(closeRect, 4, palette.toolbarHover)
 		}
-		canvas.DrawIcon(closeIcon, controlIconBounds(closeRect), palette.muted)
+		canvas.DrawIcon(closeIcon, centeredIconBounds(closeRect, 13), palette.muted)
 		if hitButton(canvas, closeID, closeRect, "Close "+doc.Name) {
 			closing = global
 		}

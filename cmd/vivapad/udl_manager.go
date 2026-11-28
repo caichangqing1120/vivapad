@@ -382,6 +382,7 @@ func (state *model) exportUDLJSON(dialog *m5Dialog, all bool) {
 		return
 	}
 	dialog.udl.action, dialog.message = udlEdit, fmt.Sprintf(state.tr("Exported %d languages", "已导出 %d 个语言"), len(definitions))
+	state.showToast(state.tr("UDL exported", "已导出自定义语言"))
 }
 
 func (state *model) writeUDLJSON(path string, data []byte) error {

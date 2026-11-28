@@ -213,7 +213,7 @@ func TestMacroShortcutAndEmptyRecordingPreserveLastMacro(t *testing.T) {
 	if len(state.macroLast) != 1 {
 		t.Fatal("empty recording replaced the last macro")
 	}
-	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierShift, 'p'); err != nil || !handled {
+	if handled, err := driver.ShortcutChord(primary()|gfx.ModifierAlt, 'p'); err != nil || !handled {
 		t.Fatalf("playback handled=%v, %v", handled, err)
 	}
 	if got := state.space.Current().Editor.String(); got != "xx" {

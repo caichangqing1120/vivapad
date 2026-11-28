@@ -57,6 +57,42 @@ func TestMultiSelectionDefaultsYieldToExistingBindings(t *testing.T) {
 	}
 }
 
+func TestPaletteDefaultsAndLegacyOverrides(t *testing.T) {
+	registry, err := Load("", Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for binding, command := range map[Chord]string{
+		{Primary | Shift, "P"}: CommandPalette,
+		{Primary, "P"}:         QuickSwitcher,
+		{Primary | Alt, "P"}:   "Playback Macro",
+	} {
+		if got := registry.Lookup(binding); got != command || registry.Binding(command) != binding {
+			t.Fatalf("binding %+v = %q; want %q", binding, got, command)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "shortcuts.json")
+	if err := save(path, map[string]Chord{"Playback Macro": {Primary | Shift, "P"}, "New": {Primary, "P"}}); err != nil {
+		t.Fatal(err)
+	}
+	registry, err = Load(path, Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if registry.Lookup(Chord{Primary | Shift, "P"}) != "Playback Macro" || registry.Lookup(Chord{Primary, "P"}) != "New" {
+		t.Fatal("the new defaults displaced a saved binding")
+	}
+	for _, command := range []string{CommandPalette, QuickSwitcher} {
+		if !registry.Binding(command).Empty() {
+			t.Fatalf("%s should be unassigned when its default chord is taken", command)
+		}
+	}
+	remap := Chord{0, "F9"}
+	if err := registry.Set(CommandPalette, remap); err != nil || registry.Lookup(remap) != CommandPalette {
+		t.Fatalf("palette could not be remapped: %v", err)
+	}
+}
+
 func TestOverrideConflictPersistenceAndReset(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "private", "shortcuts.json")
 	catalog := append(Defaults(), Command{ID: "macro:Build", Name: "Macro: Build"})

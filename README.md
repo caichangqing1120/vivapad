@@ -483,9 +483,13 @@ of these methods:
   resize the selected tab remains visible without overriding manual tab-strip
   navigation. A normal close remembers per-view tabs, active view and divider
   position.
+- `Primary+Shift+P` opens the Command Palette; `Primary+P` searches open tabs,
+  project files, and workspace folders. Search commands in English or Simplified
+  Chinese, then use the arrow keys and Enter to choose a result. Both shortcuts
+  are configurable in Shortcut Mapper; existing custom bindings are kept.
 - Macro > Record/Stop/Playback records the latest single-document text input,
-  IME commits, paste and supported code/line commands. Configured Primary+Shift+R
-  and Primary+Shift+P chords have Driver and native macOS coverage. Editor menu
+  IME commits, paste and supported code/line commands. `Primary+Shift+R`
+  toggles recording and `Primary+Alt+P` plays back the last macro. Editor menu
   actions restore active-view input, so typing and Undo work without re-clicking
   the editor; dialogs and query fields retain their own editing ownership.
   Windows/Linux native shortcut behavior remains a separate gate.

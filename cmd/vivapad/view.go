@@ -260,6 +260,8 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	if state.batchConvert != nil {
 		state.paintBatchConvert(canvas, size)
 	}
+	state.paintCommandPalette(canvas, size)
+	state.paintToast(canvas, size, status)
 	if state.resultFocusRequested {
 		if state.resultFocusArmed {
 			focus := resultsPaneID
@@ -305,7 +307,7 @@ func hitButton(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, label string) boo
 func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 	palette := state.palette()
 	canvas.Fill(gfx.Rect{Width: width, Height: menuHeight}, palette.menuBar)
-	canvas.Fill(gfx.Rect{Y: menuHeight - 1, Width: width, Height: 1}, palette.border)
+	canvas.Fill(gfx.Rect{Y: menuHeight - 1, Width: width, Height: 1}, palette.chromeLine)
 	allWidth := float32(8)
 	fontSize := state.interfaceSize(11)
 	for _, label := range menuLabels {
@@ -327,7 +329,7 @@ func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 		item := gfx.Rect{X: x, Y: 1, Width: itemWidth, Height: 24}
 		enabled := index < len(menuCommands) && len(menuCommands[index]) > 0 && menuCommands[index][0] != ""
 		if state.menuOpen == index || canvas.Hovered() == menuScope.At(index) && enabled {
-			canvas.Fill(item, palette.hover)
+			canvas.Rounded(item.Inset(gfx.All(2)), 4, palette.toolbarHover)
 		}
 		color := palette.text
 		if !enabled {
@@ -379,7 +381,7 @@ func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 	if reserve != 0 {
 		button := gfx.Rect{X: width - 28, Y: 1, Width: 25, Height: 24}
 		if state.menuOverflowOpen || canvas.Hovered() == menuOverflowID {
-			canvas.Fill(button, palette.hover)
+			canvas.Rounded(button.Inset(gfx.All(2)), 4, palette.toolbarHover)
 		}
 		canvas.DrawIcon(rightIcon, button.Inset(gfx.All(5)), palette.text)
 		canvas.HitWithOptions(menuOverflowID, button, "More menus", gfx.HitOptions{Role: gfx.RoleButton, Hint: "Show hidden menus"})
@@ -394,18 +396,18 @@ func (state *model) paintMenuBar(canvas *gfx.Canvas, width float32) {
 
 func (palette *themePalette) toolbarButton(canvas *gfx.Canvas, id gfx.ID, bounds gfx.Rect, icon gfx.Icon, name string, tint gfx.Color, enabled, selected bool) bool {
 	if selected {
-		canvas.Rounded(bounds, 5.5, palette.toolbarSelected)
+		canvas.Rounded(bounds, 6, palette.toolbarSelected)
 	}
 	if enabled && canvas.Hovered() == id {
-		canvas.Rounded(bounds, 5.5, palette.toolbarHover)
+		canvas.Rounded(bounds, 6, palette.toolbarHover)
 	}
 	if enabled && canvas.Pressed() == id {
-		canvas.Rounded(bounds, 5.5, palette.toolbarPressed)
+		canvas.Rounded(bounds, 6, palette.toolbarPressed)
 	}
 	if enabled && canvas.FocusVisible() == id {
-		canvas.RoundedBorder(bounds, 5.5, 1.5, palette.toolbarFocus, gfx.Color{})
+		canvas.RoundedBorder(bounds, 6, 1, palette.toolbarFocus, gfx.Color{})
 	}
-	iconBounds := controlIconBounds(bounds)
+	iconBounds := centeredIconBounds(bounds, 15)
 	canvas.DrawIcon(icon, iconBounds, tint)
 	canvas.HitWithOptions(id, bounds, name, gfx.HitOptions{Role: gfx.RoleButton, Disabled: !enabled, Selected: selected, Hint: name})
 	return enabled && canvas.Clicked(id)
@@ -422,17 +424,25 @@ func (state *model) paintToolbar(canvas *gfx.Canvas, width float32) {
 	palette := state.palette()
 	y := menuHeight
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: toolbarHeight}, palette.toolbarBar)
-	canvas.Fill(gfx.Rect{Y: y + toolbarHeight - 1, Width: width, Height: 1}, palette.border)
-	x := float32(8)
+	canvas.Fill(gfx.Rect{Y: y + toolbarHeight - 1, Width: width, Height: 1}, palette.chromeLine)
+	const edge, buttonWidth, stride = 8, 26, 30
+	x, limit := float32(edge), width-edge
+	quickX := limit - stride - buttonWidth
+	if quickX >= edge {
+		limit = quickX - edge
+	}
 	button := func(id gfx.ID, icon gfx.Icon, label string, enabled bool) bool {
+		bounds := gfx.Rect{X: x, Y: y + 4, Width: buttonWidth, Height: buttonWidth}
+		x += stride
+		if bounds.X+bounds.Width > limit {
+			return false
+		}
 		tint := palette.toolbarTint(enabled)
 		selected := id == searchID && state.searchOpen
 		if selected {
 			tint = palette.pin
 		}
-		clicked := palette.toolbarButton(canvas, id, gfx.Rect{X: x, Y: y + 4, Width: 26, Height: 26}, icon, label, tint, enabled, selected)
-		x += 30
-		return clicked
+		return palette.toolbarButton(canvas, id, bounds, icon, label, tint, enabled, selected)
 	}
 	if button(newID, newIcon, "New", true) {
 		state.cancelMacroForCommand()
@@ -447,8 +457,10 @@ func (state *model) paintToolbar(canvas *gfx.Canvas, width float32) {
 		state.save(state.space.Active, false)
 	}
 	separator := func() {
-		canvas.Fill(gfx.Rect{X: x + 4, Y: y + 10, Width: 1, Height: 14}, palette.toolbarSeparator)
-		x += 13
+		if x+10+buttonWidth <= limit {
+			canvas.Fill(gfx.Rect{X: x + 3, Y: y + 10, Width: 1, Height: 14}, palette.toolbarSeparator)
+		}
+		x += 10
 	}
 	doc := state.space.Current()
 	editable := !state.isReadOnly(doc)
@@ -476,6 +488,41 @@ func (state *model) paintToolbar(canvas *gfx.Canvas, width float32) {
 		state.markDialogOpen = false
 		state.searchOpen, state.goToOpen = !state.searchOpen, false
 	}
+	if quickX >= edge {
+		bounds := gfx.Rect{X: quickX, Y: y + 4, Width: buttonWidth, Height: buttonWidth}
+		icon, label, command := moonIcon, state.tr("Switch to Modern Dark", "切换至现代深色"), "Theme: Modern Dark"
+		if state.renderTheme != syntax.ClassicLight {
+			icon, label, command = sunIcon, state.tr("Switch to Classic Light", "切换至经典浅色"), "Theme: Classic Light"
+		}
+		if palette.toolbarButton(canvas, toolbarThemeID, bounds, icon, label, palette.toolbarInk, true, false) {
+			state.command(command)
+		}
+		if canvas.Hovered() == toolbarThemeID {
+			state.paintToolbarTooltip(canvas, bounds, label)
+		}
+		bounds.X += stride
+		label = state.tr("Preferences", "偏好设置")
+		if palette.toolbarButton(canvas, toolbarSettingsID, bounds, settingsIcon, label, palette.toolbarInk, true, false) {
+			state.command("Preferences...")
+		}
+		if canvas.Hovered() == toolbarSettingsID {
+			state.paintToolbarTooltip(canvas, bounds, label)
+		}
+	}
+}
+
+func (state *model) paintToolbarTooltip(canvas *gfx.Canvas, bounds gfx.Rect, label string) {
+	if state.editorCommandFocusBlocked() || state.menuOverflowOpen || !state.statusPopup.kind.IsZero() || !canvas.Pressed().IsZero() {
+		return
+	}
+	palette := state.palette()
+	right := bounds.X + bounds.Width
+	width := min(right-8, canvas.TextWidth(label, state.interfaceSize(11))+16)
+	tooltip := gfx.Rect{X: right - width, Y: bounds.Y + bounds.Height + 5, Width: width, Height: 23}
+	canvas.PushLayer(4)
+	canvas.RoundedBorder(tooltip, 4, 1, palette.border, palette.popup)
+	state.interfaceLabel(canvas, label, tooltip.Inset(gfx.Insets{Left: 8, Right: 8}), palette.text, 11)
+	canvas.PopLayer()
 }
 
 func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
@@ -490,7 +537,7 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 		y = 0
 	}
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: tabHeight}, palette.tabs)
-	canvas.Fill(gfx.Rect{Y: y + tabHeight - 1, Width: width, Height: 1}, palette.border)
+	canvas.Fill(gfx.Rect{Y: y + tabHeight - 1, Width: width, Height: 1}, palette.chromeLine)
 	contentWidth := width
 	if state.fullscreen {
 		contentWidth -= 30
@@ -516,26 +563,17 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 		doc := state.space.Documents[index]
 		x := 7 + float32(index-start)*161
 		rect := gfx.Rect{X: x, Y: y + 2, Width: 157, Height: 26}
-		background, accent := state.tabColorPaint(doc, index == state.space.Active)
-		canvas.Border(rect, 1, palette.border, background)
-		if index == state.space.Active {
-			canvas.Fill(gfx.Rect{X: x + 1, Y: y + 1, Width: 155, Height: 2}, accent)
-		}
 		label := state.numberedTabName(doc.Name, index)
-		name := label
-		if doc.Dirty() {
-			name = "* " + name
-		}
-		state.interfaceLabel(canvas, name, gfx.Rect{X: x + 10, Y: y + 2, Width: 103, Height: 25}, palette.text, 11)
 		hitIndex := state.tabHitIndex(doc)
 		id, pinID, closeID := tabScope.At(hitIndex), tabPinScope.At(hitIndex), tabCloseScope.At(hitIndex)
+		state.paintTabFace(canvas, doc, rect, id, pinID, closeID, label, index == state.space.Active)
 		canvas.HitWithOptions(id, rect, label, gfx.HitOptions{Role: gfx.RoleTab, Selected: index == state.space.Active})
 		if canvas.Clicked(id) {
 			selected = index
 		}
 		pinRect := gfx.Rect{X: x + 113, Y: y + 5, Width: 17, Height: 18}
 		if canvas.Hovered() == pinID {
-			canvas.Fill(pinRect, palette.hover)
+			canvas.Rounded(pinRect, 4, palette.toolbarHover)
 		}
 		pinColor, pinLabel := palette.muted, "Pin "+doc.Name
 		if state.isPinned(doc) {
@@ -547,9 +585,9 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 		}
 		closeRect := gfx.Rect{X: x + 135, Y: y + 5, Width: 17, Height: 18}
 		if canvas.Hovered() == closeID {
-			canvas.Fill(closeRect, palette.hover)
+			canvas.Rounded(closeRect, 4, palette.toolbarHover)
 		}
-		canvas.DrawIcon(closeIcon, controlIconBounds(closeRect), palette.muted)
+		canvas.DrawIcon(closeIcon, centeredIconBounds(closeRect, 13), palette.muted)
 		if hitButton(canvas, closeID, closeRect, "Close "+doc.Name) {
 			closed = index
 		}
@@ -1038,7 +1076,7 @@ func (state *model) paintPane(canvas *gfx.Canvas, bounds gfx.Rect, pane int, doc
 func (state *model) paintSearch(canvas *gfx.Canvas, width, y float32) {
 	palette := state.palette()
 	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: searchHeight}, palette.menuBar)
-	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.border)
+	canvas.Fill(gfx.Rect{Y: y, Width: width, Height: 1}, palette.chromeLine)
 	fieldWidth := min(330, max(170, width-380))
 	fieldTheme := state.uiTheme()
 	fieldTheme.Metrics.ControlHeight, fieldTheme.Metrics.FontSizeM, fieldTheme.Metrics.RadiusControl = 26, 12, 2

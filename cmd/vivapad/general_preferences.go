@@ -145,6 +145,7 @@ var preferenceChinese = map[string]string{
 
 	// Settings menu
 	"Preferences...": "偏好设置…", "Tab Width: 2": "制表符宽度：2", "Tab Width: 4": "制表符宽度：4",
+	"Command Palette": "命令面板", "Quick File Switcher": "快速切换文件",
 	"Tab Width: 8": "制表符宽度：8", "Indent: Language Default": "缩进：按语言默认",
 	"Indent: Tabs": "缩进：制表符", "Indent: Spaces": "缩进：空格",
 	"Auto Indent": "自动缩进", "Pair Brackets": "自动配对括号", "Date Time Format...": "日期时间格式…",

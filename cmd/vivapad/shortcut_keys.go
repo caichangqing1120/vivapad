@@ -73,6 +73,35 @@ func nativeEditShortcut(command string) bool {
 	return false
 }
 
+func (state *model) dispatchPaletteShortcut(event gfx.KeyEvent) gfx.EventResult {
+	if state.editorDialogOpen() || state.byteRangeOpen || state.markDialogOpen {
+		return gfx.EventResult{}
+	}
+	binding, ok := eventShortcut(event)
+	if !ok {
+		return gfx.EventResult{}
+	}
+	command := findShortcut(state.shortcuts, binding)
+	if command != shortcuts.CommandPalette && command != shortcuts.QuickSwitcher {
+		return gfx.EventResult{}
+	}
+	if event.Repeat {
+		return gfx.EventResult{Handled: true}
+	}
+	returnFocus := event.Target
+	if palette := state.commandPalette; palette != nil {
+		returnFocus = palette.returnFocus
+		if palette.mode == command {
+			state.closeCommandPalette()
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: returnFocus}
+		}
+	} else if returnFocus.IsZero() || state.menuOpen >= 0 || state.menuOverflowOpen || !state.statusPopup.kind.IsZero() {
+		returnFocus = state.commandEditorFocusID()
+	}
+	state.openCommandPalette(command, returnFocus)
+	return gfx.EventResult{Handled: true, Repaint: true}
+}
+
 func (state *model) dispatchShortcut(event gfx.KeyEvent) gfx.EventResult {
 	binding, ok := eventShortcut(event)
 	if !ok {

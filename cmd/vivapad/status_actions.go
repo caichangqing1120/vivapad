@@ -73,15 +73,19 @@ func (state *model) paintStatusAction(canvas *gfx.Canvas, id gfx.ID, bounds gfx.
 		case statusLanguageID:
 			hint = "Change language"
 		}
-		if canvas.Hovered() == id || canvas.FocusVisible() == id || state.statusPopup.kind == id {
-			canvas.Fill(bounds, palette.hover)
+		pill := bounds.Inset(gfx.Insets{Top: 2, Right: 3, Bottom: 3, Left: 3})
+		if canvas.Hovered() == id || state.statusPopup.kind == id {
+			canvas.Rounded(pill, 4, palette.toolbarHover)
+		}
+		if canvas.FocusVisible() == id {
+			canvas.RoundedBorder(pill, 4, 1, palette.toolbarFocus, gfx.Color{})
 		}
 		canvas.HitWithOptions(id, bounds, hint+": "+label, gfx.HitOptions{Role: gfx.RoleButton, Hint: label, Expanded: state.statusPopup.kind == id})
 		if canvas.Clicked(id) {
 			state.useStatusAction(canvas, id, bounds)
 		}
 	}
-	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y + 2, Width: 1, Height: 18}, palette.border)
+	canvas.Fill(gfx.Rect{X: bounds.X, Y: bounds.Y + 6, Width: 1, Height: 10}, palette.toolbarSeparator)
 	textBounds := gfx.Rect{X: bounds.X + 7, Y: bounds.Y, Width: bounds.Width - 9, Height: 21}
 	state.interfaceLabel(canvas, label, textBounds, palette.text, 11)
 }

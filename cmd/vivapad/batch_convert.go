@@ -163,6 +163,9 @@ func (state *model) consumeBatchJob() {
 		if reply.preview != nil {
 			dialog.entries = reply.preview.Entries()
 		}
+		if reply.err == nil && reply.result != nil && reply.result.Err == nil {
+			state.showToast(state.tr("Batch convert completed · ", "批量转换完成 · ") + state.batchCounts(dialog))
+		}
 	default:
 	}
 }

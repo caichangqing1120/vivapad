@@ -71,6 +71,32 @@ func (state *model) tabColorPaint(doc *document.Document, selected bool) (backgr
 	return background, accent
 }
 
+func (state *model) paintTabFace(canvas *gfx.Canvas, doc *document.Document, bounds gfx.Rect, tab, pin, close gfx.ID, label string, selected bool) {
+	palette := state.palette()
+	background, accent := state.tabColorPaint(doc, selected)
+	if selected {
+		rounded := bounds
+		rounded.Height += 6
+		canvas.Clip(bounds)
+		canvas.RoundedBorder(rounded, 6, 1, palette.chromeLine, palette.editorBackground)
+		canvas.Clip(gfx.Rect{X: bounds.X, Y: bounds.Y, Width: bounds.Width, Height: 2})
+		canvas.Rounded(rounded, 6, accent)
+		canvas.Unclip()
+		canvas.Unclip()
+	} else if hover := canvas.Hovered(); hover == tab || hover == pin || hover == close {
+		canvas.Rounded(bounds.Inset(gfx.Insets{Bottom: 2}), 6, palette.toolbarHover)
+	} else if state.tabColors[doc] != 0 {
+		canvas.Rounded(bounds.Inset(gfx.Insets{Bottom: 2}), 6, background)
+	}
+	textBounds := gfx.Rect{X: bounds.X + 10, Y: bounds.Y, Width: bounds.Width - 56, Height: bounds.Height - 1}
+	if doc.Dirty() {
+		canvas.Rounded(gfx.Rect{X: textBounds.X, Y: textBounds.Y + (textBounds.Height-6)/2, Width: 6, Height: 6}, 3, palette.accent)
+		textBounds.X += 12
+		textBounds.Width -= 12
+	}
+	state.interfaceLabel(canvas, label, textBounds, palette.text, 11)
+}
+
 func (state *model) tabColorSwatch(color uint8) gfx.Color {
 	if state.renderTheme == syntax.ClassicLight {
 		return tabColorPastels[color-1]
