@@ -28,7 +28,7 @@ var menuCommands = [...][]string{
 		"Clear Marks", "Next Change", "Previous Change", "Clear Change History",
 	},
 	{"Show Line Numbers", "Word Wrap", "Zoom In", "Zoom Out", "Restore Default Zoom", "Split View", "Move to Other View", "Clone to Other View", "Folder as Workspace", "Show Symbol", "Tab", "Fold All", "Unfold All", "Fold Current Level", "Unfold Current Level", "Fold Level", "Unfold Level", "Document Map", "Function List", "Document List", "Synchronize Vertical Scrolling", "Synchronize Horizontal Scrolling", textDirectionRTL, textDirectionLTR, "Summary...", "Monitoring (tail -f)", "Focus on Another View", "Hide Lines", "Always on Top", "Toggle Full Screen Mode", "Synchronize Zoom Across Views", distractionFreeCommand, namedBrowserMenuCommand, postItCommand, compareMenu, projectPanelCommand, themeMenuCommand},
-	{"Unix (LF)", "Windows (CR LF)", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE", "GB18030", "Windows-1252", "Character sets"},
+	{"Unix (LF)", "Windows (CR LF)", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "UTF-16 BE", "GB18030", "Windows-1252", "Character sets", batchConvertCommand},
 	{"Normal Text", "Go", "JavaScript", "TypeScript", "Python", "JSON", "HTML", "CSS", "Markdown", "SQL"},
 	{"Preferences...", "Tab Width: 2", "Tab Width: 4", "Tab Width: 8", "Indent: Language Default", "Indent: Tabs", "Indent: Spaces", "Auto Indent", "Pair Brackets", "Date Time Format...", "Change History: Margin", "Change History: Indicator", "Change History: Both", "Change History: Off", shortcutMapperCommand, styleConfiguratorCommand},
 	{"MD5", "SHA-1", "SHA-256", "SHA-512", structuredToolsMenu, encodingToolsMenu, compareMenu},
@@ -257,6 +257,9 @@ func (state *model) paint(canvas *gfx.Canvas, size gfx.Size) {
 	if state.m5 != nil {
 		state.paintM5Dialog(canvas, size)
 	}
+	if state.batchConvert != nil {
+		state.paintBatchConvert(canvas, size)
+	}
 	if state.resultFocusRequested {
 		if state.resultFocusArmed {
 			focus := resultsPaneID
@@ -450,10 +453,10 @@ func (state *model) paintToolbar(canvas *gfx.Canvas, width float32) {
 	doc := state.space.Current()
 	editable := !state.isReadOnly(doc)
 	separator()
-	if button(undoID, undoIcon, "Undo", editable && doc.Editor.CanUndo()) {
+	if button(undoID, undoIcon, "Undo", editable && doc.CanUndo()) {
 		state.command("Undo")
 	}
-	if button(redoID, redoIcon, "Redo", editable && doc.Editor.CanRedo()) {
+	if button(redoID, redoIcon, "Redo", editable && doc.CanRedo()) {
 		state.command("Redo")
 	}
 	separator()

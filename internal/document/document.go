@@ -30,6 +30,8 @@ type Document struct {
 	savedDigest   string
 	savedNewline  string
 	savedEncoding Encoding
+	savedEOL      string
+	formatHistory *formatHistory
 	newline       string
 	encoding      Encoding
 	recovered     bool
@@ -129,6 +131,9 @@ func open(path string, selected *Encoding, maxBytes int64) (*Document, error) {
 	if !doc.Editor.SetLFLabels(labels, lineEndingCode(newline)) {
 		return nil, fmt.Errorf("%s: cannot initialize EOL labels", file.path)
 	}
+	if len(breaks) != 0 {
+		doc.savedEOL = string(labels)
+	}
 	doc.Editor.MoveTo(0, false)
 	doc.Editor.SetSavePoint()
 	doc.Editor.TrackLineEdits()
@@ -139,6 +144,8 @@ func open(path string, selected *Encoding, maxBytes int64) (*Document, error) {
 	// Bind only after the editor is final and before the first undoable edit.
 	if !doc.lightweight {
 		doc.bindChangeHistory()
+	} else {
+		doc.Editor.TrackHistory()
 	}
 	return doc, nil
 }
@@ -187,7 +194,8 @@ func (doc *Document) Dirty() bool {
 	if doc.large != nil {
 		return false
 	}
-	return doc.recovered || doc.uniformEOL || !doc.Editor.AtSavePoint() || doc.Editor.String() != doc.saved || doc.newline != doc.savedNewline || doc.encoding != doc.savedEncoding
+	history := doc.syncFormatHistory()
+	return doc.recovered || doc.uniformEOL || !doc.Editor.AtSavePoint() || doc.Editor.String() != doc.saved || doc.newline != doc.savedNewline || doc.encoding != doc.savedEncoding || history != nil && doc.EOLSequence() != doc.savedEOL
 }
 
 func (doc *Document) MarkRecovered() { doc.recovered = true }
@@ -205,13 +213,7 @@ func (doc *Document) SetLineEnding(ending LineEnding) {
 	if doc.large != nil || ending != LF && ending != CRLF && ending != CR {
 		return
 	}
-	newline := "\n"
-	switch ending {
-	case CRLF:
-		newline = "\r\n"
-	case CR:
-		newline = "\r"
-	}
+	newline := newlineFor(ending)
 	labels, err := doc.currentLFLabels()
 	if err != nil || newline == doc.newline && uniformLFLabels(labels, lineEndingCode(newline)) {
 		return
@@ -221,6 +223,18 @@ func (doc *Document) SetLineEnding(ending LineEnding) {
 	}
 	doc.uniformEOL = doc.uniformEOL || !uniformLFLabels(labels, lineEndingCode(doc.newline))
 	doc.newline = newline
+	doc.clearFormatUndo()
+}
+
+func newlineFor(ending LineEnding) string {
+	switch ending {
+	case CRLF:
+		return "\r\n"
+	case CR:
+		return "\r"
+	default:
+		return "\n"
+	}
 }
 
 func (doc *Document) LineEnding() LineEnding {
@@ -298,6 +312,7 @@ func (doc *Document) Save(path string) error {
 	doc.savedDisk = data
 	doc.savedDigest = digest(data)
 	doc.savedNewline, doc.savedEncoding = doc.newline, doc.encoding
+	doc.savedEOL = doc.EOLSequence()
 	doc.uniformEOL = false
 	doc.recovered = false
 	doc.Editor.SetSavePoint()

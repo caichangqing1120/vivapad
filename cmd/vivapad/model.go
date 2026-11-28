@@ -362,6 +362,7 @@ var (
 
 type model struct {
 	m5                            *m5Dialog
+	batchConvert                  *batchConvertDialog
 	styles                        preferences.Styles
 	editorStyle                   *editorStyleCache
 	udlPath                       string
@@ -1177,7 +1178,7 @@ func newConfig(state *model) app.Config {
 		return input
 	}
 	config.OnPointer = func(event gfx.PointerEvent) gfx.EventResult {
-		if state.m5 != nil {
+		if state.m5 != nil || state.batchConvert != nil {
 			return gfx.EventResult{}
 		}
 		if isComparePreview(event.Target) {
@@ -1294,6 +1295,12 @@ func newConfig(state *model) app.Config {
 		return state.codeEditor().Pointer(event)
 	}
 	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult {
+		if dialog := state.batchConvert; dialog != nil {
+			if event.Target == batchListID || event.Target.Scope() == batchRows {
+				dialog.offset = min(max(0, dialog.offset+scrollListStep(event)), max(0, dialog.rowCount()-dialog.visible))
+			}
+			return gfx.EventResult{Handled: true, Repaint: true}
+		}
 		if state.m5 != nil {
 			return gfx.EventResult{Handled: true}
 		}
@@ -1525,7 +1532,7 @@ func newConfig(state *model) app.Config {
 		return result
 	}
 	config.OnFileDrop = func(event gfx.FileDropEvent) gfx.EventResult {
-		if state.mapper != nil || state.m5 != nil {
+		if state.mapper != nil || state.m5 != nil || state.batchConvert != nil {
 			return gfx.EventResult{}
 		}
 		if state.saveSessionOptionsOpen || state.columnDialogOpen || state.preferencesOpen || state.runDialogOpen || state.summaryOpen || state.helpMode != noHelp || state.webSearchOpen || state.pendingClose >= 0 || state.pendingReload >= 0 || state.filesDialogOpen || state.replaceConfirmOpen || state.renameDoc != nil || state.renamePlan != nil || state.pendingTrash != nil || state.dateTimeDialogOpen || state.hashDialogOpen || state.windowsDialogOpen {
@@ -1548,6 +1555,9 @@ func newConfig(state *model) app.Config {
 	config.OnShortcut = func(event gfx.KeyEvent) gfx.EventResult {
 		if event.Key == gfx.KeyEscape && event.Modifiers == 0 {
 			return gfx.EventResult{}
+		}
+		if dialog := state.batchConvert; dialog != nil {
+			return gfx.EventResult{Handled: dialog.textInput(event.Target) == nil}
 		}
 		if state.m5 != nil {
 			return gfx.EventResult{Handled: state.m5TextInput(event.Target) == nil}
@@ -1645,6 +1655,15 @@ func newConfig(state *model) app.Config {
 		return state.dispatchShortcut(event)
 	}
 	config.OnKey = func(event gfx.KeyEvent) gfx.EventResult {
+		if state.batchConvert != nil {
+			if event.Key == gfx.KeyEscape && !event.Release {
+				if state.closeBatchConvertDialog() {
+					return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+				}
+				return gfx.EventResult{Handled: true}
+			}
+			return gfx.EventResult{}
+		}
 		if state.m5 != nil {
 			if event.Key == gfx.KeyEscape && !event.Release {
 				state.closeM5Dialog()
@@ -2194,6 +2213,10 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	config.OnCloseRequest = func(allow func()) {
+		if state.batchConvert != nil {
+			state.closeBatchConvertDialog()
+			return
+		}
 		if state.m5 != nil {
 			state.closeM5Dialog()
 			return
@@ -2263,6 +2286,7 @@ func newConfig(state *model) app.Config {
 		state.continueWindowClose(allow)
 	}
 	config.OnWake = func() {
+		state.consumeBatchJob()
 		state.consumeFileSearch()
 		state.consumeLargeSearch()
 		state.consumeFolderChanges()
@@ -2272,6 +2296,9 @@ func newConfig(state *model) app.Config {
 		state.consumeUpdate()
 	}
 	config.OnClosed = func() {
+		if dialog := state.batchConvert; dialog != nil && dialog.job != nil {
+			dialog.job.cancel()
+		}
 		state.closeUpdates()
 		state.unwatchAppearance()
 		state.nativeThemeChoice = ""
@@ -3334,14 +3361,14 @@ func (state *model) command(command string) {
 		state.restoreClosed()
 	case "Undo":
 		before := doc.Editor.String()
-		if doc.Editor.Undo() {
+		if doc.Undo() {
 			state.restoreRectangleAcrossViews(doc, before, doc.Editor.String(), true)
 			state.restoreMultiSelectionAcrossViews(doc, before, doc.Editor.String(), true)
 		}
 		state.recordMacro(doc, macro.Step{Kind: macro.TextStep, TextKind: app.TextCommandEvent, Command: app.TextUndo})
 	case "Redo":
 		before := doc.Editor.String()
-		if doc.Editor.Redo() {
+		if doc.Redo() {
 			state.restoreRectangleAcrossViews(doc, before, doc.Editor.String(), false)
 			state.restoreMultiSelectionAcrossViews(doc, before, doc.Editor.String(), false)
 		}
@@ -3933,6 +3960,8 @@ func (state *model) command(command string) {
 		doc.SetLineEnding(document.CR)
 	case "EOL Conversion":
 		state.menuOpen, state.eolMenuOpen = 1, true
+	case batchConvertCommand:
+		state.openBatchConvertDialog()
 	case "UTF-8":
 		doc.SetUTF8BOM(false)
 	case "UTF-8 BOM":

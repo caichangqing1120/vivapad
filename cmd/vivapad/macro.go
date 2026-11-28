@@ -63,7 +63,16 @@ func (state *model) macroTextInput(doc *document.Document) *app.TextInput {
 				}
 			}
 		}
-		state.editWithBookmarkAnchor(doc, func() { event.Apply(doc.Editor) })
+		state.editWithBookmarkAnchor(doc, func() {
+			switch {
+			case event.Kind == app.TextCommandEvent && event.Command == app.TextUndo:
+				doc.Undo()
+			case event.Kind == app.TextCommandEvent && event.Command == app.TextRedo:
+				doc.Redo()
+			default:
+				event.Apply(doc.Editor)
+			}
+		})
 		if event.Kind == app.TextCommandEvent && (event.Command == app.TextUndo || event.Command == app.TextRedo) {
 			state.restoreRectangleAcrossViews(doc, beforeText, doc.Editor.String(), event.Command == app.TextUndo)
 			state.restoreMultiSelectionAcrossViews(doc, beforeText, doc.Editor.String(), event.Command == app.TextUndo)

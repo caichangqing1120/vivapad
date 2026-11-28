@@ -84,7 +84,7 @@ var preferenceChinese = map[string]string{
 	"Non-printing style": "不可打印字符样式", "Original": "原样", "Abbreviation": "缩写", "Codepoint": "码位", "Include control / Unicode EOL": "包含控制字符和 Unicode 行尾符",
 	"Color options": "颜色选项", "Margins (mm)": "页边距（毫米）", "Header and Footer": "页眉和页脚", "Header": "页眉", "Footer": "页脚", "Left": "左", "Middle": "中", "Right": "右", "Top": "上", "Bottom": "下", "Insert": "插入", "Size": "字号",
 	"WYSIWYG": "所见即所得", "Invert": "反色", "Black on white": "黑字白底", "No background": "无背景", "Print line numbers": "打印行号", "Form feed as page break": "将换页符视为分页",
-	"Preferences...": "偏好设置…", checkUpdatesCommand: "检查更新…", "Settings": "设置",
+	"Preferences...": "偏好设置…", checkUpdatesCommand: "检查更新…", "Settings": "设置", batchConvertCommand: "批量转换…",
 	"Documents": "文档", "Files": "文件", "Workspace": "工作区", "Folder": "文件夹", "Folder as Workspace": "文件夹工作区", "Functions": "函数", "Funcs": "函数", "Characters": "字符", "Chars": "字符", "Projects": "项目", "No projects": "没有项目", "Function List": "函数列表", "Document List": "文档列表",
 	"No search results": "没有搜索结果", "Search canceled": "搜索已取消", "Read-only document": "只读文档", "READ ONLY": "只读", "Lightweight Edit": "轻量编辑", "Lightweight · Read-Only": "轻量编辑 · 只读", "Large File (Read-Only)": "大文件（只读）",
 	"New": "新建", "Open": "打开", "Save": "保存", "Undo": "撤销", "Redo": "重做", "Cut": "剪切", "Copy": "复制", "Paste": "粘贴", "Find": "查找",

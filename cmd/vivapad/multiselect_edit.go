@@ -292,7 +292,7 @@ func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 				}
 				state.bookmarkLines(doc)
 				before := doc.Editor.String()
-				if event.Command == app.TextUndo && doc.Editor.Undo() || event.Command == app.TextRedo && doc.Editor.Redo() {
+				if event.Command == app.TextUndo && doc.Undo() || event.Command == app.TextRedo && doc.Redo() {
 					state.restoreMultiSelectionAcrossViews(doc, before, doc.Editor.String(), event.Command == app.TextUndo)
 				}
 				state.bookmarkLines(doc)

@@ -78,8 +78,9 @@ const (
 )
 
 func (doc *Document) SetEncoding(encoding Encoding) {
-	if doc.large == nil && encoding.Valid() {
+	if doc.large == nil && encoding.Valid() && doc.encoding != encoding {
 		doc.encoding = encoding
+		doc.clearFormatUndo()
 	}
 }
 
@@ -94,17 +95,7 @@ func DecodeLegacyByte(format Encoding, value byte) (string, bool) {
 }
 
 func (doc *Document) EncodingLabel() string {
-	switch doc.encoding {
-	case UTF8BOM:
-		return "UTF-8 BOM"
-	case UTF16LE:
-		return "UTF-16 LE"
-	case UTF16BE:
-		return "UTF-16 BE"
-	case UTF8:
-		return "UTF-8"
-	}
-	return formatLabel(doc.encoding)
+	return doc.encoding.Label()
 }
 
 func legacyCodec(format Encoding) encoding.Encoding {
@@ -176,6 +167,34 @@ func formatLabel(format Encoding) string {
 
 func decodeText(data []byte) (string, Encoding, error) {
 	return decodeTextWithNFOFallback(data, false)
+}
+
+func DetectTextEncoding(data []byte) (string, Encoding, error) {
+	value, format, err := decodeText(data)
+	if err == nil || bytes.HasPrefix(data, []byte{0xef, 0xbb, 0xbf}) ||
+		bytes.HasPrefix(data, []byte{0xff, 0xfe}) || bytes.HasPrefix(data, []byte{0xfe, 0xff}) {
+		return value, format, err
+	}
+	return decodeLegacy(data, GB18030)
+}
+
+func EncodeText(value string, format Encoding) ([]byte, error) {
+	return encodeText(value, format)
+}
+
+func (format Encoding) Label() string {
+	switch format {
+	case UTF8:
+		return "UTF-8"
+	case UTF8BOM:
+		return "UTF-8 BOM"
+	case UTF16LE:
+		return "UTF-16 LE"
+	case UTF16BE:
+		return "UTF-16 BE"
+	default:
+		return formatLabel(format)
+	}
 }
 
 func decodeTextWithNFOFallback(data []byte, nfo bool) (string, Encoding, error) {
