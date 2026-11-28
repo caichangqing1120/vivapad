@@ -60,6 +60,21 @@ VivaPad is a lightweight, local-first desktop text & code editor crafted in **Go
 | Exit Multi-Cursor | `Esc` |
 | Switch Tab 1–9 | `Primary + 1..9` |
 
+## Installation & First Launch (Unsigned Builds)
+
+Pre-built binaries are currently **unsigned** (no Apple Developer notarization or Windows Authenticode certificate yet):
+
+- **macOS**: After dragging `VivaPad.app` into `/Applications`, if macOS reports *"VivaPad is damaged"* or *"cannot be verified"*, remove the quarantine attribute with one command and launch:
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/VivaPad.app
+  open /Applications/VivaPad.app
+  ```
+- **Windows**: If SmartScreen displays a warning, click **More info** → **Run anyway** (or unzip and run the portable `.zip` package).
+- **Linux**: Install the `.deb` package with:
+  ```sh
+  sudo apt install ./vivapad_*.deb
+  ```
+
 ## Build & Package
 
 Requires **Go 1.26+** and the platform prerequisites documented by Viva.
