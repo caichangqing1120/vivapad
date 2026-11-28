@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
@@ -129,41 +130,23 @@ func (state *model) insertPrintVariable() {
 	}
 }
 
-func (state *model) paintPrintPreferences(canvas *gfx.Canvas, x, y, width float32) {
-	palette := state.palette()
-	state.preferenceLabel(canvas, "Print", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
-	state.preferenceLabel(canvas, "Color options", gfx.Rect{X: x, Y: y + 89, Width: width, Height: 18}, palette.muted, 11)
-	for index, option := range []struct {
-		label string
-		mode  printing.ColorMode
-	}{
-		{"WYSIWYG", printing.ColorWYSIWYG},
-		{"Invert", printing.ColorInvertLight},
-		{"Black on white", printing.ColorBlackOnWhite},
-		{"No background", printing.ColorOnWhite},
-	} {
-		bounds := gfx.Rect{X: x + float32(index%2)*(width/2), Y: y + 109 + float32(index/2)*29, Width: width/2 - 6, Height: 25}
-		id := printColorScope.At(index)
-		background := palette.popup
-		if state.printSettings.ColorMode == option.mode || canvas.Hovered() == id {
-			background = palette.hover
-		}
-		canvas.Border(bounds, 1, palette.border, background)
-		color := palette.text
-		if state.printSettings.ColorMode == option.mode {
-			color = palette.accent
-		}
-		label := state.preferenceText(option.label)
-		canvas.LabelCenter(label, bounds, gfx.TextStyle{Size: state.interfaceSize(11), Color: color})
-		canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{Role: gfx.RoleRadio, Checked: state.printSettings.ColorMode == option.mode})
-		if canvas.Clicked(id) {
-			state.printSettings.ColorMode = option.mode
-			state.savePreferences()
-		}
+func (state *model) paintPrintPreferences(canvas *gfx.Canvas, body gfx.Rect, height float32) {
+	labels := state.settingsTranslations([]string{"WYSIWYG", "Invert", "Black on white", "No background"})
+	modes := []printing.ColorMode{printing.ColorWYSIWYG, printing.ColorInvertLight, printing.ColorBlackOnWhite, printing.ColorOnWhite}
+	title := state.preferenceText("Color options")
+	extra := state.settingsSegmentExtra(canvas, body, title, labels)
+	card := state.settingsCard(canvas, body, height*3+extra)
+	colors, title := state.settingsSegmentRow(canvas, card, height, extra, title)
+	if index := state.settingsSegments(canvas, colors, title, printColorScope,
+		labels, labels, slices.Index(modes, state.printSettings.ColorMode)); index >= 0 {
+		state.printSettings.ColorMode = modes[index]
+		state.savePreferences()
 	}
-	state.preferenceCheckbox(canvas, printLineNumbersID, gfx.Rect{X: x, Y: y + 169, Width: width / 2, Height: 24}, "Print line numbers", state.printSettings.LineNumbers, "Print Line Numbers")
-	state.preferenceCheckbox(canvas, printFormFeedID, gfx.Rect{X: x + width/2, Y: y + 169, Width: width / 2, Height: 24}, "Form feed as page break", state.printSettings.FormFeedPageBreak, "Print Form Feed")
-	state.preferenceLabel(canvas, "Margins (mm)", gfx.Rect{X: x, Y: y + 201, Width: width, Height: 21}, palette.muted, 11)
+	state.preferenceToggle(canvas, printLineNumbersID, card.row(canvas, height+extra, height), "Print line numbers", state.printSettings.LineNumbers, "Print Line Numbers")
+	state.preferenceToggle(canvas, printFormFeedID, card.row(canvas, height*2+extra, height), "Form feed as page break", state.printSettings.FormFeedPageBreak, "Print Form Feed")
+	body.Y += card.bounds.Height + settingsCardGap
+	card = state.settingsCard(canvas, body, height*3)
+	state.settingsLabel(canvas, state.preferenceText("Margins (mm)"), card.row(canvas, 0, height), state.palette().text, 13, gfx.WeightSemibold)
 	values := []struct {
 		label string
 		value int
@@ -171,104 +154,115 @@ func (state *model) paintPrintPreferences(canvas *gfx.Canvas, x, y, width float3
 		{"Top", state.printSettings.MarginMM.Top}, {"Left", state.printSettings.MarginMM.Left},
 		{"Right", state.printSettings.MarginMM.Right}, {"Bottom", state.printSettings.MarginMM.Bottom},
 	}
-	for index, item := range values {
-		columnWidth := width / 2
-		bounds := gfx.Rect{X: x + float32(index%2)*columnWidth, Y: y + 227 + float32(index/2)*29, Width: columnWidth - 6, Height: 25}
-		state.paintPrintMarginStepper(canvas, bounds, index, item.label, item.value)
-	}
-}
-
-func (state *model) paintPrintMarginStepper(canvas *gfx.Canvas, bounds gfx.Rect, index int, label string, value int) {
-	palette := state.palette()
-	state.preferenceLabel(canvas, label, gfx.Rect{X: bounds.X, Y: bounds.Y, Width: 52, Height: bounds.Height}, palette.text, 11)
-	for _, control := range []struct {
-		id    gfx.ID
-		x     float32
-		glyph string
-		delta int
-	}{
-		{printMarginDecrementScope.At(index), bounds.X + 54, "-", -1},
-		{printMarginIncrementScope.At(index), bounds.X + bounds.Width - 27, "+", 1},
-	} {
-		button := gfx.Rect{X: control.x, Y: bounds.Y, Width: 25, Height: bounds.Height}
-		canvas.Border(button, 1, palette.border, palette.toolbar)
-		canvas.LabelCenter(control.glyph, button, gfx.TextStyle{Size: state.interfaceSize(13), Color: palette.text})
-		canvas.HitWithOptions(control.id, button, fmt.Sprintf("%s %s margin", map[bool]string{true: "Increase", false: "Decrease"}[control.delta > 0], label), gfx.HitOptions{Role: gfx.RoleButton})
-		if canvas.Clicked(control.id) {
-			state.adjustPrintMargin(index, control.delta)
-		}
-	}
-	valueBounds := gfx.Rect{X: bounds.X + 82, Y: bounds.Y, Width: bounds.Width - 112, Height: bounds.Height}
-	canvas.LabelCenter(fmt.Sprint(value), valueBounds, gfx.TextStyle{Size: state.interfaceSize(11), Color: palette.text})
-}
-
-func (state *model) paintPrintBandsPreferences(canvas *gfx.Canvas, x, y, width float32) {
-	palette := state.palette()
-	state.preferenceLabel(canvas, "Header and Footer", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
-	theme := state.uiTheme()
-	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 27, state.interfaceSize(11), 2
-	theme.Border, theme.Ring = palette.border, palette.accent
-	for index := range state.printFields {
-		column, section := index%3, index/3
-		columnWidth := width / 3
-		position := x + float32(column)*columnWidth
-		label := []string{"Left", "Middle", "Right"}[column]
-		if column == 0 {
-			sectionLabel := "Header"
-			if section == 1 {
-				sectionLabel = "Footer"
+	for line := range 2 {
+		row := card.row(canvas, float32(line+1)*height, height)
+		columnWidth := (row.Width - 20) / 2
+		for column := range 2 {
+			index := line*2 + column
+			item := values[index]
+			bounds := gfx.Rect{X: row.X + float32(column)*(columnWidth+20), Y: row.Y, Width: columnWidth, Height: height}
+			control := settingsControl(bounds, 108, 26)
+			name := state.preferenceText(item.label)
+			state.settingsRowLabel(canvas, name, bounds, control)
+			delta := state.settingsStepper(canvas, control, printMarginDecrementScope.At(index), printMarginIncrementScope.At(index), fmt.Sprint(item.value),
+				state.tr("Decrease "+item.label+" margin", "减小"+name+"页边距"), state.tr("Increase "+item.label+" margin", "增大"+name+"页边距"))
+			if delta != 0 {
+				state.adjustPrintMargin(index, delta)
 			}
-			state.preferenceLabel(canvas, sectionLabel, gfx.Rect{X: x, Y: y + 90 + float32(section)*71, Width: width, Height: 19}, palette.muted, 11)
-		}
-		state.preferenceLabel(canvas, label, gfx.Rect{X: position, Y: y + 111 + float32(section)*71, Width: columnWidth - 6, Height: 17}, palette.text, 10)
-		id := printBandFieldScope.At(index)
-		value := canvas.FitLine(state.printFields[index].String(), state.interfaceSize(11), gfx.WeightRegular, columnWidth-36)
-		components.PaintInput(canvas, theme, gfx.Rect{X: position, Y: y + 130 + float32(section)*71, Width: columnWidth - 7, Height: 27}, components.InputSnapshot{
-			ID: id, Label: state.preferenceText(sectionLabelForField(index)) + " " + state.preferenceText(label), Value: value, PlatformEditing: canvas.Focused() == id,
-		})
-		if canvas.Focused() == id || canvas.Clicked(id) {
-			state.printFieldSelected = index
 		}
 	}
-	variableBounds := gfx.Rect{X: x, Y: y + 239, Width: width - 89, Height: 27}
-	canvas.Border(variableBounds, 1, palette.border, palette.popup)
-	state.interfaceLabel(canvas, state.tr("Variable: ", "变量：")+printVariableOptions[state.printVariableIndex].label, variableBounds.Inset(gfx.Insets{Left: 8, Right: 25}), palette.text, 11)
-	canvas.DrawIcon(downIcon, gfx.Rect{X: variableBounds.X + variableBounds.Width - 22, Y: variableBounds.Y + 5, Width: 16, Height: 16}, palette.muted)
-	canvas.HitWithOptions(printVariableButtonID, variableBounds, "Choose print variable", gfx.HitOptions{Role: gfx.RoleButton})
-	if canvas.Clicked(printVariableButtonID) {
+}
+
+func (state *model) settingsStepper(canvas *gfx.Canvas, bounds gfx.Rect, decrease, increase gfx.ID, value, decreaseLabel, increaseLabel string) int {
+	palette := state.palette()
+	minus := gfx.Rect{X: bounds.X, Y: bounds.Y, Width: 26, Height: bounds.Height}
+	plus := settingsControl(bounds, 26, bounds.Height)
+	valueBounds := bounds.Inset(gfx.Insets{Left: 26, Right: 26})
+	canvas.LabelCenter(value, valueBounds, gfx.TextStyle{Size: state.interfaceSize(11), Color: palette.text})
+	canvas.HoverHint(page, minus, decreaseLabel, decrease)
+	canvas.HoverHint(page, plus, increaseLabel, increase)
+	minusClicked := state.settingsButtonWithLabel(canvas, decrease, minus, "−", decreaseLabel, false)
+	plusClicked := state.settingsButtonWithLabel(canvas, increase, plus, "+", increaseLabel, false)
+	if minusClicked {
+		return -1
+	}
+	if plusClicked {
+		return 1
+	}
+	return 0
+}
+
+func (state *model) paintPrintBandsPreferences(canvas *gfx.Canvas, body gfx.Rect, height float32) {
+	palette := state.palette()
+	theme := state.uiTheme()
+	theme.Metrics.ControlHeight, theme.Metrics.FontSizeM, theme.Metrics.RadiusControl = 28, state.interfaceSize(11), 6
+	theme.Border, theme.Ring = palette.border, palette.accent
+	sectionHeight := height + 48
+	for section, name := range []string{"Header", "Footer"} {
+		card := state.settingsCard(canvas, body, sectionHeight)
+		heading := card.row(canvas, 0, height-4)
+		state.settingsLabel(canvas, state.preferenceText(name), heading, palette.text, 13, gfx.WeightSemibold)
+		columnWidth := (heading.Width - 16) / 3
+		for column, label := range []string{"Left", "Middle", "Right"} {
+			index := section*3 + column
+			position := heading.X + float32(column)*(columnWidth+8)
+			state.preferenceLabel(canvas, label, gfx.Rect{X: position, Y: body.Y + height - 4, Width: columnWidth, Height: 18}, palette.muted, 11)
+			id := printBandFieldScope.At(index)
+			value := canvas.FitLine(state.printFields[index].String(), state.interfaceSize(11), gfx.WeightRegular, columnWidth-24)
+			components.PaintInput(canvas, theme, gfx.Rect{X: position, Y: body.Y + height + 15, Width: columnWidth, Height: 28}, components.InputSnapshot{
+				ID: id, Label: state.preferenceText(name) + " " + state.preferenceText(label), Value: value, PlatformEditing: canvas.Focused() == id,
+			})
+			if canvas.Focused() == id || canvas.Clicked(id) {
+				state.printFieldSelected = index
+			}
+		}
+		body.Y += sectionHeight + settingsCardGap
+	}
+	card := state.settingsCard(canvas, body, height)
+	row := card.row(canvas, 0, height)
+	insert := state.preferenceText("Insert")
+	insertBounds := settingsControl(row, state.settingsButtonWidth(canvas, insert)+8, 27)
+	variableRow := row
+	variableRow.Width -= insertBounds.Width + 6
+	variableBounds := settingsControl(variableRow, 170, 27)
+	state.settingsRowLabel(canvas, state.tr("Print variable", "打印变量"), row, variableBounds)
+	border := palette.border
+	if canvas.Hovered() == printVariableButtonID || canvas.FocusVisible() == printVariableButtonID || state.printVariableOpen {
+		border = palette.accent
+	}
+	canvas.RoundedBorder(variableBounds, 7, 1, border, palette.inputBackground)
+	state.interfaceLabel(canvas, state.preferenceText(printVariableOptions[state.printVariableIndex].label), variableBounds.Inset(gfx.Insets{Left: 9, Right: 25}), palette.text, 11)
+	canvas.DrawIcon(downIcon, settingsControl(variableBounds.Inset(gfx.Insets{Right: 7}), 14, 14), palette.muted)
+	if hitButton(canvas, printVariableButtonID, variableBounds, state.tr("Choose print variable", "选择打印变量")) {
 		state.printVariableOpen = !state.printVariableOpen
 	}
-	insertBounds := gfx.Rect{X: x + width - 82, Y: y + 239, Width: 82, Height: 27}
-	canvas.Border(insertBounds, 1, palette.border, palette.toolbar)
-	canvas.LabelCenter(state.preferenceText("Insert"), insertBounds, gfx.TextStyle{Size: state.interfaceSize(11), Color: palette.text})
-	if hitButton(canvas, printInsertVariableID, insertBounds, "Insert variable") {
+	if state.settingsButtonWithLabel(canvas, printInsertVariableID, insertBounds, insert, state.tr("Insert variable", "插入变量"), false) {
 		state.insertPrintVariable()
 	}
 	if state.printVariableOpen {
-		state.paintPrintVariableMenu(canvas, x, y)
+		state.paintPrintVariableMenu(canvas, variableBounds)
 	}
 }
 
-func sectionLabelForField(index int) string {
-	if index < 3 {
-		return "Header"
-	}
-	return "Footer"
-}
-
-func (state *model) paintPrintVariableMenu(canvas *gfx.Canvas, x, y float32) {
+func (state *model) paintPrintVariableMenu(canvas *gfx.Canvas, anchor gfx.Rect) {
 	palette := state.palette()
 	canvas.PushLayer(5)
-	panel := gfx.Rect{X: x, Y: y + 63, Width: 216, Height: float32(len(printVariableOptions))*25 + 4}
-	canvas.Border(panel, 1, palette.border, palette.popup)
+	height := float32(len(printVariableOptions))*25 + 8
+	panel := gfx.Rect{X: anchor.X, Y: anchor.Y - height - 4, Width: anchor.Width, Height: height}
+	canvas.Elevate(panel, 9, gfx.ShadowMD)
+	canvas.RoundedBorder(panel, 9, 1, palette.border, palette.popup)
 	for index, item := range printVariableOptions {
-		bounds := gfx.Rect{X: panel.X + 2, Y: panel.Y + 2 + float32(index)*25, Width: panel.Width - 4, Height: 25}
+		bounds := gfx.Rect{X: panel.X + 4, Y: panel.Y + 4 + float32(index)*25, Width: panel.Width - 8, Height: 25}
 		id := printVariableScope.At(index)
 		if canvas.Hovered() == id || state.printVariableIndex == index {
-			canvas.Fill(bounds, palette.hover)
+			canvas.Rounded(bounds, 5, palette.selectedRow)
 		}
-		state.interfaceLabel(canvas, item.label, bounds.Inset(gfx.Insets{Left: 7, Right: 7}), palette.text, 11)
-		canvas.HitWithOptions(id, bounds, item.label, gfx.HitOptions{Role: gfx.RoleMenuItem})
+		if canvas.FocusVisible() == id {
+			canvas.RoundedBorder(bounds, 5, 1, palette.accent, gfx.Color{})
+		}
+		label := state.preferenceText(item.label)
+		state.interfaceLabel(canvas, label, bounds.Inset(gfx.Insets{Left: 7, Right: 7}), palette.text, 11)
+		canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{Role: gfx.RoleMenuItem})
 		if canvas.Clicked(id) {
 			state.printVariableIndex, state.printVariableOpen = index, false
 		}
@@ -291,75 +285,34 @@ func (state *model) adjustPrintFont(index int, delta int) {
 	state.savePreferences()
 }
 
-func (state *model) paintPrintFontPreferences(canvas *gfx.Canvas, x, y, width float32) {
-	palette := state.palette()
-	state.preferenceLabel(canvas, "Print Fonts", gfx.Rect{X: x, Y: y + 64, Width: width, Height: 25}, palette.text, 14)
+func (state *model) paintPrintFontPreferences(canvas *gfx.Canvas, body gfx.Rect, height float32) {
 	for index, font := range []printing.BandFont{state.printSettings.HeaderFont, state.printSettings.FooterFont} {
-		name := "Header"
+		name := []string{"Header", "Footer"}[index]
+		localized := state.preferenceText(name)
+		card := state.settingsCard(canvas, body, height*3)
+		row := card.row(canvas, 0, height)
+		control := settingsControl(row, 108, 26)
+		state.settingsRowLabel(canvas, state.tr(name+" font size", localized+"字号"), row, control)
+		delta := state.settingsStepper(canvas, control, printFontSizeDecreaseScope.At(index), printFontSizeIncreaseScope.At(index),
+			fmt.Sprintf(state.tr("%d pt", "%d 磅"), font.Points()), state.tr("Decrease "+name+" font size", "减小"+localized+"字号"), state.tr("Increase "+name+" font size", "增大"+localized+"字号"))
+		if delta != 0 {
+			state.adjustPrintFont(index, delta)
+		}
+		settings := state.printSettings
+		target := &settings.HeaderFont
 		if index == 1 {
-			name = "Footer"
+			target = &settings.FooterFont
 		}
-		baseY := y + 101 + float32(index)*83
-		state.preferenceLabel(canvas, name, gfx.Rect{X: x, Y: baseY, Width: width, Height: 21}, palette.muted, 11)
-		state.preferenceLabel(canvas, "Size", gfx.Rect{X: x, Y: baseY + 29, Width: 48, Height: 27}, palette.text, 11)
-		for _, control := range []struct {
-			id    gfx.ID
-			x     float32
-			glyph string
-			delta int
-		}{
-			{printFontSizeDecreaseScope.At(index), x + 52, "-", -1},
-			{printFontSizeIncreaseScope.At(index), x + 140, "+", 1},
-		} {
-			bounds := gfx.Rect{X: control.x, Y: baseY + 29, Width: 27, Height: 27}
-			canvas.Border(bounds, 1, palette.border, palette.toolbar)
-			canvas.LabelCenter(control.glyph, bounds, gfx.TextStyle{Size: state.interfaceSize(13), Color: palette.text})
-			label := "Increase " + name + " font size"
-			if control.delta < 0 {
-				label = "Decrease " + name + " font size"
-			}
-			canvas.HitWithOptions(control.id, bounds, label, gfx.HitOptions{Role: gfx.RoleButton})
-			if canvas.Clicked(control.id) {
-				state.adjustPrintFont(index, control.delta)
-			}
+		if state.paintPreferenceToggle(canvas, printFontBoldScope.At(index), card.row(canvas, height, height), state.tr("Bold", "粗体"), state.tr(name+" Bold", localized+"粗体"), target.Bold) {
+			target.Bold = !target.Bold
 		}
-		canvas.LabelCenter(fmt.Sprintf("%d pt", font.Points()), gfx.Rect{X: x + 80, Y: baseY + 29, Width: 58, Height: 27}, gfx.TextStyle{Size: state.interfaceSize(11), Color: palette.text})
-		for _, style := range []struct {
-			id      gfx.ID
-			x       float32
-			glyph   string
-			label   string
-			checked bool
-		}{
-			{printFontBoldScope.At(index), x + width - 80, "B", "Bold", font.Bold},
-			{printFontItalicScope.At(index), x + width - 41, "I", "Italic", font.Italic},
-		} {
-			bounds := gfx.Rect{X: style.x, Y: baseY + 29, Width: 31, Height: 27}
-			background := palette.popup
-			if style.checked || canvas.Hovered() == style.id {
-				background = palette.hover
-			}
-			canvas.Border(bounds, 1, palette.border, background)
-			color := palette.text
-			if style.checked {
-				color = palette.accent
-			}
-			canvas.LabelCenter(style.glyph, bounds, gfx.TextStyle{Size: state.interfaceSize(12), Color: color})
-			canvas.HitWithOptions(style.id, bounds, name+" "+style.label, gfx.HitOptions{Role: gfx.RoleCheckbox, Checked: style.checked})
-			if canvas.Clicked(style.id) {
-				settings := state.printSettings
-				target := &settings.HeaderFont
-				if index == 1 {
-					target = &settings.FooterFont
-				}
-				if style.label == "Bold" {
-					target.Bold = !target.Bold
-				} else {
-					target.Italic = !target.Italic
-				}
-				state.printSettings = settings
-				state.savePreferences()
-			}
+		if state.paintPreferenceToggle(canvas, printFontItalicScope.At(index), card.row(canvas, height*2, height), state.tr("Italic", "斜体"), state.tr(name+" Italic", localized+"斜体"), target.Italic) {
+			target.Italic = !target.Italic
 		}
+		if settings != state.printSettings {
+			state.printSettings = settings
+			state.savePreferences()
+		}
+		body.Y += height*3 + settingsCardGap
 	}
 }

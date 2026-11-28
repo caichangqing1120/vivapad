@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,6 +124,81 @@ func TestPreferencesDialogCompactModalAndCloseGuard(t *testing.T) {
 	clickID(t, driver, preferencesCloseID)
 	if state.preferencesOpen {
 		t.Fatal("Preferences Close button did not dismiss the dialog")
+	}
+}
+
+func TestPreferencesDialogCompactChoicesAndLocalizedNavigation(t *testing.T) {
+	state, driver := startDriver(t)
+	state.chineseUI, state.uiTextSize = true, "large"
+	state.command("Preferences...")
+	if err := driver.Resize(640, 400); err != nil {
+		t.Fatal(err)
+	}
+	wants := map[gfx.ID]struct {
+		label string
+		role  gfx.Role
+	}{
+		preferencesGeneralID:      {"通用", gfx.RoleTab},
+		preferencesTabScope.At(0): {"2", gfx.RoleRadio},
+		preferencesAutoIndentID:   {"自动缩进", gfx.RoleCheckbox},
+	}
+	for _, hit := range driver.Snapshot().Hits {
+		if want, ok := wants[hit.ID]; ok {
+			if hit.Label != want.label || hit.Role != want.role {
+				t.Errorf("hit %v = %q/%v, want %q/%v", hit.ID, hit.Label, hit.Role, want.label, want.role)
+			}
+			if hit.Role == gfx.RoleRadio && hit.Bounds.Width > 60 {
+				t.Errorf("numeric choice should not stretch across the row: %+v", hit.Bounds)
+			}
+			delete(wants, hit.ID)
+		}
+	}
+	if len(wants) > 0 {
+		t.Fatalf("missing hits: %v", wants)
+	}
+}
+
+func TestPreferencesDialogLayoutAcrossThemesAndLanguages(t *testing.T) {
+	for _, theme := range []preferences.Theme{preferences.ClassicLight, preferences.ModernDark, preferences.Monokai} {
+		for _, language := range []string{"en", "zh-CN"} {
+			t.Run(fmt.Sprintf("%s/%s", theme, language), func(t *testing.T) {
+				state, driver := startDriver(t)
+				state.themeChoice, state.language, state.uiTextSize = theme, language, "large"
+				state.resolveInterfaceLanguage()
+				state.command("Preferences...")
+				for _, size := range [][2]int{{640, 400}, {1280, 800}} {
+					if err := driver.Resize(size[0], size[1]); err != nil {
+						t.Fatal(err)
+					}
+					for _, id := range []gfx.ID{preferencesGeneralID, preferencesEditingID, preferencesViewID, preferencesSymbolsID, preferencesPrintID, preferencesPrintBandsID, preferencesPrintFontsID, preferencesAboutID} {
+						clickID(t, driver, id)
+						checkPreferencesLayout(t, driver, state.preferencesPage)
+						if id == preferencesPrintBandsID {
+							clickID(t, driver, printVariableButtonID)
+							checkPreferencesLayout(t, driver, state.preferencesPage)
+							clickID(t, driver, printVariableScope.At(0))
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+func checkPreferencesLayout(t *testing.T, driver *app.Driver, pageIndex int) {
+	t.Helper()
+	snapshot := driver.Snapshot()
+	if problems := headless.CheckLayout(snapshot); len(problems) != 0 {
+		t.Errorf("page %d at %dx%d: %+v", pageIndex, snapshot.Width, snapshot.Height, problems)
+	}
+	for _, text := range snapshot.Texts {
+		if text.Layer < 4 || !strings.HasSuffix(text.Value, "…") {
+			continue
+		}
+		if pageIndex == preferencesAboutPage && (strings.HasPrefix(text.Value, "Build Commit:") || strings.HasPrefix(text.Value, "构建提交：") || strings.HasPrefix(text.Value, "Viva:")) {
+			continue
+		}
+		t.Errorf("page %d at %dx%d: truncated label %q", pageIndex, snapshot.Width, snapshot.Height, text.Value)
 	}
 }
 

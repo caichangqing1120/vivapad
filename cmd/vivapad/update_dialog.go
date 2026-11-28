@@ -225,31 +225,48 @@ func diagnosticRows() []string {
 	return []string{"Version: " + buildinfo.Version + " (" + buildinfo.Channel + ")", "Platform: " + details.platform, "Build Commit: " + commit, "Go: " + runtime.Version(), "Viva: " + details.viva}
 }
 
-func (state *model) paintUpdatePreferences(canvas *gfx.Canvas, x, y, width float32) {
+func (state *model) paintUpdatePreferences(canvas *gfx.Canvas, body gfx.Rect) {
 	panel, palette := &state.updates, state.palette()
 	if panel.buildRows == nil {
 		panel.buildRows = diagnosticRows()
 	}
-	left := (width - 9) * .43
-	card := func(bounds gfx.Rect) { canvas.RoundedBorder(bounds, 7, 1, palette.border, palette.dock) }
-	card(gfx.Rect{X: x, Y: y + 59, Width: left, Height: 171})
-	line := func(value string, top float32, index int) {
-		bounds := gfx.Rect{X: x + 10, Y: y + top, Width: left - 20, Height: 19}
-		state.interfaceLabel(canvas, value, bounds, palette.muted, 11)
-		canvas.HitWithOptions(updateBuildScope.At(index), bounds, value, gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
-	}
-	state.interfaceLabel(canvas, state.tr("Build Information", "构建信息"), gfx.Rect{X: x + 10, Y: y + 64, Width: left - 20, Height: 23}, palette.text, 14)
+	cardHeight := float32(184)
+	build := state.settingsCard(canvas, gfx.Rect{X: body.X, Y: body.Y, Width: (body.Width - settingsCardGap) * .44}, cardHeight)
+	state.settingsLabel(canvas, state.tr("Build Information", "构建信息"), build.row(canvas, 0, 34), palette.text, 13, gfx.WeightSemibold)
+	buildY := build.bounds.Y + 36
+	buildStyle := gfx.TextStyle{Color: palette.muted, Size: state.interfaceSize(11)}
 	for index, value := range panel.buildRows {
 		if state.chineseUI {
 			value = strings.NewReplacer("Version:", "版本：", "Platform:", "平台：", "Build Commit:", "构建提交：").Replace(value)
 		}
-		line(value, 89+float32(index)*18, index)
+		bounds := gfx.Rect{X: build.bounds.X + 12, Y: buildY, Width: build.bounds.Width - 24, Height: 18}
+		id := updateBuildScope.At(index)
+		if index == 0 {
+			lineBounds := bounds
+			display := value
+			if state.chineseUI {
+				display = strings.ReplaceAll(display, "(development)", "（开发版）")
+			}
+			lines := canvas.WrapLines(nil, display, buildStyle.Size, buildStyle.Weight, bounds.Width, 2)
+			for _, line := range lines {
+				canvas.Label(line, lineBounds, buildStyle)
+				lineBounds.Y += lineBounds.Height
+			}
+			bounds.Height *= float32(len(lines))
+			canvas.HoverHint(page, bounds, value, id)
+		} else {
+			canvas.LabelEllipsis(value, bounds, buildStyle, id)
+		}
+		canvas.HitWithOptions(id, bounds, value, gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
+		buildY += bounds.Height
 	}
+	const actionsTop = 146
 	copyLabel := state.tr("Copy Diagnostics", "复制诊断信息")
 	if time.Now().Before(panel.copiedUntil) {
 		copyLabel = state.tr("Copied", "已复制")
 	}
-	if state.settingsButton(canvas, copyDiagnosticsID, gfx.Rect{X: x + 10, Y: y + 190, Width: left - 20, Height: 28}, copyLabel, false) {
+	copyBounds := settingsControl(build.row(canvas, actionsTop, cardHeight-actionsTop), state.settingsButtonWidth(canvas, state.tr("Copy Diagnostics", "复制诊断信息")), 26)
+	if state.settingsButton(canvas, copyDiagnosticsID, copyBounds, copyLabel, false) {
 		if err := app.SetClipboardText("VivaPad\n" + strings.Join(panel.buildRows, "\n")); err != nil {
 			state.preferencesNotice = state.tr("Could not copy diagnostics", "无法复制诊断信息")
 		} else {
@@ -258,14 +275,22 @@ func (state *model) paintUpdatePreferences(canvas *gfx.Canvas, x, y, width float
 			time.AfterFunc(1500*time.Millisecond, state.invalidator.Invalidate)
 		}
 	}
-	card(gfx.Rect{X: x + left + 9, Y: y + 59, Width: width - left - 9, Height: 171})
-	state.paintUpdateControls(canvas, x+left+19, y, width-left-29)
-	card(gfx.Rect{X: x, Y: y + 238, Width: width, Height: 41})
-	state.interfaceLabel(canvas, state.tr("Project Links", "项目链接"), gfx.Rect{X: x + 10, Y: y + 242, Width: 100, Height: 32}, palette.text, 12)
-	if state.settingsButton(canvas, updateProjectID, gfx.Rect{X: x + 116, Y: y + 245, Width: 121, Height: 26}, state.tr("Project Home", "项目主页"), false) {
+	updateBounds := body
+	updateBounds.X += build.bounds.Width + settingsCardGap
+	updateBounds.Width -= build.bounds.Width + settingsCardGap
+	state.paintUpdateControls(canvas, state.settingsCard(canvas, updateBounds, cardHeight), actionsTop)
+	body.Y += cardHeight + settingsCardGap
+	links := state.settingsCard(canvas, body, 42).row(canvas, 0, 42)
+	homeLabel, issuesLabel := state.tr("Project Home", "项目主页"), state.tr("Issues", "问题反馈")
+	issues := settingsControl(links, state.settingsButtonWidth(canvas, issuesLabel), 26)
+	linkSpace := links
+	linkSpace.Width -= issues.Width + 6
+	home := settingsControl(linkSpace, state.settingsButtonWidth(canvas, homeLabel), 26)
+	state.settingsRowLabel(canvas, state.tr("Project Links", "项目链接"), links, home)
+	if state.settingsButton(canvas, updateProjectID, home, homeLabel, false) {
 		state.openUpdateLink(projectPageURL)
 	}
-	if state.settingsButton(canvas, updateIssuesID, gfx.Rect{X: x + 244, Y: y + 245, Width: 70, Height: 26}, state.tr("Issues", "问题反馈"), false) {
+	if state.settingsButton(canvas, updateIssuesID, issues, issuesLabel, false) {
 		state.openUpdateLink(projectPageURL + "/issues")
 	}
 }
@@ -277,65 +302,84 @@ func (state *model) openUpdateLink(target string) {
 	}
 }
 
-func (state *model) paintUpdateControls(canvas *gfx.Canvas, x, y, width float32) {
+func (state *model) paintUpdateControls(canvas *gfx.Canvas, card settingsCard, actionsTop float32) {
 	panel, palette := &state.updates, state.palette()
-	row := func(top, height float32) gfx.Rect { return gfx.Rect{X: x, Y: y + top, Width: width, Height: height} }
-	state.interfaceLabel(canvas, state.tr("Software Update", "软件更新"), row(64, 23), palette.text, 14)
-	state.generalCheckbox(canvas, updateAutoCheckID, row(88, 25), state.tr("Check for updates on startup", "启动时检查更新"), &state.autoCheckUpdates)
+	row := func(top, height float32) gfx.Rect {
+		return gfx.Rect{X: card.bounds.X + 12, Y: card.bounds.Y + top, Width: card.bounds.Width - 24, Height: height}
+	}
+	state.settingsLabel(canvas, state.tr("Software Update", "软件更新"), row(0, 34), palette.text, 13, gfx.WeightSemibold)
+	if state.paintPreferenceToggle(canvas, updateAutoCheckID, card.row(canvas, 34, 36), state.tr("Check on startup", "启动时检查更新"),
+		state.tr("Check for updates on startup", "启动时检查更新"), state.autoCheckUpdates) {
+		state.autoCheckUpdates = !state.autoCheckUpdates
+		state.saveGeneralPreferences()
+	}
 	status := state.updateStatus()
-	state.interfaceLabel(canvas, status, row(116, 22), palette.text, 11)
-	canvas.HitWithOptions(updateStatusID, row(116, 22), status, gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
+	statusBounds := row(76, 38)
+	style := gfx.TextStyle{Color: palette.text, Size: state.interfaceSize(11)}
+	lines := canvas.WrapLines(nil, status, style.Size, style.Weight, statusBounds.Width, 2)
+	for index, line := range lines {
+		canvas.Label(line, row(76+float32(index)*17, 17), style)
+	}
+	canvas.HoverHint(page, statusBounds, status, updateStatusID)
+	canvas.HitWithOptions(updateStatusID, statusBounds, status, gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
 	job := panel.operation
 	if job != nil && job.download {
 		job.mutex.Lock()
 		progress := job.progress
 		job.mutex.Unlock()
-		bar := row(161, 5)
-		canvas.Fill(bar, palette.border)
+		bar := row(133, 5)
+		canvas.Rounded(bar, 2.5, palette.border)
 		if progress.Total > 0 {
-			bar.Width *= float32(progress.Done) / float32(progress.Total)
-			canvas.Fill(bar, palette.accent)
+			bar.Width *= max(0, min(1, float32(progress.Done)/float32(progress.Total)))
+			canvas.Rounded(bar, 2.5, palette.accent)
 		}
-		state.interfaceLabel(canvas, fmt.Sprintf("%s / %s", updateSize(progress.Done), updateSize(progress.Total)), row(138, 21), palette.muted, 10)
-		canvas.HitWithOptions(updateProgressID, row(138, 29), fmt.Sprintf("%d / %d", progress.Done, progress.Total), gfx.HitOptions{Role: gfx.RoleProgressBar, SkipFocus: true})
+		state.interfaceLabel(canvas, fmt.Sprintf("%s / %s", updateSize(progress.Done), updateSize(progress.Total)), row(113, 18), palette.muted, 10)
+		canvas.HitWithOptions(updateProgressID, row(113, 28), fmt.Sprintf("%d / %d", progress.Done, progress.Total), gfx.HitOptions{Role: gfx.RoleProgressBar, SkipFocus: true})
 	} else if candidate := panel.candidate; candidate != nil {
-		badge := row(143, 25)
-		canvas.RoundedBorder(badge, 5, 1, palette.border, palette.selectedRow)
 		text := fmt.Sprintf(state.tr("Full package %s", "全量包 %s"), updateSize(candidate.FullSize()))
 		if candidate.PatchFrom() != "" {
 			text = fmt.Sprintf(state.tr("Delta %s vs Full %s", "增量 %s · 全量 %s"), updateSize(candidate.PatchSize()), updateSize(candidate.FullSize()))
 		}
-		state.interfaceLabel(canvas, text, badge.Inset(gfx.Insets{Left: 6, Right: 6}), palette.accent, 10)
+		badge := row(114, 24)
+		badge.Width = min(badge.Width, canvas.TextWidth(text, state.interfaceSize(10))+16)
+		canvas.Rounded(badge, 12, palette.selectedRow)
+		state.interfaceLabel(canvas, text, badge.Inset(gfx.Insets{Left: 8, Right: 8}), palette.accent, 10)
 	}
-	button := row(190, 28)
-	if job == nil && panel.candidate != nil && !errors.Is(panel.err, update.ErrManagedExternally) {
-		secondary := button
-		secondary.Width = min(112, (width-6)*.44)
-		secondary.X += width - secondary.Width
-		button.Width -= secondary.Width + 6
-		if state.settingsButton(canvas, checkUpdateID, secondary, state.tr("Check Again", "重新检查"), false) {
+	actions := card.row(canvas, actionsTop, card.bounds.Height-actionsTop)
+	buttonID, buttonLabel, emphasis := checkUpdateID, state.tr("Check for Updates", "立即检查更新"), true
+	managed := errors.Is(panel.err, update.ErrManagedExternally)
+	switch {
+	case job != nil:
+		buttonID, buttonLabel, emphasis = cancelUpdateID, state.tr("Cancel", "取消"), false
+	case panel.prepared != nil && !managed:
+		buttonID, buttonLabel = installUpdateID, state.tr("Install & Restart", "安装并重启")
+	case panel.candidate != nil && !managed:
+		buttonID, buttonLabel = downloadUpdateID, state.tr("Download Update", "下载更新")
+	}
+	button := settingsControl(actions, state.settingsButtonWidth(canvas, buttonLabel), 26)
+	if job == nil && panel.candidate != nil && !managed {
+		secondaryLabel := state.tr("Check Again", "重新检查")
+		secondaryRow := actions
+		secondaryRow.Width -= button.Width + 6
+		secondary := settingsControl(secondaryRow, state.settingsButtonWidth(canvas, secondaryLabel), 26)
+		if state.settingsButton(canvas, checkUpdateID, secondary, secondaryLabel, false) {
 			state.startUpdate(false)
 			return
 		}
 	}
-	switch {
-	case job != nil:
-		if state.settingsButton(canvas, cancelUpdateID, button, state.tr("Cancel", "取消"), false) {
-			job.canceled = true
-			job.cancel()
-		}
-	case panel.prepared != nil && !errors.Is(panel.err, update.ErrManagedExternally):
-		if state.settingsButton(canvas, installUpdateID, button, state.tr("Install & Restart", "安装并重启"), true) {
-			state.requestUpdateInstall()
-		}
-	case panel.candidate != nil && !errors.Is(panel.err, update.ErrManagedExternally):
-		if state.settingsButton(canvas, downloadUpdateID, button, state.tr("Download Update", "下载更新"), true) {
-			state.startUpdate(true)
-		}
-	default:
-		if state.settingsButton(canvas, checkUpdateID, button, state.tr("Check for Updates", "立即检查更新"), true) {
-			state.startUpdate(false)
-		}
+	if !state.settingsButton(canvas, buttonID, button, buttonLabel, emphasis) {
+		return
+	}
+	switch buttonID {
+	case cancelUpdateID:
+		job.canceled = true
+		job.cancel()
+	case installUpdateID:
+		state.requestUpdateInstall()
+	case downloadUpdateID:
+		state.startUpdate(true)
+	case checkUpdateID:
+		state.startUpdate(false)
 	}
 }
 
