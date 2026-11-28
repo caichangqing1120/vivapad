@@ -22,6 +22,7 @@ type m5Dialog struct {
 	theme       preferences.Theme
 	message     string
 	focus       bool
+	udl         udlManagerOptions
 }
 
 func (state *model) openM5Dialog(kind string, index int, values ...string) *m5Dialog {
@@ -82,7 +83,11 @@ func (state *model) paintM5Dialog(canvas *gfx.Canvas, size gfx.Size) {
 		canvas.RequestFocusOnce(m5Fields.At(0))
 		dialog.focus = false
 	}
-	if state.m5 == dialog && palette.m5Button(canvas, m5CancelID, gfx.Rect{X: inner.X + inner.Width - 74, Y: inner.Y + inner.Height - 29, Width: 74, Height: 29}, "Cancel", false) {
+	cancel := "Cancel"
+	if dialog.kind == udlManagerCommand {
+		cancel = state.tr("Cancel", "取消")
+	}
+	if state.m5 == dialog && palette.m5Button(canvas, m5CancelID, gfx.Rect{X: inner.X + inner.Width - 74, Y: inner.Y + inner.Height - 29, Width: 74, Height: 29}, cancel, false) {
 		state.closeM5Dialog()
 	}
 	canvas.PopLayer()

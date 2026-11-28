@@ -59,6 +59,13 @@ func Save(path string, limit int64, value any) error {
 	if int64(len(data)) > limit {
 		return fmt.Errorf("configuration exceeds its size limit")
 	}
+	return WriteAtomic(path, data)
+}
+
+func WriteAtomic(path string, data []byte) error {
+	if path == "" {
+		return errors.New("choose a path before saving")
+	}
 	directory := filepath.Dir(path)
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return err

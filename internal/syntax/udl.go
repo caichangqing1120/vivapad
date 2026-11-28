@@ -12,7 +12,10 @@ import (
 	"vivapad/internal/privatejson"
 )
 
-const maxUDLBytes = 256 << 10
+const (
+	maxUDLBytes     = 256 << 10
+	maxUDLNameBytes = 96
+)
 
 type UDL struct {
 	Name        string   `json:"name"`
@@ -32,7 +35,7 @@ func ValidUDLMode(mode string) bool {
 }
 
 func validUDLName(name string) bool {
-	return name != "" && name == strings.TrimSpace(name) && len(name) <= 96 && !strings.ContainsFunc(name, unicode.IsControl)
+	return name != "" && name == strings.TrimSpace(name) && len(name) <= maxUDLNameBytes && !strings.ContainsFunc(name, unicode.IsControl)
 }
 
 func LoadUDLs(path string) ([]UDL, error) {
@@ -75,7 +78,8 @@ func normalizeUDLs(definitions []UDL) ([]UDL, error) {
 			definition.Extensions[extIndex] = extension
 		}
 		for _, keyword := range definition.Keywords {
-			if keyword == "" || strings.ContainsFunc(keyword, func(value rune) bool { return !udlWord(value) }) {
+			word := strings.TrimPrefix(keyword, ".")
+			if word == "" || strings.ContainsFunc(word, func(value rune) bool { return !udlWord(value) }) {
 				return nil, fmt.Errorf("invalid keyword %q", keyword)
 			}
 		}
@@ -108,10 +112,23 @@ func udlWord(value rune) bool {
 	return value == '_' || unicode.IsLetter(value) || unicode.IsDigit(value) || unicode.IsMark(value)
 }
 
+func udlWordEnd(line string, offset int) int {
+	for offset < len(line) {
+		value, size := utf8.DecodeRuneInString(line[offset:])
+		if !udlWord(value) {
+			break
+		}
+		offset += size
+	}
+	return offset
+}
+
 func (definition UDL) Highlighter(value string) func(string, int, string, []components.CodeEditorRun) []components.CodeEditorRun {
 	keywords := make(map[string]bool, len(definition.Keywords))
+	dottedKeywords := false
 	for _, keyword := range definition.Keywords {
 		keywords[keyword] = true
+		dottedKeywords = dottedKeywords || strings.HasPrefix(keyword, ".")
 	}
 	keywordColor, _ := tokenColor(chroma.Keyword)
 	commentColor, _ := tokenColor(chroma.Comment)
@@ -159,14 +176,13 @@ func (definition UDL) Highlighter(value string) func(string, int, string, []comp
 					offset += size
 					paint = false
 					if udlWord(value) {
-						for offset < len(line) {
-							value, size := utf8.DecodeRuneInString(line[offset:])
-							if !udlWord(value) {
-								break
-							}
-							offset += size
-						}
+						offset = udlWordEnd(line, offset)
 						paint, color = keywords[line[start:offset]], keywordColor
+					} else if value == '.' && dottedKeywords {
+						end := udlWordEnd(line, offset)
+						if keywords[line[start:end]] {
+							offset, paint, color = end, true, keywordColor
+						}
 					}
 				}
 			}

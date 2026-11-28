@@ -57,8 +57,9 @@ func (state *model) paintLanguageMenu(canvas *gfx.Canvas, size gfx.Size, origin 
 	if canvas.Hovered() == udlManagerID {
 		canvas.Fill(manager, palette.hover)
 	}
-	smallLabel(canvas, udlManagerCommand, manager.Inset(gfx.Insets{Left: 9}), palette.text, 11)
-	canvas.HitWithOptions(udlManagerID, manager, udlManagerCommand, gfx.HitOptions{Role: gfx.RoleMenuItem})
+	managerLabel := state.tr(udlManagerCommand, "用户自定义语言…")
+	smallLabel(canvas, managerLabel, manager.Inset(gfx.Insets{Left: 9}), palette.text, 11)
+	canvas.HitWithOptions(udlManagerID, manager, managerLabel, gfx.HitOptions{Role: gfx.RoleMenuItem})
 	if canvas.Clicked(udlManagerID) {
 		state.command(udlManagerCommand)
 	}
