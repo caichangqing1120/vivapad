@@ -241,6 +241,14 @@ func (space *Workspace) reload(index int, discard bool) (*document.Document, err
 	return old, nil
 }
 
+func (space *Workspace) IsSoleBlankUntitled() bool {
+	if len(space.Documents) != 1 {
+		return false
+	}
+	doc := space.Documents[0]
+	return doc != nil && doc.Path == "" && !doc.Dirty() && doc.Editor.String() == "" && doc.Name == "new 1"
+}
+
 func (space *Workspace) Close(index int, discard bool) error {
 	if index < 0 || index >= len(space.Documents) {
 		return fmt.Errorf("tab index %d is out of range", index)
@@ -248,9 +256,13 @@ func (space *Workspace) Close(index int, discard bool) error {
 	if space.Documents[index].Dirty() && !discard {
 		return ErrDirty
 	}
+	if space.IsSoleBlankUntitled() {
+		return nil
+	}
 	_ = space.Documents[index].Close()
 	space.Documents = slices.Delete(space.Documents, index, index+1)
 	if len(space.Documents) == 0 {
+		space.nextName = 0
 		space.NewDocument()
 	} else if space.Active > index {
 		space.Active--

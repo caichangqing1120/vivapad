@@ -58,8 +58,12 @@ func TestNewSwitchAndCloseTabs(t *testing.T) {
 	if err := space.Close(0, false); err != nil || len(space.Documents) != 1 || space.Current().Name != "new 2" {
 		t.Fatalf("close first = %+v, %v", space, err)
 	}
-	if err := space.Close(0, false); err != nil || len(space.Documents) != 1 || space.Current().Name != "new 3" {
-		t.Fatalf("closing last tab did not replace with blank = %+v, %v", space, err)
+	if err := space.Close(0, false); err != nil || len(space.Documents) != 1 || space.Current().Name != "new 1" {
+		t.Fatalf("closing last tab did not reset cleanly to new 1 = %+v, %v", space, err)
+	}
+	kept := space.Current()
+	if err := space.Close(0, false); err != nil || len(space.Documents) != 1 || space.Current() != kept || space.Current().Name != "new 1" {
+		t.Fatalf("closing sole blank new 1 created another tab = %+v, %v", space, err)
 	}
 }
 

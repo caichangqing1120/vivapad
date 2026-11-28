@@ -2581,10 +2581,15 @@ func (state *model) saveCopy(index int) bool {
 
 func (state *model) closeTab(index int) {
 	closed := state.space.Documents[index]
+	if state.space.IsSoleBlankUntitled() && !state.isPinned(closed) {
+		return
+	}
 	if err := state.space.Close(index, false); errors.Is(err, workspace.ErrDirty) {
 		state.pendingClose = index
 	} else if err != nil {
 		state.notice = err.Error()
+	} else if len(state.space.Documents) == 1 && state.space.Documents[0] == closed {
+		return
 	} else {
 		state.recordClosed(closed)
 		state.releaseDocument(closed)

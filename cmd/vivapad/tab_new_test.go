@@ -59,6 +59,34 @@ func TestDoubleClickEmptyTabBarCreatesNewDocument(t *testing.T) {
 	}
 }
 
+func TestClosingLastUntitledTabResetsToNew1WithoutIncrementing(t *testing.T) {
+	state, driver := startDriver(t)
+	// Clicking 'x' or running Close repeatedly on sole blank "new 1" never spawns new 2..16.
+	for range 5 {
+		clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
+	}
+	state.command("Close")
+	if len(state.space.Documents) != 1 || state.space.Current().Name != "new 1" {
+		t.Fatalf("closing sole blank new 1 mutated tabs: count=%d name=%q", len(state.space.Documents), state.space.Current().Name)
+	}
+
+	// Create new 2, close new 1, then close new 2 -> resets cleanly to new 1 without spawning new 3..16.
+	clickID(t, driver, tabNewID)
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
+	if len(state.space.Documents) != 1 || state.space.Current().Name != "new 2" {
+		t.Fatalf("expected sole new 2, got count=%d name=%q", len(state.space.Documents), state.space.Current().Name)
+	}
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
+	if len(state.space.Documents) != 1 || state.space.Current().Name != "new 1" {
+		t.Fatalf("closing last new 2 did not reset to new 1: count=%d name=%q", len(state.space.Documents), state.space.Current().Name)
+	}
+	// Clicking 'x' again on reset new 1 keeps new 1.
+	clickID(t, driver, tabCloseScope.At(state.tabHitIndex(state.space.Documents[0])))
+	if len(state.space.Documents) != 1 || state.space.Current().Name != "new 1" {
+		t.Fatalf("clicking close on reset new 1 spawned %q", state.space.Current().Name)
+	}
+}
+
 func TestDoubleClickEmptySplitPaneTabBarCreatesNewDocumentInPane(t *testing.T) {
 	state, driver := startDriver(t)
 	state.showInActivePane(state.space.NewDocument())

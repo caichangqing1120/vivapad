@@ -584,11 +584,16 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 		if hitButton(canvas, pinID, pinRect, pinLabel) {
 			pinning = index
 		}
+		soleBlank := state.space.IsSoleBlankUntitled() && !state.isPinned(doc)
 		closeRect := gfx.Rect{X: x + 135, Y: y + 5, Width: 17, Height: 18}
-		if canvas.Hovered() == closeID {
+		if !soleBlank && canvas.Hovered() == closeID {
 			canvas.Rounded(closeRect, 4, palette.toolbarHover)
 		}
-		canvas.DrawIcon(closeIcon, centeredIconBounds(closeRect, 13), palette.muted)
+		closeColor := palette.muted
+		if soleBlank {
+			closeColor.Alpha = 0.35
+		}
+		canvas.DrawIcon(closeIcon, centeredIconBounds(closeRect, 13), closeColor)
 		if hitButton(canvas, closeID, closeRect, "Close "+doc.Name) {
 			closed = index
 		}
