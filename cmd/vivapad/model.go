@@ -217,6 +217,8 @@ var (
 	rightTabsNextID            = tree.ID(page, "right-tabs-next")
 	tabLeftID                  = tree.ID(page, "tabs-left")
 	tabRightID                 = tree.ID(page, "tabs-right")
+	tabBarID                   = tree.ID(page, "tab-bar")
+	tabNewID                   = tree.ID(page, "tab-new")
 	resultScope                = tree.Sub(page, tree.Name("file-results"))
 	recentScope                = tree.Sub(page, tree.Name("recent-files"))
 	lineScope                  = tree.Sub(page, tree.Name("line-operations"))
@@ -1197,6 +1199,26 @@ func newConfig(state *model) app.Config {
 		}
 		if event.Kind == gfx.PointerDown {
 			state.pointerCompositionAway(event.Target)
+		}
+		if event.Kind == gfx.PointerDown && event.Button == gfx.PointerButtonPrimary && event.ClickCount == 2 &&
+			!state.editorCommandFocusBlocked() && !state.menuOverflowOpen && state.statusPopup.kind.IsZero() {
+			switch event.Target {
+			case tabBarID:
+				state.cancelMacroForCommand()
+				state.showInActivePane(state.space.NewDocument())
+				return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+			case leftPaneID, rightPaneID:
+				if state.splitEnabled {
+					pane := 0
+					if event.Target == rightPaneID {
+						pane = 1
+					}
+					state.activatePane(pane)
+					state.cancelMacroForCommand()
+					state.showInActivePane(state.space.NewDocument())
+					return gfx.EventResult{Handled: true, Repaint: true, Focus: state.commandEditorFocusID()}
+				}
+			}
 		}
 		if event.Kind == gfx.PointerDown || event.Kind == gfx.PointerUp {
 			state.menuPointerShift = event.Modifiers&gfx.ModifierShift != 0

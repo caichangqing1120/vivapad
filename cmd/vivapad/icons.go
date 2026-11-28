@@ -63,6 +63,10 @@ var (
 	checkIcon = gfx.Icon{ViewBox: 24, Stroke: 2, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
 		gfx.MoveTo(4, 12), gfx.LineTo(10, 18), gfx.LineTo(20, 6),
 	}}
+	plusIcon = gfx.Icon{ViewBox: 24, Stroke: 2, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
+		gfx.MoveTo(12, 5), gfx.LineTo(12, 19),
+		gfx.MoveTo(5, 12), gfx.LineTo(19, 12),
+	}}
 	fileIcon = gfx.Icon{ViewBox: 24, Stroke: 2, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: []gfx.PathCommand{
 		gfx.MoveTo(6, 3), gfx.LineTo(14, 3), gfx.LineTo(19, 8), gfx.LineTo(19, 21), gfx.LineTo(6, 21), gfx.ClosePath(),
 		gfx.MoveTo(14, 3), gfx.LineTo(14, 8), gfx.LineTo(19, 8),

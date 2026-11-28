@@ -542,6 +542,7 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 	if state.fullscreen {
 		contentWidth -= 30
 	}
+	canvas.HitWithOptions(tabBarID, gfx.Rect{Y: y, Width: contentWidth, Height: tabHeight}, state.tr("Double-click to create new tab", "双击空白处新建标签页"), gfx.HitOptions{Role: gfx.RoleGroup, SkipFocus: true})
 	visible := max(1, int((contentWidth-10)/161))
 	overflow := len(state.space.Documents) > visible
 	if overflow {
@@ -602,6 +603,27 @@ func (state *model) paintTabs(canvas *gfx.Canvas, width float32) {
 	}
 	if pinning >= 0 {
 		state.togglePinned(state.space.Documents[pinning], 0)
+	}
+	rendered := max(0, min(visible, len(state.space.Documents)-start))
+	plusLimit := contentWidth - 6
+	if overflow {
+		plusLimit = contentWidth - 54
+	}
+	plusRect := gfx.Rect{X: 7 + float32(rendered)*161 + 2, Y: y + 4, Width: 22, Height: 22}
+	if plusRect.X+plusRect.Width <= plusLimit {
+		if canvas.Hovered() == tabNewID {
+			canvas.Rounded(plusRect, 5, palette.toolbarHover)
+		}
+		canvas.DrawIcon(plusIcon, centeredIconBounds(plusRect, 14), palette.muted)
+		newTabLabel := state.tr("New Tab (or double-click empty space)", "新建标签页（或双击右侧空白处）")
+		if hitButton(canvas, tabNewID, plusRect, newTabLabel) {
+			state.cancelMacroForCommand()
+			state.showInActivePane(state.space.NewDocument())
+			state.focusEditorOnTabClick(canvas)
+		}
+		if canvas.Hovered() == tabNewID {
+			state.paintToolbarTooltip(canvas, plusRect, newTabLabel)
+		}
 	}
 	if overflow {
 		left := gfx.Rect{X: contentWidth - 49, Y: y + 3, Width: 22, Height: 22}
