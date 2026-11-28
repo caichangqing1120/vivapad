@@ -77,21 +77,107 @@ func (state *model) interfaceLabel(canvas *gfx.Canvas, value string, bounds gfx.
 }
 
 var preferenceChinese = map[string]string{
-	"Editing": "编辑", "View": "视图", "Print": "打印", "Header/Footer": "页眉和页脚", "Print Fonts": "打印字体", "Symbols": "符号",
-	"Tab width": "制表符宽度", "Indent using": "缩进方式", "Language": "按文档语言", "Tabs": "制表符", "Spaces": "空格",
-	"Auto Indent": "自动缩进", "Pair Brackets": "自动配对括号", "Theme": "主题", "Classic Light": "经典浅色", "Modern Dark": "现代深色", "Follow System": "跟随系统",
-	"Line Numbers": "行号", "Word Wrap": "自动换行", "Show Space and Tab": "显示空格和制表符", "Show End of Line": "显示行尾符", "Show Indent Guide": "显示缩进参考线", "Synchronize Zoom Across Views": "同步视图缩放",
+	// Top menu bar
+	"File": "文件", "Edit": "编辑", "Search": "搜索", "View": "视图", "Encoding": "编码",
+	"Language": "语言", "Settings": "设置", "Tools": "工具", "Macro": "宏", "Run": "运行",
+	"Plugins": "插件", "Window": "窗口", "?": "帮助",
+
+	// File menu
+	"New": "新建", "Open": "打开", "Open...": "打开…", "Save": "保存", "Save As...": "另存为…",
+	"Save a Copy As...": "保存副本为…", "Save All": "全部保存", "Close": "关闭",
+	"Open as GB18030...": "以 GB18030 打开…", "Open as Windows-1252...": "以 Windows-1252 打开…",
+	"Reload from Disk": "从磁盘重新加载", "Recent Files": "最近打开的文件", "Close All": "全部关闭",
+	"Close Other Tabs": "关闭其他标签页", "Sessions": "会话", "Rename...": "重命名…",
+	"Close Multiple Documents": "批量关闭文档", "Open Folder as Workspace...": "打开文件夹作为工作区…",
+	"Open in Default Viewer": "在默认查看器中打开", "Open Containing Folder": "打开所在文件夹",
+	"Open as Encoding...": "指定编码打开…", "Move to Recycle Bin": "移至回收站",
+	"Print...": "打印…", "Print Now": "立即打印", newWindowCommand: "在新窗口中打开", "Exit": "退出",
+
+	// Edit menu
+	"Undo": "撤销", "Redo": "重做", "Cut": "剪切", "Copy": "复制", "Paste": "粘贴",
+	"Select All": "全选", "Duplicate Line": "复制当前行", "Delete Line": "删除当前行",
+	"Indent Lines": "增加缩进", "Unindent Lines": "减少缩进", "Line Operations": "行操作",
+	"Convert Case": "转换大小写", "Blank Operations": "空白字符操作", "Copy to Clipboard": "复制到剪贴板",
+	"Delete": "删除", "Begin/End Select": "开始/结束选择", "Read-Only in Notepad++": "只读（编辑器内）",
+	"Auto-Completion": "自动补全", "Comment/Uncomment": "注释/取消注释", "Insert": "插入",
+	"EOL Conversion": "行尾符转换", "Column Editor...": "列块编辑…",
+	"Begin/End Select in Column Mode": "开始/结束列模式选择", columnModeHelpCommand: "列模式帮助",
+	"On Selection": "基于选区", "Multi-select All": "全选相同匹配", "Multi-select Next": "选中下一个匹配",
+	"Undo Latest Multi-Select": "撤销上次多选", "Skip Current Multi-Select": "跳过当前匹配",
+	pasteSpecialCommand: "选择性粘贴", characterPanelCommand: "字符面板",
+
+	// Search menu
+	"Find": "查找", "Find...": "查找…", "Find in Files...": "在文件中查找…", "Find Next": "查找下一个",
+	"Find Previous": "查找上一个", "Selected Text Search": "搜索选中文本", "Replace...": "替换…",
+	"Incremental Search": "增量搜索", "Search Results Window": "搜索结果窗口",
+	"Next Search Result": "下一个搜索结果", "Previous Search Result": "上一个搜索结果",
+	"Go to Line...": "跳转到行…", "Go to Matching Brace": "跳转到匹配括号",
+	"Select All In-between {} [] or ()": "选中括号内全部内容", "Mark...": "标记…",
+	"Change History": "修改历史", "Style All Occurrences of Token": "高亮所有相同词元",
+	"Style One Token": "高亮当前词元", "Clear Style": "清除高亮样式",
+	"Jump Up": "向上跳转", "Jump Down": "向下跳转", "Copy Styled Text": "复制高亮文本",
+	"Bookmark": "书签", "Find characters in range...": "按字符范围查找…",
+	"Replace in Files...": "在文件中替换…", "Find All in Current Document": "在当前文档中查找全部",
+	"Find All in Open Documents": "在所有打开文档中查找", "Replace All in Open Documents": "在所有打开文档中替换",
+	"Clear Marks": "清除标记", "Next Change": "下一处修改", "Previous Change": "上一处修改",
+	"Clear Change History": "清除修改历史",
+
+	// View menu
+	"Show Line Numbers": "显示行号", "Word Wrap": "自动换行", "Zoom In": "放大", "Zoom Out": "缩小",
+	"Restore Default Zoom": "恢复默认缩放", "Split View": "分屏视图", "Move to Other View": "移至另一视图",
+	"Clone to Other View": "克隆到另一视图", "Folder as Workspace": "文件夹工作区", "Show Symbol": "显示符号",
+	"Tab": "标签页", "Fold All": "全部折叠", "Unfold All": "全部展开",
+	"Fold Current Level": "折叠当前层级", "Unfold Current Level": "展开当前层级",
+	"Fold Level": "按层级折叠", "Unfold Level": "按层级展开", "Document Map": "文档缩略图",
+	"Function List": "函数列表", "Document List": "文档列表",
+	"Synchronize Vertical Scrolling": "同步垂直滚动", "Synchronize Horizontal Scrolling": "同步水平滚动",
+	textDirectionRTL: "文本方向从右到左", textDirectionLTR: "文本方向从左到右",
+	"Summary...": "文档摘要…", "Monitoring (tail -f)": "实时监控 (tail -f)",
+	"Focus on Another View": "切换至另一视图", "Hide Lines": "隐藏行", "Always on Top": "窗口置顶",
+	"Toggle Full Screen Mode": "切换全屏模式", "Synchronize Zoom Across Views": "同步视图缩放",
+	distractionFreeCommand: "专注模式", namedBrowserMenuCommand: "在浏览器中查看",
+	postItCommand: "便签模式", compareMenu: "文件对比", projectPanelCommand: "项目面板",
+	themeMenuCommand: "界面主题",
+
+	// Encoding & Language menus
+	"Character sets": "字符集", batchConvertCommand: "批量转换…", "Normal Text": "纯文本",
+
+	// Settings menu
+	"Preferences...": "偏好设置…", "Tab Width: 2": "制表符宽度：2", "Tab Width: 4": "制表符宽度：4",
+	"Tab Width: 8": "制表符宽度：8", "Indent: Language Default": "缩进：按语言默认",
+	"Indent: Tabs": "缩进：制表符", "Indent: Spaces": "缩进：空格",
+	"Auto Indent": "自动缩进", "Pair Brackets": "自动配对括号", "Date Time Format...": "日期时间格式…",
+	"Change History: Margin": "修改历史：边栏显示", "Change History: Indicator": "修改历史：指示器显示",
+	"Change History: Both": "修改历史：全部显示", "Change History: Off": "修改历史：关闭",
+	shortcutMapperCommand: "快捷键管理…", styleConfiguratorCommand: "配色与样式配置…",
+
+	// Tools, Macro, Run, Window, Help menus
+	structuredToolsMenu: "JSON / XML 工具", encodingToolsMenu: "编码与时间戳工具",
+	"Record Macro": "录制宏", "Stop Recording": "停止录制", "Playback Macro": "回放宏",
+	"Save Current Recorded Macro...": "保存当前录制的宏…", "Run a Macro Multiple Times...": "多次运行宏…",
+	"Playback 5 Times": "回放 5 次", "Clear Macro": "清除宏", "Saved Macros": "已保存的宏",
+	"Run...": "运行命令…", "Sort By": "排序方式", "Windows...": "窗口列表…", "Recent Window": "最近窗口",
+	aboutHelpCommand: "关于 VivaPad", debugHelpCommand: "调试信息…",
+	projectPageHelpCommand: "项目主页", userGuideHelpCommand: "使用指南",
+	commandLineHelpCommand: "命令行参数", checkUpdatesCommand: "检查更新…",
+
+	// Preferences & dock panels
+	"Editing": "编辑", "Print": "打印", "Header/Footer": "页眉和页脚", "Print Fonts": "打印字体", "Symbols": "符号",
+	"Tab width": "制表符宽度", "Indent using": "缩进方式", "Tabs": "制表符", "Spaces": "空格",
+	"Classic Light": "经典浅色", "Modern Dark": "现代深色", "Follow System": "跟随系统",
+	"Line Numbers": "行号", "Show Space and Tab": "显示空格和制表符", "Show End of Line": "显示行尾符", "Show Indent Guide": "显示缩进参考线",
 	"Non-printing style": "不可打印字符样式", "Original": "原样", "Abbreviation": "缩写", "Codepoint": "码位", "Include control / Unicode EOL": "包含控制字符和 Unicode 行尾符",
-	"Color options": "颜色选项", "Margins (mm)": "页边距（毫米）", "Header and Footer": "页眉和页脚", "Header": "页眉", "Footer": "页脚", "Left": "左", "Middle": "中", "Right": "右", "Top": "上", "Bottom": "下", "Insert": "插入", "Size": "字号",
+	"Color options": "颜色选项", "Margins (mm)": "页边距（毫米）", "Header and Footer": "页眉和页脚", "Header": "页眉", "Footer": "页脚", "Left": "左", "Middle": "中", "Right": "右", "Top": "上", "Bottom": "下", "Size": "字号",
 	"WYSIWYG": "所见即所得", "Invert": "反色", "Black on white": "黑字白底", "No background": "无背景", "Print line numbers": "打印行号", "Form feed as page break": "将换页符视为分页",
-	"Preferences...": "偏好设置…", checkUpdatesCommand: "检查更新…", "Settings": "设置", batchConvertCommand: "批量转换…",
-	"Documents": "文档", "Files": "文件", "Workspace": "工作区", "Folder": "文件夹", "Folder as Workspace": "文件夹工作区", "Functions": "函数", "Funcs": "函数", "Characters": "字符", "Chars": "字符", "Projects": "项目", "No projects": "没有项目", "Function List": "函数列表", "Document List": "文档列表",
+	"Documents": "文档", "Files": "文件", "Workspace": "工作区", "Folder": "文件夹", "Functions": "函数", "Funcs": "函数", "Characters": "字符", "Chars": "字符", "No projects": "没有项目",
 	"No search results": "没有搜索结果", "Search canceled": "搜索已取消", "Read-only document": "只读文档", "READ ONLY": "只读", "Lightweight Edit": "轻量编辑", "Lightweight · Read-Only": "轻量编辑 · 只读", "Large File (Read-Only)": "大文件（只读）",
-	"New": "新建", "Open": "打开", "Save": "保存", "Undo": "撤销", "Redo": "重做", "Cut": "剪切", "Copy": "复制", "Paste": "粘贴", "Find": "查找",
 }
 
 func (state *model) preferenceText(label string) string {
 	if state.chineseUI {
+		if label == fileReadOnlyLabel() {
+			return "系统只读属性"
+		}
 		if translated := preferenceChinese[label]; translated != "" {
 			return translated
 		}
@@ -107,6 +193,11 @@ func (state *model) statusMessage(message string) string {
 	if state.chineseUI {
 		if path, ok := strings.CutPrefix(message, "Saved "); ok {
 			return "已保存 " + path
+		}
+		if rest, ok := strings.CutPrefix(message, "Recovered "); ok {
+			if count, ok := strings.CutSuffix(rest, " unsaved document(s)"); ok {
+				return "已恢复 " + count + " 个未保存文档"
+			}
 		}
 	}
 	return state.preferenceText(message)
