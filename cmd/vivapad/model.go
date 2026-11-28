@@ -554,8 +554,7 @@ type model struct {
 	multiSelectionHistoryIndex    [2]int
 	rectangleHistory              [2][]rectangleTransition
 	rectangleHistoryIndex         [2]int
-	rectangleDragging             bool
-	rectangleDragPane             int
+	altEditorGesture              altEditorGesture
 	searchOpen                    bool
 	goToOpen                      bool
 	filesDialogOpen               bool
@@ -1205,36 +1204,12 @@ func newConfig(state *model) app.Config {
 		if result, handled := state.largePointer(event); handled {
 			return result
 		}
-		if state.rectangleDragging && (event.Kind == gfx.PointerMove || event.Kind == gfx.PointerUp) {
-			pane := state.rectangleDragPane
-			doc := state.paneDocument(pane)
-			selection := &state.rectangles[pane]
-			if selection.doc == doc {
-				if offset, virtual, ok := state.codeEditorForPane(pane).OffsetWithVirtualAt(gfx.Point{X: event.X, Y: event.Y}); ok {
-					doc.Editor.MoveTo(doc.Editor.RuneIndex(offset), false)
-					selection.caret, selection.caretVirtual = doc.Editor.Caret(), virtual
-					selection.copyValid = false
-				}
-			}
-			if event.Kind == gfx.PointerUp {
-				state.rectangleDragging = false
-			}
-			return gfx.EventResult{Handled: true, Repaint: true}
+		if result := state.altEditorPointer(event); result.Handled {
+			return result
 		}
 		if event.Kind == gfx.PointerDown && (event.Target == editorID || event.Target == rightEditorID) {
 			pane := paneForTarget(event.Target)
 			state.multiSelections[pane] = multiSelectionState{}
-			if event.Modifiers&gfx.ModifierAlt != 0 && event.Button == gfx.PointerButtonPrimary {
-				state.activatePane(pane)
-				doc := state.paneDocument(pane)
-				if offset, virtual, ok := state.codeEditorForPane(pane).OffsetWithVirtualAt(gfx.Point{X: event.X, Y: event.Y}); ok {
-					doc.Editor.MoveTo(doc.Editor.RuneIndex(offset), false)
-					state.rectangles[pane] = rectangleSelection{doc: doc, anchor: doc.Editor.Caret(), caret: doc.Editor.Caret(), anchorVirtual: virtual, caretVirtual: virtual, value: doc.Editor.String(), active: true}
-					state.selectAnchors[pane] = selectAnchor{}
-					state.rectangleDragging, state.rectangleDragPane = true, pane
-					return gfx.EventResult{Handled: true, Repaint: true, Focus: event.Target}
-				}
-			}
 			state.rectangles[pane] = rectangleSelection{}
 		}
 		if event.Target.Scope() == wordCompletionScope {
@@ -1571,6 +1546,9 @@ func newConfig(state *model) app.Config {
 		return gfx.EventResult{Handled: true, Repaint: event.Phase == gfx.FileDropDrop}
 	}
 	config.OnShortcut = func(event gfx.KeyEvent) gfx.EventResult {
+		if event.Key == gfx.KeyEscape && event.Modifiers == 0 {
+			return gfx.EventResult{}
+		}
 		if state.m5 != nil {
 			return gfx.EventResult{Handled: state.m5TextInput(event.Target) == nil}
 		}
@@ -2022,6 +2000,11 @@ func newConfig(state *model) app.Config {
 				}
 				return gfx.EventResult{Handled: true, Repaint: true, Focus: focus}
 			}
+			if event.Modifiers == 0 {
+				if result := state.dispatchShortcut(event); result.Handled {
+					return result
+				}
+			}
 			if state.postIt.active {
 				state.command(postItCommand)
 				return gfx.EventResult{Handled: true, Repaint: true}
@@ -2166,6 +2149,9 @@ func newConfig(state *model) app.Config {
 		doc := state.paneDocument(pane)
 		if doc.LargeFile() != nil {
 			return state.largeKey(doc, event)
+		}
+		if event.Modifiers == 0 && !event.Release && state.moveMultiSelection(pane, multiMovementForKey(event.Key)) {
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		if state.moveShapedHorizontal(pane, doc, event) {
 			return gfx.EventResult{Handled: true, Repaint: true}
@@ -2604,15 +2590,15 @@ func (state *model) releaseDocument(doc *document.Document) {
 	delete(state.readOnly, doc)
 	delete(state.pinned, doc)
 	delete(state.tabColors, doc)
+	if state.altEditorGesture.doc == doc {
+		state.altEditorGesture = altEditorGesture{}
+	}
 	for pane := range state.selectAnchors {
 		if state.selectAnchors[pane].doc == doc {
 			state.selectAnchors[pane] = selectAnchor{}
 		}
 		if state.rectangles[pane].doc == doc {
 			state.rectangles[pane] = rectangleSelection{}
-			if state.rectangleDragging && state.rectangleDragPane == pane {
-				state.rectangleDragging = false
-			}
 		}
 		for _, transition := range state.rectangleHistory[pane] {
 			if transition.doc == doc {
@@ -3388,11 +3374,7 @@ func (state *model) command(command string) {
 		if err != nil {
 			state.notice = err.Error()
 		} else if state.multiSelections[state.activePane].active && state.multiSelections[state.activePane].doc == doc {
-			if rectangular {
-				state.notice = "Clear multi-selection before column paste"
-			} else if _, err := state.editMultiSelection(state.activePane, value, multiInsert); err != nil {
-				state.notice = "Multi-selection paste failed: " + err.Error()
-			}
+			state.pasteMultiSelection(state.activePane, value)
 		} else if rectangular {
 			if selection := doc.Editor.Selection(); selection.Start != selection.End {
 				state.notice = "Clear the selection before column paste"
@@ -3411,6 +3393,13 @@ func (state *model) command(command string) {
 			state.recordMacro(doc, macro.Step{Kind: macro.TextStep, TextKind: app.TextPaste, Text: value})
 		}
 	case "Delete":
+		state.syncMultiSelection(state.activePane, doc)
+		if state.multiSelections[state.activePane].active {
+			if _, err := state.editMultiSelection(state.activePane, "", multiDeleteForward); err != nil {
+				state.notice = "Multi-selection edit failed: " + err.Error()
+			}
+			break
+		}
 		deleted := false
 		state.editWithBookmarkAnchor(doc, func() { deleted = doc.Editor.DeleteForward() })
 		if deleted {

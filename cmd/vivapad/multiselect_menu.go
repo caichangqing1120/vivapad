@@ -5,13 +5,15 @@ import (
 	"vivapad/internal/document"
 )
 
+const multiSelectWholeWordLabel = "Match Whole Word Only"
+
 var multiSelectModes = [...]struct {
 	label   string
 	options document.SearchOptions
 }{
 	{"Ignore Case & Whole Word", document.SearchOptions{}},
 	{"Match Case Only", document.SearchOptions{MatchCase: true}},
-	{"Match Whole Word Only", document.SearchOptions{WholeWord: true}},
+	{multiSelectWholeWordLabel, document.SearchOptions{WholeWord: true}},
 	{"Match Case & Whole Word", document.SearchOptions{MatchCase: true, WholeWord: true}},
 }
 

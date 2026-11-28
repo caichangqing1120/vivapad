@@ -137,6 +137,30 @@ func TestMacroRecordsMultiSelectionNavigationAndDelete(t *testing.T) {
 	}
 }
 
+func TestMacroRecordsMultiSelectionPerCursorPaste(t *testing.T) {
+	state, driver := startDriver(t)
+	state.macroPath = filepath.Join(t.TempDir(), "macro.json")
+	clickID(t, driver, editorID)
+	doc := state.space.Current()
+	doc.Editor.Insert("cat cat")
+	doc.Editor.MoveTo(1, false)
+	state.command("Record Macro")
+	state.command("Multi-select All / Match Whole Word Only")
+	driver.SetClipboard("red\r\nblue")
+	state.command("Paste")
+	state.command("Stop Recording")
+	steps, err := macro.Load(state.macroPath)
+	if err != nil || len(steps) != 2 || steps[1].TextKind != app.TextPaste || doc.Editor.String() != "red blue" {
+		t.Fatalf("paste recording: %q, steps=%+v, err=%v", doc.Editor.String(), steps, err)
+	}
+	target := state.space.NewDocument()
+	target.Editor.Insert("dog dog")
+	target.Editor.MoveTo(1, false)
+	if !state.playMacroSteps(steps, 1, false) || target.Editor.String() != "red blue" {
+		t.Fatalf("paste replay = %q, notice=%q", target.Editor.String(), state.notice)
+	}
+}
+
 func TestMacroMultiSelectionFailurePreservesSource(t *testing.T) {
 	state, _ := startDriver(t)
 	doc := state.space.Current()

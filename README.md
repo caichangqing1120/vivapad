@@ -446,11 +446,18 @@ of these methods:
   selections as one undo unit. Arbitrary independent Scintilla selections and
   original Windows menu pixels remain unverified.
   Edit > Multi-select All/Next has four case/whole-word modes, word-first
-  selection, wrap, Undo Latest and Skip Current. Disjoint selections paint in
-  the editor and support immediate typing, delete/backspace, Copy/Cut/Paste
-  and Redact as atomic edits; undo restores the selections. IME composition
-  safely returns to the main caret. Exact Scintilla word/clipboard semantics,
-  macro recording and native Windows pixels still require comparison.
+  selection, wrap, Undo Latest and Skip Current. The default shortcuts are
+  `Primary+Shift+D` for Next, `Primary+Shift+L` for All (both whole-word,
+  case-insensitive), `Primary+Shift+J` for Skip, and `Escape` to keep only the
+  primary caret. Undo Latest has no default binding. All five can be changed
+  in Shortcut Mapper. `Primary` is Command on macOS and Ctrl on Windows and
+  Linux; `Primary+D` still duplicates the line.
+  Alt+Click adds or removes a secondary caret; Alt+Drag still selects a
+  column. Left, Right, Home and End move every caret. Paste distributes lines
+  in document order if their count matches the number of carets; otherwise it
+  inserts the entire clipboard at each caret. Typing, deletion, paste and
+  redaction are single undo steps that restore the selections and file line
+  endings. IME composition safely returns to the main caret.
   Edit > Convert Case changes only selected text to UPPERCASE, lowercase,
   Proper Case force/blend, Sentence case force/blend, inverted or random case,
   including Unicode letters, as one undo unit. Primary+Shift+U and Primary+U

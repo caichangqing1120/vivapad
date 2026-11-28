@@ -17,6 +17,46 @@ func TestPlatformBindings(t *testing.T) {
 	}
 }
 
+func TestMultiSelectionDefaultsDoNotConflict(t *testing.T) {
+	registry, err := Load("", Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for binding, want := range map[Chord]string{
+		{Primary, "D"}: "Duplicate Line", {Primary | Shift, "D"}: "Multi-select Next",
+		{Primary | Shift, "L"}: "Multi-select All", {Primary | Shift, "J"}: "Skip Current Multi-Select",
+		{0, "Escape"}: "Exit Multi-Selection",
+	} {
+		if got := registry.Lookup(binding); got != want {
+			t.Errorf("%+v: %q, want %q", binding, got, want)
+		}
+		if err := registry.Conflict(want, binding); err != nil {
+			t.Error(err)
+		}
+	}
+	if err := registry.Set("Undo Latest Multi-Select", Chord{0, "F9"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMultiSelectionDefaultsYieldToExistingBindings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shortcuts.json")
+	if err := os.WriteFile(path, []byte(`{"version":1,"bindings":{"New":{"modifiers":5,"key":"D"},"Open...":{"modifiers":1,"key":"J"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := Load(path, Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := Chord{Primary | Shift, "D"}
+	if registry.Lookup(binding) != "New" || registry.Lookup(Chord{Primary, "J"}) != "Open..." || !registry.Binding(MultiSelectNext).Empty() {
+		t.Fatal("a new default displaced an existing shortcut")
+	}
+	if err := registry.Reset("New"); err != nil || registry.Lookup(binding) != MultiSelectNext {
+		t.Fatalf("freeing the default did not restore it: %v", err)
+	}
+}
+
 func TestOverrideConflictPersistenceAndReset(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "private", "shortcuts.json")
 	catalog := append(Defaults(), Command{ID: "macro:Build", Name: "Macro: Build"})

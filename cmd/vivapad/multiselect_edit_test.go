@@ -391,14 +391,217 @@ func TestMultiSelectionMenuPasteAppliesSameMultilineTextAtEachRange(t *testing.T
 	doc.Editor.SetSelection(text.Range{Start: 0, End: 1})
 	doc.Editor.ClearHistory()
 	state.multiSelectAll(document.SearchOptions{})
-	driver.SetClipboard("β\nγ")
+	driver.SetClipboard("β\nγ\nδ")
 	state.command("Paste")
-	if doc.Editor.String() != "β\nγ β\nγ" || len(state.multiSelections[0].ranges) != 2 {
+	if doc.Editor.String() != "β\nγ\nδ β\nγ\nδ" || len(state.multiSelections[0].ranges) != 2 {
 		t.Fatalf("multi-paste = %q, ranges=%+v", doc.Editor.String(), state.multiSelections[0].ranges)
 	}
 	state.command("Undo")
 	if doc.Editor.String() != "α α" || doc.Editor.CanUndo() {
 		t.Fatalf("multi-paste undo = %q", doc.Editor.String())
+	}
+}
+
+func TestMultiSelectionPasteAndUndoPreservePhysicalEOL(t *testing.T) {
+	for _, ending := range []string{"\n", "\r\n"} {
+		for _, native := range []bool{false, true} {
+			name := "LF"
+			if ending == "\r\n" {
+				name = "CRLF"
+			}
+			if native {
+				name += "/keyboard"
+			} else {
+				name += "/menu"
+			}
+			t.Run(name, func(t *testing.T) {
+				state, driver := startDriver(t)
+				path := filepath.Join(t.TempDir(), "paste.txt")
+				original := "cat" + ending + "cat" + ending + "cat"
+				if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := state.space.Open(path); err != nil {
+					t.Fatal(err)
+				}
+				clickID(t, driver, editorID)
+				doc := state.space.Current()
+				doc.Editor.MoveTo(5, false)
+				state.multiSelectAll(document.SearchOptions{})
+				state.invalidator.Invalidate()
+				if err := driver.Pump(); err != nil {
+					t.Fatal(err)
+				}
+				paste := func(value string) {
+					t.Helper()
+					driver.SetClipboard(value)
+					if native {
+						if _, err := driver.ShortcutChord(primary(), 'v'); err != nil {
+							t.Fatal(err)
+						}
+					} else {
+						state.command("Paste")
+					}
+				}
+				check := func(want string) {
+					t.Helper()
+					copyPath := filepath.Join(t.TempDir(), "copy.txt")
+					if err := doc.SaveCopy(copyPath); err != nil {
+						t.Fatal(err)
+					}
+					got, err := os.ReadFile(copyPath)
+					if err != nil || string(got) != want {
+						t.Fatalf("physical text = %q, want %q (err=%v)", got, want, err)
+					}
+				}
+				for _, tc := range []struct{ clipboard, want string }{
+					{"α\r\n\r\nγ", "α" + ending + ending + "γ"},
+					{"α\r\nγ", strings.Join([]string{"α", "γ", "α", "γ", "α", "γ"}, ending)},
+				} {
+					paste(tc.clipboard)
+					check(tc.want)
+					state.command("Undo")
+					check(original)
+					if doc.Editor.CanUndo() || len(state.multiSelections[0].ranges) != 3 {
+						t.Fatal("one undo did not restore all three selections")
+					}
+					state.command("Redo")
+					check(tc.want)
+					if doc.Editor.CanRedo() {
+						t.Fatal("one redo did not restore the entire paste")
+					}
+					state.command("Undo")
+					state.invalidator.Invalidate()
+					if err := driver.Pump(); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestMultiSelectionNavigationAndMergedDelete(t *testing.T) {
+	state, driver := startDriver(t)
+	clickID(t, driver, editorID)
+	doc := state.space.Current()
+	doc.Editor.Insert("ab ab\nab")
+	doc.Editor.ClearHistory()
+	doc.Editor.MoveTo(0, false)
+	state.multiSelectAll(document.SearchOptions{})
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		key  gfx.Key
+		want []text.Range
+	}{
+		{gfx.KeyLeft, []text.Range{{Start: 0, End: 0}, {Start: 3, End: 3}, {Start: 6, End: 6}}},
+		{gfx.KeyRight, []text.Range{{Start: 1, End: 1}, {Start: 4, End: 4}, {Start: 7, End: 7}}},
+		{gfx.KeyHome, []text.Range{{Start: 0, End: 0}, {Start: 6, End: 6}}},
+		{gfx.KeyEnd, []text.Range{{Start: 5, End: 5}, {Start: 8, End: 8}}},
+	} {
+		if err := driver.Key(tc.key, 0); err != nil {
+			t.Fatal(err)
+		}
+		if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, tc.want) || doc.Editor.CanUndo() {
+			t.Fatalf("%v moved to %v, want %v without editing", tc.key, got, tc.want)
+		}
+	}
+	doc.Editor.MoveTo(2, false)
+	state.multiSelections[0].ranges = []text.Range{{Start: 1, End: 1}, {Start: 2, End: 2}}
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyBackspace, 0); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Editor.String() != " ab\nab" || doc.Editor.Caret() != 0 || len(state.multiSelections[0].ranges) > 1 {
+		t.Fatalf("adjacent deletions did not merge carets: %q, %v", doc.Editor.String(), state.multiSelections[0].ranges)
+	}
+	state.command("Undo")
+	if doc.Editor.String() != "ab ab\nab" || doc.Editor.CanUndo() {
+		t.Fatal("adjacent deletions were not one undo unit")
+	}
+}
+
+func TestMultiSelectionAltClickTogglesSecondaryCaret(t *testing.T) {
+	state, driver := startDriver(t)
+	clickID(t, driver, editorID)
+	doc := state.space.Current()
+	doc.Editor.Insert("ab\ncd\nef")
+	doc.Editor.ClearHistory()
+	doc.Editor.MoveTo(1, false)
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	caret, ok := state.codeEditor().CaretBounds()
+	if !ok {
+		t.Fatal("caret bounds missing")
+	}
+	if err := driver.KeyDown(gfx.KeyAltLeft, ""); err != nil {
+		t.Fatal(err)
+	}
+	clickRow := func(row float32) {
+		t.Helper()
+		y := caret.Y + caret.Height*(row+0.5)
+		if err := driver.Press(caret.X, y, gfx.PointerButtonPrimary); err != nil {
+			t.Fatal(err)
+		}
+		if err := driver.Release(caret.X, y, gfx.PointerButtonPrimary); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clickRow(1)
+	clickRow(2)
+	if got := state.multiSelections[0].ranges; len(got) != 3 || state.rectangles[0].active {
+		t.Fatalf("Alt+Click did not add two independent carets: %v", got)
+	}
+	clickRow(1)
+	if got := state.multiSelections[0].ranges; !reflect.DeepEqual(got, []text.Range{{Start: 7, End: 7}, {Start: 1, End: 1}}) || doc.Editor.CanUndo() {
+		t.Fatalf("Alt+Click did not remove only the secondary caret: %v", got)
+	}
+	if err := driver.KeyUp(gfx.KeyAltLeft, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Type("X"); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Editor.String() != "aXb\ncd\neXf" {
+		t.Fatalf("typing after Alt+Click = %q", doc.Editor.String())
+	}
+}
+
+func TestMultiSelectionOverlappingGraphemeDeleteMergesTargets(t *testing.T) {
+	state, driver := startDriver(t)
+	clickID(t, driver, editorID)
+	doc := state.space.Current()
+	const original = "a\u0301 b"
+	doc.Editor.Insert(original)
+	doc.Editor.ClearHistory()
+	doc.Editor.MoveTo(1, false)
+	state.multiSelections[0] = multiSelectionState{doc: doc, value: original, active: true,
+		ranges: []text.Range{{Start: 0, End: 0}, {Start: 1, End: 1}}}
+	state.invalidator.Invalidate()
+	if err := driver.Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Key(gfx.KeyDelete, 0); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Editor.String() != " b" || !reflect.DeepEqual(state.multiSelections[0].ranges, []text.Range{{Start: 0, End: 0}}) {
+		t.Fatalf("overlapping grapheme delete = %q, ranges = %v", doc.Editor.String(), state.multiSelections[0].ranges)
+	}
+	state.command("Undo")
+	if doc.Editor.String() != original || doc.Editor.CanUndo() || len(state.multiSelections[0].ranges) != 2 {
+		t.Fatal("overlapping delete was not one undo unit")
+	}
+	state.command("Redo")
+	if doc.Editor.String() != " b" || doc.Editor.CanRedo() || len(state.multiSelections[0].ranges) != 1 {
+		t.Fatal("overlapping delete was not one redo unit")
 	}
 }
 

@@ -1,5 +1,13 @@
 package shortcuts
 
+const (
+	MultiSelectNext = "Multi-select Next"
+	MultiSelectAll  = "Multi-select All"
+	MultiSelectSkip = "Skip Current Multi-Select"
+	MultiSelectUndo = "Undo Latest Multi-Select"
+	MultiSelectExit = "Exit Multi-Selection"
+)
+
 func Defaults() []Command {
 	return []Command{
 		{ID: "New", Default: Chord{Primary, "N"}},
@@ -26,6 +34,11 @@ func Defaults() []Command {
 		{ID: "UPPERCASE", Default: Chord{Primary | Shift, "U"}},
 		{ID: "Begin/End Select", Default: Chord{Primary | Shift, "B"}},
 		{ID: "Begin/End Select in Column Mode", Default: Chord{Alt | Shift, "B"}},
+		{ID: MultiSelectNext, Default: Chord{Primary | Shift, "D"}, OptionalDefault: true},
+		{ID: MultiSelectAll, Default: Chord{Primary | Shift, "L"}, OptionalDefault: true},
+		{ID: MultiSelectSkip, Default: Chord{Primary | Shift, "J"}, OptionalDefault: true},
+		{ID: MultiSelectUndo},
+		{ID: MultiSelectExit, Default: Chord{0, "Escape"}, OptionalDefault: true},
 		{ID: "Word Completion", Default: Chord{Primary, "Enter"}},
 		{ID: "Path Completion", Default: Chord{Primary | Shift, "Space"}},
 		{ID: "Find...", Default: Chord{Primary, "F"}},

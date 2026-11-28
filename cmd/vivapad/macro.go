@@ -321,7 +321,9 @@ func (state *model) playMacroSteps(steps []macro.Step, repeats int, untilEnd boo
 
 func (state *model) replayMultiSelectionText(step macro.Step) error {
 	kind := multiInsert
-	if step.TextKind == app.TextCommandEvent {
+	if step.TextKind == app.TextPaste {
+		kind = multiPaste
+	} else if step.TextKind == app.TextCommandEvent {
 		switch step.Command {
 		case app.TextDeleteBackward:
 			kind = multiDeleteBackward

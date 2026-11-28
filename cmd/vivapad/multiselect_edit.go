@@ -17,6 +17,7 @@ type multiEditKind uint8
 
 const (
 	multiInsert multiEditKind = iota
+	multiPaste
 	multiDeleteBackward
 	multiDeleteForward
 )
@@ -62,10 +63,7 @@ func (state *model) editMultiSelection(pane int, value string, kind multiEditKin
 	}
 	before := doc.Editor.String()
 	runeCount := doc.Editor.RuneCount()
-	if kind != multiInsert {
-		value = ""
-	}
-	inserted := utf8.RuneCountInString(value)
+	deleting := kind == multiDeleteBackward || kind == multiDeleteForward
 	var boundaries []int
 	type indexedEdit struct {
 		index  int
@@ -77,7 +75,7 @@ func (state *model) editMultiSelection(pane int, value string, kind multiEditKin
 			return false, fmt.Errorf("invalid multi-selection")
 		}
 		target := selection
-		if kind != multiInsert && selection.Start == selection.End {
+		if deleting && selection.Start == selection.End {
 			if boundaries == nil {
 				boundaries = multiGraphemeBoundaries(before)
 			}
@@ -86,35 +84,50 @@ func (state *model) editMultiSelection(pane int, value string, kind multiEditKin
 		edits = append(edits, indexedEdit{index: index, target: target})
 	}
 	slices.SortFunc(edits, func(left, right indexedEdit) int { return left.target.Start - right.target.Start })
+	parts := []string{value}
+	if kind == multiPaste {
+		parts = document.MultiCursorPasteParts(value, len(edits))
+	} else if deleting {
+		parts[0] = ""
+	}
 	changes := make([]text.Replacement, 0, len(edits))
 	carets := make([]text.Range, len(edits))
 	hasEdits := false
 	shift := 0
-	for index, edit := range edits {
-		if index > 0 && edit.target.Start < edits[index-1].target.End ||
-			index > 0 && edit.target.Start == edits[index-1].target.Start {
-			return false, fmt.Errorf("multi-selection deletion ranges overlap")
+	for first := 0; first < len(edits); {
+		target := edits[first].target
+		next := first + 1
+		for next < len(edits) && (edits[next].target.Start < target.End || edits[next].target.Start == target.Start) {
+			target.End = max(target.End, edits[next].target.End)
+			next++
 		}
-		changes = append(changes, text.Replacement{Range: edit.target, Text: value})
-		hasEdits = hasEdits || edit.target.Start != edit.target.End || inserted != 0
-		caret := edit.target.Start + shift + inserted
-		carets[edit.index] = text.Range{Start: caret, End: caret}
-		shift += inserted - (edit.target.End - edit.target.Start)
+		replacement := parts[0]
+		if len(parts) > 1 {
+			replacement = parts[first]
+		}
+		inserted := utf8.RuneCountInString(replacement)
+		changes = append(changes, text.Replacement{Range: target, Text: replacement})
+		hasEdits = hasEdits || target.Start != target.End || inserted != 0
+		caret := target.Start + shift + inserted
+		for _, edit := range edits[first:next] {
+			carets[edit.index] = text.Range{Start: caret, End: caret}
+		}
+		shift += inserted - (target.End - target.Start)
+		first = next
 	}
 	if !hasEdits {
 		return false, nil
 	}
+	carets = uniqueMultiCarets(carets)
+	main := carets[len(carets)-1]
 	state.bookmarkLines(doc)
-	if err := doc.Editor.ReplaceRanges(changes); err != nil {
+	if err := doc.Editor.ReplaceRangesWith(changes, text.ReplaceRangesOptions{AfterSelection: &main}); err != nil {
 		return false, err
 	}
 	state.bookmarkLines(doc)
 	after := doc.Editor.String()
-	if before == after && doc.Editor.Selection() == selected.ranges[len(selected.ranges)-1] {
-		return false, nil
-	}
 	state.multiSelections[pane] = multiSelectionState{doc: doc, value: after, ranges: carets, active: true}
-	doc.Editor.MoveTo(carets[len(carets)-1].Start, false)
+	doc.Editor.SetSelection(main)
 	state.recordMultiSelectionTransition(pane, doc, before, after, selected)
 	state.relocateSelectAnchors(doc, before, after, -1)
 	if state.macroRecording {
@@ -126,6 +139,8 @@ func (state *model) editMultiSelection(pane int, value string, kind multiEditKin
 				return true, nil
 			}
 			step.TextKind, step.Text = app.TextInsert, value
+		case multiPaste:
+			step.TextKind, step.Text = app.TextPaste, value
 		case multiDeleteBackward:
 			step.Command = app.TextDeleteBackward
 		case multiDeleteForward:
@@ -134,6 +149,14 @@ func (state *model) editMultiSelection(pane int, value string, kind multiEditKin
 		state.recordMacro(doc, step)
 	}
 	return before != after, nil
+}
+
+func (state *model) pasteMultiSelection(pane int, value string) {
+	if value != "" {
+		if _, err := state.editMultiSelection(pane, value, multiPaste); err != nil {
+			state.notice = "Multi-selection paste failed: " + err.Error()
+		}
+	}
 }
 
 func (selected multiSelectionState) hasClipboardText() bool {
@@ -224,6 +247,9 @@ func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 		return state.multiSelections[pane]
 	}
 	return &app.TextInput{State: inputState, CopyOverride: true, CopyRectangular: state.multiSelections[pane].rectangularClipboard(), CopyText: func() string { return clipboardSelection().clipboardText() }, OnEvent: func(event app.TextEvent) (app.TextState, error) {
+		if event.Kind == app.TextCommandEvent && event.CompositionPhase == text.CompositionNone && state.moveMultiSelection(pane, event.Command) {
+			return app.TextStateOf(doc.Editor), nil
+		}
 		if state.isReadOnly(doc) {
 			state.cancelDocumentComposition(doc)
 			state.notice = "Read-only document"
@@ -275,10 +301,10 @@ func (state *model) multiSelectionTextInput(pane int) *app.TextInput {
 				state.multiSelections[pane] = multiSelectionState{}
 				return state.macroTextInput(doc).OnEvent(event)
 			}
-		} else if !cutting && (event.Kind != app.TextInsert && event.Kind != app.TextPaste || event.Rectangular) {
-			if state.macroRecording && event.Rectangular {
-				state.cancelMacroUnsupported("column paste")
-			}
+		} else if event.Kind == app.TextPaste && !cutting {
+			state.pasteMultiSelection(pane, value)
+			return app.TextStateOf(doc.Editor), nil
+		} else if !cutting && event.Kind != app.TextInsert {
 			state.multiSelections[pane] = multiSelectionState{}
 			return state.macroTextInput(doc).OnEvent(event)
 		}

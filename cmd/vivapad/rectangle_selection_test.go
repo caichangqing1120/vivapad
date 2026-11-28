@@ -137,9 +137,9 @@ func TestColumnSelectionReleasesClosedDocument(t *testing.T) {
 	state.command("Begin/End Select in Column Mode")
 	previous := state.rectangles[0]
 	state.recordRectangleTransition(0, doc, "before", "after", previous)
-	state.rectangleDragging, state.rectangleDragPane = true, 0
+	state.altEditorGesture = altEditorGesture{doc: doc, dragging: true}
 	state.releaseDocument(doc)
-	if state.rectangles[0].doc != nil || state.rectangleDragging || len(state.rectangleHistory[0]) != 0 || state.rectangleHistoryIndex[0] != 0 {
+	if state.rectangles[0].doc != nil || state.altEditorGesture.doc != nil || len(state.rectangleHistory[0]) != 0 || state.rectangleHistoryIndex[0] != 0 {
 		t.Fatal("closed document retained a rectangular selection")
 	}
 }

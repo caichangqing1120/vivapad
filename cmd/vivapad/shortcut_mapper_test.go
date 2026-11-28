@@ -56,6 +56,65 @@ func TestShortcutMapperRebindsAndRestoresFocus(t *testing.T) {
 	}
 }
 
+func TestMultiSelectShortcutMapperAndEditorDispatch(t *testing.T) {
+	state, driver := startDriver(t)
+	clickID(t, driver, editorID)
+	doc := state.space.Current()
+	doc.Editor.Insert("cat cat cat")
+	doc.Editor.MoveTo(1, false)
+	chord := func(key rune) {
+		t.Helper()
+		if _, err := driver.ShortcutChord(primary()|gfx.ModifierShift, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(count, caret int) {
+		t.Helper()
+		if got := len(state.multiSelections[0].ranges); got != count || doc.Editor.Caret() != caret {
+			t.Fatalf("multi-select has %d ranges at %d, want %d at %d", got, doc.Editor.Caret(), count, caret)
+		}
+	}
+	chord('d')
+	check(1, 3)
+	chord('d')
+	check(2, 7)
+	chord('j')
+	check(2, 11)
+	chord('l')
+	check(3, 7)
+	if err := driver.Key(gfx.KeyEscape, 0); err != nil {
+		t.Fatal(err)
+	}
+	check(0, 7)
+	if doc.Editor.Selection().Start != 7 {
+		t.Fatal("Escape left a selection instead of one caret")
+	}
+	for _, command := range []string{"Multi-select Next", "Multi-select All", "Skip Current Multi-Select", "Undo Latest Multi-Select", "Exit Multi-Selection"} {
+		state.command(shortcutMapperCommand)
+		requireEditorCommandFocus(t, driver, mapperSearchID)
+		if err := driver.Type(command); err != nil {
+			t.Fatal(err)
+		}
+		clickMapperRow(t, driver, command)
+		if command == "Undo Latest Multi-Select" {
+			clickID(t, driver, mapperCaptureID)
+			if err := driver.Key(gfx.KeyF9, 0); err != nil {
+				t.Fatal(err)
+			}
+			clickID(t, driver, mapperApplyID)
+		}
+		clickID(t, driver, mapperCloseID)
+		requireEditorCommandFocus(t, driver, editorID)
+	}
+	doc.Editor.MoveTo(1, false)
+	chord('l')
+	check(3, 11)
+	if err := driver.Key(gfx.KeyF9, 0); err != nil {
+		t.Fatal(err)
+	}
+	check(2, 7)
+}
+
 func TestShortcutMapperSearchesBindingAndRunsSavedCommand(t *testing.T) {
 	state, driver := startDriver(t)
 	state.themeChoice = preferences.Monokai

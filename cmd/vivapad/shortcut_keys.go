@@ -40,6 +40,8 @@ func eventShortcut(event gfx.KeyEvent) (shortcuts.Chord, bool) {
 		binding.Key = "Tab"
 	case gfx.KeyEnter:
 		binding.Key = "Enter"
+	case gfx.KeyEscape:
+		binding.Key = "Escape"
 	case gfx.KeyUp:
 		binding.Key = "Up"
 	case gfx.KeyDown:
@@ -86,7 +88,7 @@ func (state *model) dispatchShortcut(event gfx.KeyEvent) gfx.EventResult {
 		return gfx.EventResult{}
 	}
 	if command == "" {
-		return gfx.EventResult{Handled: editorTarget && original != ""}
+		return gfx.EventResult{Handled: editorTarget && original != "" && original != shortcuts.MultiSelectExit}
 	}
 	if (command == nextDiffCommand || command == previousDiffCommand) && (state.comparison == nil || state.menuOpen >= 0) {
 		return gfx.EventResult{}
@@ -98,7 +100,8 @@ func (state *model) dispatchShortcut(event gfx.KeyEvent) gfx.EventResult {
 		return gfx.EventResult{Handled: true}
 	}
 	switch command {
-	case "Word Completion", "Path Completion", "Duplicate Lines Up", textDirectionRTL, textDirectionLTR:
+	case "Word Completion", "Path Completion", "Duplicate Lines Up", textDirectionRTL, textDirectionLTR,
+		shortcuts.MultiSelectNext, shortcuts.MultiSelectAll, shortcuts.MultiSelectSkip, shortcuts.MultiSelectUndo, shortcuts.MultiSelectExit:
 		if !editorTarget {
 			return gfx.EventResult{}
 		}
@@ -147,6 +150,12 @@ func (state *model) dispatchShortcut(event gfx.KeyEvent) gfx.EventResult {
 		}
 	}
 	switch command {
+	case shortcuts.MultiSelectNext, shortcuts.MultiSelectAll:
+		state.command(command + " / " + multiSelectWholeWordLabel)
+	case shortcuts.MultiSelectExit:
+		if !state.exitMultiSelection(state.activePane) {
+			return gfx.EventResult{}
+		}
 	case "Search Results Window":
 		if state.distractionFree {
 			return result

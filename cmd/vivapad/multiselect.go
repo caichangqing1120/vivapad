@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"slices"
 
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"vivapad/internal/document"
 )
@@ -22,6 +24,86 @@ func (state *model) syncMultiSelection(pane int, doc *document.Document) {
 		pane == state.activePane && len(selected.ranges) != 0 && doc.Editor.Selection() != selected.ranges[len(selected.ranges)-1]) {
 		*selected = multiSelectionState{}
 	}
+}
+
+func (state *model) exitMultiSelection(pane int) bool {
+	doc := state.paneDocument(pane)
+	state.syncMultiSelection(pane, doc)
+	rectangle := state.rectangles[pane]
+	if doc.Editor.CompositionActive() || !state.multiSelections[pane].active &&
+		(rectangle.doc != doc || rectangle.value != doc.Editor.String() || !rectangle.active && !rectangle.pending) {
+		return false
+	}
+	state.multiSelections[pane] = multiSelectionState{}
+	state.rectangles[pane] = rectangleSelection{}
+	state.altEditorGesture = altEditorGesture{}
+	doc.Editor.MoveTo(doc.Editor.Caret(), false)
+	if state.macroRecording {
+		state.cancelMacroUnsupported("exit multi-selection")
+	}
+	return true
+}
+
+func multiMovementForKey(key gfx.Key) app.TextCommand {
+	switch key {
+	case gfx.KeyLeft:
+		return app.TextMoveLeft
+	case gfx.KeyRight:
+		return app.TextMoveRight
+	case gfx.KeyHome:
+		return app.TextMoveLineStart
+	case gfx.KeyEnd:
+		return app.TextMoveLineEnd
+	}
+	return 0
+}
+
+func (state *model) moveMultiSelection(pane int, movement app.TextCommand) bool {
+	switch movement {
+	case app.TextMoveLeft, app.TextMoveRight, app.TextMoveLineStart, app.TextMoveLineEnd:
+	default:
+		return false
+	}
+	doc := state.paneDocument(pane)
+	state.syncMultiSelection(pane, doc)
+	selected := &state.multiSelections[pane]
+	if !selected.active || doc.Editor.CompositionActive() {
+		return false
+	}
+	carets := make([]text.Range, 0, len(selected.ranges))
+	mainCaret := doc.Editor.Caret()
+	for index, selection := range selected.ranges {
+		if index == len(selected.ranges)-1 && mainCaret == selection.Start {
+			selection.Start, selection.End = selection.End, selection.Start
+		}
+		doc.Editor.SetSelection(selection)
+		switch movement {
+		case app.TextMoveLeft:
+			doc.Editor.MoveLeft(false)
+		case app.TextMoveRight:
+			doc.Editor.MoveRight(false)
+		case app.TextMoveLineStart, app.TextMoveLineEnd:
+			doc.Editor.MoveLineBoundary(movement == app.TextMoveLineEnd, false)
+		}
+		carets = append(carets, doc.Editor.Selection())
+	}
+	selected.ranges = uniqueMultiCarets(carets)
+	if state.macroRecording {
+		state.cancelMacroUnsupported("multi-selection movement")
+	}
+	return true
+}
+
+func uniqueMultiCarets(carets []text.Range) []text.Range {
+	seen := make(map[text.Range]struct{}, len(carets))
+	slices.Reverse(carets)
+	carets = slices.DeleteFunc(carets, func(caret text.Range) bool {
+		_, duplicate := seen[caret]
+		seen[caret] = struct{}{}
+		return duplicate
+	})
+	slices.Reverse(carets)
+	return carets
 }
 
 func (state *model) multiSelectAll(options document.SearchOptions) {

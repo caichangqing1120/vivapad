@@ -39,6 +39,8 @@ func (binding Chord) Valid() bool {
 		}
 	}
 	switch binding.Key {
+	case "Escape":
+		return binding.Modifiers == 0
 	case "Tab", "Enter", "Space", "Up", "Down":
 		return binding.Modifiers&(Primary|Control|Alt) != 0
 	}
@@ -76,11 +78,12 @@ func (binding Chord) Format(platform string) string {
 }
 
 type Command struct {
-	ID      string
-	Name    string
-	Default Chord
-	Aliases []Chord
-	Fixed   bool
+	ID              string
+	Name            string
+	Default         Chord
+	Aliases         []Chord
+	Fixed           bool
+	OptionalDefault bool
 }
 
 type ConflictError struct{ Command string }
@@ -100,7 +103,11 @@ func (registry *Registry) Binding(id string) Chord {
 	if binding, ok := registry.overrides[id]; ok {
 		return binding
 	}
-	return registry.commands[id].Default
+	command := registry.commands[id]
+	if command.OptionalDefault && registry.Lookup(command.Default) != id {
+		return Chord{}
+	}
+	return command.Default
 }
 
 func (registry *Registry) Lookup(binding Chord) string { return registry.keys[binding] }
@@ -155,6 +162,8 @@ func (registry *Registry) index(overrides map[string]Chord) (map[Chord]string, e
 				return nil, fmt.Errorf("%s is handled by native text input", command.Name)
 			}
 			bindings = []Chord{binding}
+		} else if command.OptionalDefault {
+			continue
 		}
 		for _, binding := range bindings {
 			if binding.Empty() {
@@ -166,6 +175,17 @@ func (registry *Registry) index(overrides map[string]Chord) (map[Chord]string, e
 				}
 			}
 			keys[binding] = id
+		}
+	}
+	for id, command := range registry.commands {
+		if _, overridden := overrides[id]; !overridden && command.OptionalDefault && !command.Default.Empty() {
+			available := true
+			for _, key := range physicalVariants(command.Default) {
+				available = available && keys[key] == ""
+			}
+			if available {
+				keys[command.Default] = id
+			}
 		}
 	}
 	return keys, nil

@@ -86,7 +86,7 @@ func Validate(steps []Step) error {
 				return fmt.Errorf("invalid macro text step")
 			}
 			if step.Kind == MultiTextStep &&
-				!(step.TextKind == app.TextInsert && step.Text != "" || step.TextKind == app.TextCommandEvent &&
+				!((step.TextKind == app.TextInsert || step.TextKind == app.TextPaste) && step.Text != "" || step.TextKind == app.TextCommandEvent &&
 					(step.Command == app.TextDeleteBackward || step.Command == app.TextDeleteForward)) {
 				return fmt.Errorf("invalid macro multi-selection text step")
 			}
